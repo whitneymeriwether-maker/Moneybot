@@ -140,6 +140,10 @@ class _PostgresCompat:
     def __exit__(self, *args):
         return self.connection.__exit__(*args)
 
+    def transaction(self):
+        """Delegate PostgreSQL transaction handling to the underlying psycopg connection."""
+        return self.connection.transaction()
+
     def execute(self, statement, params=None):
         # No literal question marks occur in Moneybot's fixed SQL statements.
         return self.connection.execute(statement.replace('?', '%s'), params)
