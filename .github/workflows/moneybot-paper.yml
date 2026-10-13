@@ -1,0 +1,31 @@
+name: Moneybot paper check (manual validation)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: moneybot-paper-worker
+  cancel-in-progress: false
+jobs:
+  paper-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      APCA_API_KEY_ID: ${{ secrets.APCA_API_KEY_ID }}
+      APCA_API_SECRET_KEY: ${{ secrets.APCA_API_SECRET_KEY }}
+      ALPACA_DATA_FEED: iex
+      WATCHLIST: AAPL,MSFT,NVDA,AMD,PLTR
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: Moneybot_v2_5_corrected_structure/requirements.txt
+      - name: Install dependencies
+        working-directory: Moneybot_v2_5_corrected_structure
+        run: pip install -r requirements.txt
+      - name: Run paper-only worker once
+        working-directory: Moneybot_v2_5_corrected_structure
+        run: python worker_once.py
