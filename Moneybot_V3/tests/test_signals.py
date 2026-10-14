@@ -1,0 +1,89 @@
+
+import sys
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from backtesting.historical_data import PriceBar
+from backtesting.signals import generate_breakout_signals
+
+
+EASTERN = timezone(timedelta(hours=-5))
+
+
+def make_bar(hour, minute, close, high=None, low=None, volume=1000):
+    timestamp = datetime(
+        2026, 1, 5, hour, minute, tzinfo=EASTERN
+    )
+    return PriceBar(
+        timestamp=timestamp,
+        open=close,
+        high=high if high is not None else close + 0.1,
+        low=low if low is not None else close - 0.1,
+        close=close,
+        volume=volume,
+    )
+
+
+def opening_range():
+    return [
+        make_bar(9, minute, 100, high=101, low=99)
+        for minute in range(30, 45)
+    ]
+
+
+def test_detects_breakout():
+    bars = opening_range()
+    bars.append(make_bar(9, 45, 102, high=102.5, low=101.5))
+
+    signals = generate_breakout_signals(bars)
+
+    assert len(signals) == 1
+    assert signals[0].entry_price == 102
+    assert signals[0].opening_range_high == 101
+
+
+def test_no_breakout_below_range():
+    bars = opening_range()
+    bars.append(make_bar(9, 45, 100.5))
+
+    assert generate_breakout_signals(bars) == []
+
+
+def test_no_signal_during_opening_range():
+    bars = opening_range()
+
+    assert generate_breakout_signals(bars) == []
+
+
+def test_only_one_signal_per_day():
+    bars = opening_range()
+    bars.append(make_bar(9, 45, 102))
+    bars.append(make_bar(9, 46, 103))
+
+    assert len(generate_breakout_signals(bars)) == 1
+
+
+def test_requires_price_above_vwap():
+    bars = opening_range()
+    bars.append(
+        make_bar(9, 45, 102, high=102.5, low=101.5, volume=0)
+    )
+
+    signals = generate_breakout_signals(bars)
+
+    assert len(signals) == 1
+    assert signals[0].entry_price > signals[0].vwap
+
+
+def test_no_signal_before_market_open():
+    bars = [make_bar(9, 20, 105)]
+
+    assert generate_breakout_signals(bars) == []
+
+
+def test_no_signal_without_opening_range():
+    bars = [make_bar(10, 0, 105)]
+
+    assert generate_breakout_signals(bars) == []
