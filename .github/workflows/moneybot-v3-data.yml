@@ -3,11 +3,6 @@ name: Moneybot V3 Historical Data
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - moneybot-v3-research
-    paths:
-      - '.github/workflows/moneybot-v3-data.yml'
 
 permissions:
   contents: read
@@ -34,7 +29,7 @@ jobs:
           APCA_API_SECRET_KEY: ${{ secrets.APCA_API_SECRET_KEY }}
         run: python backtesting/download_data.py
 
-      - name: Run corrected historical backtest
+      - name: Run historical backtest
         working-directory: Moneybot_V3
         run: python backtesting/run_backtest.py
 
