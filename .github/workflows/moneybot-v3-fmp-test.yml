@@ -1,0 +1,56 @@
+
+name: Moneybot V3 FMP Connection Test
+
+on:
+  push:
+    branches:
+      - moneybot-v3-research
+    paths:
+      - .github/workflows/moneybot-v3-fmp-test.yml
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-fmp:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out V3 research branch
+        uses: actions/checkout@v4
+        with:
+          ref: moneybot-v3-research
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Test FMP market-cap connection
+        working-directory: Moneybot_V3
+        env:
+          FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
+        run: |
+          python - <<'PY'
+          from backtesting.market_cap_data import (
+              MarketCapDataError,
+              get_market_cap,
+          )
+
+          symbol = "SPY"
+
+          print("Moneybot V3 FMP Connection Test")
+          print(f"Testing symbol: {symbol}")
+          print("Read-only request. No trades.")
+
+          try:
+              market_cap = get_market_cap(symbol)
+          except MarketCapDataError as error:
+              print(f"FMP connection test failed: {error}")
+              raise SystemExit(1)
+
+          print(f"Market capitalization: ${market_cap:,.0f}")
+          print("FMP market-cap request succeeded.")
+          PY
