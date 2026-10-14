@@ -3,11 +3,6 @@ name: Moneybot V3 Historical Data
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - moneybot-v3-research
-    paths:
-      - .github/workflows/moneybot-v3-data.yml
 
 permissions:
   contents: read
