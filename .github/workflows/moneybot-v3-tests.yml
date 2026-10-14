@@ -61,3 +61,27 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  historical-backtest:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out V3 research code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Download historical SPY prices
+        working-directory: Moneybot_V3
+        env:
+          APCA_API_KEY_ID: ${{ secrets.APCA_API_KEY_ID }}
+          APCA_API_SECRET_KEY: ${{ secrets.APCA_API_SECRET_KEY }}
+        run: python backtesting/download_data.py
+
+      - name: Run historical backtest
+        working-directory: Moneybot_V3
+        run: python backtesting/run_backtest.py
+
+
