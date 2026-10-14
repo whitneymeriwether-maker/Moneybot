@@ -1,12 +1,10 @@
 
-"""Research-only historical trade simulator. No broker connections."""
+"""Historical trade simulator for research only. No broker connections."""
 
 from dataclasses import dataclass
 from datetime import time
 from math import isfinite
 from zoneinfo import ZoneInfo
-
-from backtesting.backtest import Trade
 
 NEW_YORK = ZoneInfo("America/New_York")
 
@@ -28,16 +26,7 @@ def simulate_trades(
     risk_per_trade=0.015,
     slippage_pct=0.001,
 ):
-    """
-    Simulate one long position at a time.
-
-    Signals execute at the NEXT available bar's open.
-    Stop distance uses the opening-range width.
-    Profit target is twice the stop distance.
-
-    Both stop and target touched in one bar: assume stop first.
-    Remaining positions close at the final available session bar.
-    """
+    """Simulate long trades with next-minute entries and same-day exits."""
     if not isfinite(starting_cash) or starting_cash <= 0:
         raise ValueError("Invalid starting cash")
     if not isfinite(risk_per_trade) or not 0 < risk_per_trade <= 1:
@@ -45,31 +34,80 @@ def simulate_trades(
     if not isfinite(slippage_pct) or not 0 <= slippage_pct < 1:
         raise ValueError("Invalid slippage")
 
-    signal_by_time = {signal.timestamp: signal for signal in signals}
-    cash = starting_cash
+    bars = list(bars)
+    signals_by_time = {s.timestamp: s for s in signals}
     completed = []
+    cash = starting_cash
     position = None
     pending = None
+    previous_bar = None
 
-    for index, bar in enumerate(bars):
+    def close_position(bar, price, reason):
+        nonlocal position, cash
+
+        exit_price = price * (1 - slippage_pct)
+        quantity = position["quantity"]
+        cash += (exit_price - position["entry"]) * quantity
+
+        completed.append(
+            SimulatedTrade(
+                entry_time=position["entry_time"],
+                exit_time=bar.timestamp,
+                entry_price=position["entry"],
+                exit_price=exit_price,
+                quantity=quantity,
+                exit_reason=reason,
+            )
+        )
+        position = None
+
+    for bar in bars:
         local = bar.timestamp.astimezone(NEW_YORK)
-        session_time = local.time()
+        clock = local.time()
+        day = local.date()
 
-        if not (time(9, 30) <= session_time < time(16, 0)):
+        if previous_bar is not None:
+            previous_day = previous_bar.timestamp.astimezone(
+                NEW_YORK
+            ).date()
+
+            if day != previous_day:
+                if position is not None:
+                    close_position(
+                        previous_bar,
+                        previous_bar.close,
+                        "session_end",
+                    )
+                pending = None
+
+        if not (time(9, 30) <= clock < time(16, 0)):
+            previous_bar = bar
             continue
 
-        # Execute a prior-bar signal at this bar's open.
+        entered_this_bar = False
+
         if pending is not None and position is None:
-            if local.date() == pending.timestamp.astimezone(NEW_YORK).date():
+            signal_day = pending.timestamp.astimezone(
+                NEW_YORK
+            ).date()
+
+            minutes_since_signal = (
+                bar.timestamp - pending.timestamp
+            ).total_seconds() / 60
+
+            if day == signal_day and minutes_since_signal == 1:
                 entry = bar.open * (1 + slippage_pct)
                 stop_distance = max(
-                    pending.opening_range_high - pending.opening_range_low,
+                    pending.opening_range_high
+                    - pending.opening_range_low,
                     entry * 0.002,
                 )
+
                 quantity = min(
                     int(cash * risk_per_trade / stop_distance),
                     int(cash / entry),
                 )
+
                 if quantity > 0:
                     position = {
                         "entry_time": bar.timestamp,
@@ -78,42 +116,33 @@ def simulate_trades(
                         "stop": entry - stop_distance,
                         "target": entry + 2 * stop_distance,
                     }
+                    entered_this_bar = True
+
             pending = None
 
-        # Evaluate stops and targets after entry.
-        if position is not None:
-            exit_price = None
-            reason = None
-
-            if bar.low <= position["stop"]:
-                exit_price = min(bar.open, position["stop"])
-                reason = "stop"
+        if position is not None and not entered_this_bar:
+            if bar.open <= position["stop"]:
+                close_position(bar, bar.open, "stop")
+            elif bar.open >= position["target"]:
+                close_position(bar, bar.open, "target")
+            elif bar.low <= position["stop"]:
+                close_position(bar, position["stop"], "stop")
             elif bar.high >= position["target"]:
-                exit_price = position["target"]
-                reason = "target"
-            elif session_time >= time(15, 59):
-                exit_price = bar.close
-                reason = "end_of_day"
+                close_position(bar, position["target"], "target")
 
-            if exit_price is not None:
-                exit_price *= 1 - slippage_pct
-                quantity = position["quantity"]
-                cash += (exit_price - position["entry"]) * quantity
+        if position is not None and clock >= time(15, 59):
+            close_position(bar, bar.close, "end_of_day")
 
-                completed.append(
-                    SimulatedTrade(
-                        entry_time=position["entry_time"],
-                        exit_time=bar.timestamp,
-                        entry_price=position["entry"],
-                        exit_price=exit_price,
-                        quantity=quantity,
-                        exit_reason=reason,
-                    )
-                )
-                position = None
+        if position is None and bar.timestamp in signals_by_time:
+            pending = signals_by_time[bar.timestamp]
 
-        # A signal is eligible only for a future bar.
-        if position is None and bar.timestamp in signal_by_time:
-            pending = signal_by_time[bar.timestamp]
+        previous_bar = bar
+
+    if position is not None and previous_bar is not None:
+        close_position(
+            previous_bar,
+            previous_bar.close,
+            "data_end",
+        )
 
     return completed
