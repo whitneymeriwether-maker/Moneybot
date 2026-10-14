@@ -24,6 +24,14 @@ class BacktestReport:
     signals: list
     trades: list
 
+    average_win: float = 0.0
+    average_loss: float = 0.0
+    profit_factor: float = 0.0
+    maximum_drawdown_pct: float = 0.0
+    stop_loss_exits: int = 0
+    target_exits: int = 0
+    end_of_day_exits: int = 0
+
 
 def run_backtest(
     csv_filename,
@@ -31,10 +39,9 @@ def run_backtest(
     risk_per_trade=0.015,
     slippage_pct=0.001,
 ):
-    """Load prices, generate signals, simulate trades and report results."""
+    """Load prices, simulate trades, and calculate performance."""
 
     bars = load_price_bars(csv_filename)
-
     signals = generate_breakout_signals(bars)
 
     trades = simulate_trades(
@@ -53,15 +60,75 @@ def run_backtest(
     net_profit = sum(profits)
     ending_cash = starting_cash + net_profit
 
-    winning_trades = sum(profit > 0 for profit in profits)
-    losing_trades = sum(profit < 0 for profit in profits)
+    wins = [profit for profit in profits if profit > 0]
+    losses = [profit for profit in profits if profit < 0]
 
+    winning_trades = len(wins)
+    losing_trades = len(losses)
     trade_count = len(trades)
 
     win_rate_pct = (
         100 * winning_trades / trade_count
         if trade_count
         else 0.0
+    )
+
+    average_win = (
+        sum(wins) / len(wins)
+        if wins
+        else 0.0
+    )
+
+    average_loss = (
+        sum(losses) / len(losses)
+        if losses
+        else 0.0
+    )
+
+    gross_profit = sum(wins)
+    gross_loss = abs(sum(losses))
+
+    profit_factor = (
+        gross_profit / gross_loss
+        if gross_loss > 0
+        else 0.0
+    )
+
+    # Calculate drawdown using equity after each closed trade.
+    equity = starting_cash
+    peak_equity = starting_cash
+    maximum_drawdown_pct = 0.0
+
+    for profit in profits:
+        equity += profit
+        peak_equity = max(peak_equity, equity)
+
+        drawdown_pct = (
+            100 * (peak_equity - equity) / peak_equity
+        )
+
+        maximum_drawdown_pct = max(
+            maximum_drawdown_pct,
+            drawdown_pct,
+        )
+
+    stop_loss_exits = sum(
+        trade.exit_reason == "stop"
+        for trade in trades
+    )
+
+    target_exits = sum(
+        trade.exit_reason == "target"
+        for trade in trades
+    )
+
+    end_of_day_exits = sum(
+        trade.exit_reason in (
+            "end_of_day",
+            "session_end",
+            "data_end",
+        )
+        for trade in trades
     )
 
     return BacktestReport(
@@ -75,4 +142,11 @@ def run_backtest(
         win_rate_pct=win_rate_pct,
         signals=signals,
         trades=trades,
+        average_win=average_win,
+        average_loss=average_loss,
+        profit_factor=profit_factor,
+        maximum_drawdown_pct=maximum_drawdown_pct,
+        stop_loss_exits=stop_loss_exits,
+        target_exits=target_exits,
+        end_of_day_exits=end_of_day_exits,
     )

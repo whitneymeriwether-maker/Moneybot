@@ -5,6 +5,7 @@ import csv
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -17,7 +18,7 @@ NY = ZoneInfo("America/New_York")
 
 
 def write_prices(filename, breakout=True):
-    """Create a small, artificial historical price dataset."""
+    """Create a small artificial historical price dataset."""
     start = datetime(2026, 10, 12, 9, 30, tzinfo=NY)
     rows = []
 
@@ -97,6 +98,14 @@ def test_pipeline_without_breakout(tmp_path):
     assert report.ending_cash == 1000
     assert report.win_rate_pct == 0
 
+    assert report.average_win == 0
+    assert report.average_loss == 0
+    assert report.profit_factor == 0
+    assert report.maximum_drawdown_pct == 0
+    assert report.stop_loss_exits == 0
+    assert report.target_exits == 0
+    assert report.end_of_day_exits == 0
+
 
 def test_report_profit_matches_trades(tmp_path):
     filename = tmp_path / "prices.csv"
@@ -113,6 +122,73 @@ def test_report_profit_matches_trades(tmp_path):
     assert report.return_pct == pytest.approx(
         100 * report.net_profit / report.starting_cash
     )
+
+
+def test_winning_trade_diagnostics(tmp_path):
+    filename = tmp_path / "prices.csv"
+    write_prices(filename)
+
+    report = run_backtest(filename, slippage_pct=0)
+
+    assert report.average_win == pytest.approx(report.net_profit)
+    assert report.average_loss == 0
+    assert report.maximum_drawdown_pct == 0
+    assert report.target_exits == 1
+    assert report.stop_loss_exits == 0
+
+
+def test_diagnostics_with_mixed_trades(tmp_path, monkeypatch):
+    """Verify calculations using controlled simulated trades."""
+    filename = tmp_path / "prices.csv"
+    write_prices(filename)
+
+    fake_trades = [
+        SimpleNamespace(
+            entry_price=100,
+            exit_price=110,
+            quantity=1,
+            exit_reason="target",
+        ),
+        SimpleNamespace(
+            entry_price=100,
+            exit_price=95,
+            quantity=1,
+            exit_reason="stop",
+        ),
+        SimpleNamespace(
+            entry_price=100,
+            exit_price=97,
+            quantity=1,
+            exit_reason="end_of_day",
+        ),
+    ]
+
+    monkeypatch.setattr(
+        "backtesting.pipeline.simulate_trades",
+        lambda *args, **kwargs: fake_trades,
+    )
+
+    report = run_backtest(filename, slippage_pct=0)
+
+    assert report.trade_count == 3
+    assert report.winning_trades == 1
+    assert report.losing_trades == 2
+
+    assert report.net_profit == pytest.approx(2)
+    assert report.ending_cash == pytest.approx(1002)
+    assert report.average_win == pytest.approx(10)
+    assert report.average_loss == pytest.approx(-4)
+    assert report.profit_factor == pytest.approx(1.25)
+
+    # Equity rises to 1010, then falls to 1002.
+    expected_drawdown = 100 * 8 / 1010
+    assert report.maximum_drawdown_pct == pytest.approx(
+        expected_drawdown
+    )
+
+    assert report.stop_loss_exits == 1
+    assert report.target_exits == 1
+    assert report.end_of_day_exits == 1
 
 
 def test_pipeline_rejects_missing_file(tmp_path):

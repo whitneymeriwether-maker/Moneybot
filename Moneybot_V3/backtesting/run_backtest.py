@@ -25,9 +25,9 @@ def main():
             f"Historical SPY data file not found: {data_file}"
         )
 
-    print("=" * 45)
+    print("=" * 50)
     print("MONEYBOT V3 - SIX-MONTH BACKTEST")
-    print("=" * 45)
+    print("=" * 50)
     print("Symbol: SPY")
     print("Period: April 1 - September 30, 2026")
     print("Starting virtual balance: $1,000.00")
@@ -40,20 +40,39 @@ def main():
         slippage_pct=0.001,
     )
 
+    print("OVERALL PERFORMANCE")
+    print("-" * 50)
     print(f"Breakout signals: {len(report.signals)}")
     print(f"Completed trades: {report.trade_count}")
     print(f"Winning trades: {report.winning_trades}")
     print(f"Losing trades: {report.losing_trades}")
     print(f"Win rate: {report.win_rate_pct:.2f}%")
     print()
-
     print(f"Net profit/loss: ${report.net_profit:,.2f}")
     print(f"Total return: {report.return_pct:.2f}%")
     print(f"Ending virtual balance: ${report.ending_cash:,.2f}")
     print()
 
+    print("PERFORMANCE DIAGNOSTICS")
+    print("-" * 50)
+    print(f"Average winning trade: ${report.average_win:,.2f}")
+    print(f"Average losing trade: ${report.average_loss:,.2f}")
+    print(f"Profit factor: {report.profit_factor:.3f}")
+    print(
+        f"Maximum closed-trade drawdown: "
+        f"{report.maximum_drawdown_pct:.2f}%"
+    )
+    print()
+
+    print("EXIT REASONS")
+    print("-" * 50)
+    print(f"Stop-loss exits: {report.stop_loss_exits}")
+    print(f"Profit-target exits: {report.target_exits}")
+    print(f"Session/end-of-data exits: {report.end_of_day_exits}")
+    print()
+
     print("TRADE DETAILS")
-    print("-" * 45)
+    print("-" * 50)
 
     if not report.trades:
         print("No completed trades.")
@@ -76,6 +95,10 @@ def main():
     print("Research simulation only.")
     print("Results exclude commissions and some market costs.")
     print("Historical IEX data may omit market activity.")
+    print(
+        "Drawdown is calculated from closed trades, "
+        "not intratrade equity."
+    )
 
 
 if __name__ == "__main__":
