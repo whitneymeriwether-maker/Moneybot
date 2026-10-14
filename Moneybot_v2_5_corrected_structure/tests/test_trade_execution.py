@@ -1,20 +1,20 @@
 
 """Tests for simulated trade execution and risk controls.
 
-Uses a temporary database and artificial prices.
-No Alpaca orders or real account activity.
+Uses artificial prices and temporary databases only.
+No Alpaca orders or changes to the virtual account.
 """
 
 import pandas as pd
-import pytest
 
 from agent.engine import PaperEngine
 
 
 def make_bars():
+    """Create a complete trading session of five-minute candles."""
     idx = pd.date_range(
         "2026-10-12 09:30",
-        periods=30,
+        periods=78,
         freq="5min",
         tz="America/New_York",
     )
@@ -31,7 +31,7 @@ def make_bars():
 
 
 def force_buy_signal(monkeypatch):
-    """Replace the strategy signal for a controlled test."""
+    """Force a strategy signal inside the test only."""
     monkeypatch.setattr(
         "agent.engine.find_signal",
         lambda data: {"decision": "WATCH"},
@@ -41,7 +41,9 @@ def force_buy_signal(monkeypatch):
 def test_simulated_entry_respects_cash_and_exposure(tmp_path, monkeypatch):
     force_buy_signal(monkeypatch)
     engine = PaperEngine(tmp_path / "entry.sqlite3")
-    engine.process("TEST", make_bars())
+
+    # Process only the morning so the position remains open.
+    engine.process("TEST", make_bars().iloc[:30])
 
     cash, positions, events = engine.snapshot()
     entries = events[events["kind"] == "ENTRY"]
@@ -49,9 +51,13 @@ def test_simulated_entry_respects_cash_and_exposure(tmp_path, monkeypatch):
     assert len(entries) == 1
     assert len(positions) == 1
     assert 0 <= cash <= 1000
-    assert float(positions[0][0]) == 100.0
-    assert positions[0][1] >= 1
-    assert positions[0][1] * float(positions[0][0]) <= 250.0
+
+    symbol, entry_price, qty, stop, target, entry_ts = positions[0]
+
+    assert symbol == "TEST"
+    assert float(entry_price) == 100.0
+    assert qty >= 1
+    assert qty * float(entry_price) <= 250.0
 
 
 def test_simulated_exit_and_replay_protection(tmp_path, monkeypatch):
