@@ -17,7 +17,7 @@ from backtesting.research_scanner import ResearchResult
 
 
 def test_default_watchlist_has_no_unverified_market_caps():
-    """Watchlist must not contain guessed market caps."""
+    """The watchlist must not contain guessed market caps."""
 
     assert len(run_research_scan.WATCHLIST) == 5
 
@@ -27,8 +27,10 @@ def test_default_watchlist_has_no_unverified_market_caps():
         assert market_cap is None
 
 
-def test_missing_market_caps_are_rejected():
-    """Missing market caps must not produce approved stocks."""
+def test_missing_market_caps_are_rejected(monkeypatch):
+    """Unavailable market-cap data must reject every stock."""
+
+    monkeypatch.delenv("FMP_API_KEY", raising=False)
 
     results = run_research_scan.run_scan([
         ("SOFI", None),
@@ -39,8 +41,9 @@ def test_missing_market_caps_are_rejected():
     assert all(result.qualifies is False for result in results)
 
     for result in results:
-        assert "Verified market capitalization is required" in (
-            result.reasons
+        assert any(
+            "Verified market capitalization is required" in reason
+            for reason in result.reasons
         )
 
 
@@ -110,13 +113,14 @@ def test_empty_watchlist(monkeypatch, capsys):
     assert "Rejected: 0" in output
 
 
-def test_default_scan_does_not_request_market_data(monkeypatch):
-    """Unverified stocks must not trigger Alpaca requests."""
+def test_default_scan_does_not_request_alpaca_data(monkeypatch):
+    """Missing market-cap data must block Alpaca requests."""
+
+    monkeypatch.delenv("FMP_API_KEY", raising=False)
 
     def forbidden_request(symbol, market_cap):
         raise AssertionError(
-            "Market data should not be requested "
-            "without verified market capitalization"
+            "Alpaca should not be called without market cap"
         )
 
     monkeypatch.setattr(
