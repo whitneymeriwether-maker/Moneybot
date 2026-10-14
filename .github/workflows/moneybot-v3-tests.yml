@@ -32,3 +32,32 @@ jobs:
       - name: Run V3 tests
         working-directory: Moneybot_V3
         run: python -m pytest -q
+
+  download-history:
+    if: github.ref == 'refs/heads/moneybot-v3-research'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out V3 research branch
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Download SPY historical data
+        working-directory: Moneybot_V3
+        env:
+          APCA_API_KEY_ID: ${{ secrets.APCA_API_KEY_ID }}
+          APCA_API_SECRET_KEY: ${{ secrets.APCA_API_SECRET_KEY }}
+        run: python backtesting/download_data.py
+
+      - name: Save downloaded CSV
+        uses: actions/upload-artifact@v4
+        with:
+          name: moneybot-v3-spy-september-2026
+          path: Moneybot_V3/data/SPY_1min_2026_09.csv
+          if-no-files-found: error
+          retention-days: 30
+
