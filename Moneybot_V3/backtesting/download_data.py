@@ -1,24 +1,26 @@
 
-"""Download historical SPY minute bars for Moneybot V3 research.
+"""Download six months of SPY minute bars for V3 research.
 
-Read-only market data. No trading or broker order requests.
+Read-only market data. No brokerage orders.
 """
 
 import csv
+import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
-import json
 
 
 DATA_URL = "https://data.alpaca.markets/v2/stocks/bars"
 
-START = "2026-09-01T00:00:00Z"
+START = "2026-04-01T00:00:00Z"
 END = "2026-10-01T00:00:00Z"
 SYMBOL = "SPY"
+
+OUTPUT_NAME = "SPY_1min_2026_04_to_09.csv"
 
 
 def download_history():
@@ -34,7 +36,7 @@ def download_history():
     output = (
         Path(__file__).resolve().parents[1]
         / "data"
-        / "SPY_1min_2026_09.csv"
+        / OUTPUT_NAME
     )
     output.parent.mkdir(parents=True, exist_ok=True)
 
@@ -82,6 +84,8 @@ def download_history():
 
     if not bars:
         raise RuntimeError("Alpaca returned no historical price bars")
+
+    bars.sort(key=lambda bar: bar["t"])
 
     with output.open("w", newline="", encoding="utf-8") as file:
         writer = csv.writer(file)

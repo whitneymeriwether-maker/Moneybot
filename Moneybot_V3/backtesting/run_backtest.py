@@ -1,5 +1,5 @@
 
-"""Run Moneybot V3's historical SPY backtest.
+"""Run Moneybot V3's six-month historical SPY backtest.
 
 Research only. No brokerage connections or real orders.
 """
@@ -7,7 +7,6 @@ Research only. No brokerage connections or real orders.
 import sys
 from pathlib import Path
 
-# Allow imports from the Moneybot_V3 folder.
 V3_FOLDER = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(V3_FOLDER))
 
@@ -15,18 +14,22 @@ from backtesting.pipeline import run_backtest
 
 
 def main():
-    data_file = V3_FOLDER / "data" / "SPY_1min_2026_09.csv"
+    data_file = (
+        V3_FOLDER
+        / "data"
+        / "SPY_1min_2026_04_to_09.csv"
+    )
 
     if not data_file.is_file():
-        print("ERROR: Historical SPY data file not found.")
-        print(f"Expected location: {data_file}")
-        return
+        raise FileNotFoundError(
+            f"Historical SPY data file not found: {data_file}"
+        )
 
     print("=" * 45)
-    print("MONEYBOT V3 - HISTORICAL BACKTEST")
+    print("MONEYBOT V3 - SIX-MONTH BACKTEST")
     print("=" * 45)
     print("Symbol: SPY")
-    print("Period: September 2026")
+    print("Period: April 1 - September 30, 2026")
     print("Starting virtual balance: $1,000.00")
     print()
 
@@ -43,6 +46,7 @@ def main():
     print(f"Losing trades: {report.losing_trades}")
     print(f"Win rate: {report.win_rate_pct:.2f}%")
     print()
+
     print(f"Net profit/loss: ${report.net_profit:,.2f}")
     print(f"Total return: {report.return_pct:.2f}%")
     print(f"Ending virtual balance: ${report.ending_cash:,.2f}")
@@ -71,6 +75,7 @@ def main():
     print()
     print("Research simulation only.")
     print("Results exclude commissions and some market costs.")
+    print("Historical IEX data may omit market activity.")
 
 
 if __name__ == "__main__":

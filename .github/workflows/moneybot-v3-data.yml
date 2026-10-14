@@ -3,6 +3,11 @@ name: Moneybot V3 Historical Data
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - moneybot-v3-research
+    paths:
+      - '.github/workflows/moneybot-v3-data.yml'
 
 permissions:
   contents: read
@@ -22,21 +27,21 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Download historical SPY prices
+      - name: Download six months of SPY prices
         working-directory: Moneybot_V3
         env:
           APCA_API_KEY_ID: ${{ secrets.APCA_API_KEY_ID }}
           APCA_API_SECRET_KEY: ${{ secrets.APCA_API_SECRET_KEY }}
         run: python backtesting/download_data.py
 
-      - name: Run historical backtest
+      - name: Run six-month historical backtest
         working-directory: Moneybot_V3
         run: python backtesting/run_backtest.py
 
       - name: Save historical data as an artifact
         uses: actions/upload-artifact@v4
         with:
-          name: moneybot-v3-spy-september-2026
-          path: Moneybot_V3/data/SPY_1min_2026_09.csv
+          name: moneybot-v3-spy-april-september-2026
+          path: Moneybot_V3/data/SPY_1min_2026_04_to_09.csv
           if-no-files-found: error
           retention-days: 30
