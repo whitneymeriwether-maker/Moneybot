@@ -1,5 +1,8 @@
 
-"""Automated tests for Moneybot V3's research scanner."""
+"""Automated tests for Moneybot V3's research scanner.
+
+All market data is simulated. No network requests or trades.
+"""
 
 import sys
 from pathlib import Path
@@ -12,6 +15,7 @@ sys.path.insert(
 )
 
 from backtesting import research_scanner
+from backtesting.market_cap_data import MarketCapDataError
 from backtesting.stock_screener import StockCandidate
 
 
@@ -31,15 +35,27 @@ def make_candidate(**changes):
     return StockCandidate(**values)
 
 
-def test_qualifying_stock_passes(monkeypatch):
+def fake_stock_data(monkeypatch, **changes):
+    """Replace Alpaca market data with simulated values."""
+
+    def get_candidate(symbol, market_cap):
+        return make_candidate(
+            **{
+                **changes,
+                "symbol": symbol,
+                "market_cap": market_cap,
+            }
+        )
+
     monkeypatch.setattr(
         research_scanner,
         "get_stock_candidate",
-        lambda symbol, market_cap: make_candidate(
-            symbol=symbol,
-            market_cap=market_cap,
-        ),
+        get_candidate,
     )
+
+
+def test_qualifying_stock_passes(monkeypatch):
+    fake_stock_data(monkeypatch)
 
     result = research_scanner.scan_stock(
         "TEST",
@@ -51,31 +67,109 @@ def test_qualifying_stock_passes(monkeypatch):
     assert result.reasons == ()
 
 
-def test_missing_market_cap_rejected(monkeypatch):
-    def should_not_be_called(symbol, market_cap):
-        raise AssertionError("Market data should not be requested")
+def test_automatic_market_cap_lookup(monkeypatch):
+    """Missing market cap should trigger the FMP provider."""
+
+    requested = []
+
+    def fake_market_cap(symbol):
+        requested.append(symbol)
+        return 1_000_000_000
+
+    monkeypatch.setattr(
+        research_scanner,
+        "get_market_cap",
+        fake_market_cap,
+    )
+
+    fake_stock_data(monkeypatch)
+
+    result = research_scanner.scan_stock("test")
+
+    assert requested == ["TEST"]
+    assert result.symbol == "TEST"
+    assert result.qualifies is True
+
+
+def test_market_cap_provider_failure_rejected(monkeypatch):
+    """Failed FMP lookup must not approve a stock."""
+
+    def unavailable(symbol):
+        raise MarketCapDataError("Simulated FMP outage")
+
+    monkeypatch.setattr(
+        research_scanner,
+        "get_market_cap",
+        unavailable,
+    )
+
+    def forbidden_stock_request(symbol, market_cap):
+        raise AssertionError(
+            "Alpaca should not be called after FMP failure"
+        )
 
     monkeypatch.setattr(
         research_scanner,
         "get_stock_candidate",
-        should_not_be_called,
+        forbidden_stock_request,
     )
 
     result = research_scanner.scan_stock("TEST")
 
     assert result.qualifies is False
-    assert "Verified market capitalization is required" in result.reasons
+    assert "Verified market capitalization is required" in (
+        result.reasons[0]
+    )
+    assert "Simulated FMP outage" in result.reasons[0]
 
 
-def test_low_price_rejected(monkeypatch):
+def test_missing_fmp_credentials_rejected(monkeypatch):
+    """Missing API credentials should fail safely."""
+
+    monkeypatch.delenv("FMP_API_KEY", raising=False)
+
+    result = research_scanner.scan_stock("TEST")
+
+    assert result.qualifies is False
+    assert "Verified market capitalization is required" in (
+        result.reasons[0]
+    )
+
+
+@pytest.mark.parametrize(
+    "invalid_cap",
+    [
+        0,
+        -100,
+        True,
+        float("nan"),
+        float("inf"),
+        "1000000000",
+    ],
+)
+def test_invalid_market_cap_rejected(monkeypatch, invalid_cap):
+    def forbidden_stock_request(symbol, market_cap):
+        raise AssertionError(
+            "Invalid market cap must not trigger Alpaca"
+        )
+
     monkeypatch.setattr(
         research_scanner,
         "get_stock_candidate",
-        lambda symbol, market_cap: make_candidate(
-            symbol=symbol,
-            price=1.50,
-        ),
+        forbidden_stock_request,
     )
+
+    result = research_scanner.scan_stock(
+        "TEST",
+        market_cap=invalid_cap,
+    )
+
+    assert result.qualifies is False
+    assert "Invalid market capitalization" in result.reasons
+
+
+def test_low_price_rejected(monkeypatch):
+    fake_stock_data(monkeypatch, price=1.50)
 
     result = research_scanner.scan_stock(
         "TEST",
@@ -87,13 +181,9 @@ def test_low_price_rejected(monkeypatch):
 
 
 def test_low_volume_rejected(monkeypatch):
-    monkeypatch.setattr(
-        research_scanner,
-        "get_stock_candidate",
-        lambda symbol, market_cap: make_candidate(
-            symbol=symbol,
-            average_daily_volume=100_000,
-        ),
+    fake_stock_data(
+        monkeypatch,
+        average_daily_volume=100_000,
     )
 
     result = research_scanner.scan_stock(
@@ -106,14 +196,10 @@ def test_low_volume_rejected(monkeypatch):
 
 
 def test_wide_spread_rejected(monkeypatch):
-    monkeypatch.setattr(
-        research_scanner,
-        "get_stock_candidate",
-        lambda symbol, market_cap: make_candidate(
-            symbol=symbol,
-            bid=11.90,
-            ask=12.00,
-        ),
+    fake_stock_data(
+        monkeypatch,
+        bid=11.90,
+        ask=12.00,
     )
 
     result = research_scanner.scan_stock(
@@ -153,34 +239,30 @@ def test_invalid_symbol_rejected():
 
 
 def test_multiple_stocks(monkeypatch):
-    def fake_candidate(symbol, market_cap):
-        if symbol == "LOW":
-            return make_candidate(
-                symbol=symbol,
-                price=1.50,
-            )
+    fake_stock_data(monkeypatch)
 
-        return make_candidate(
-            symbol=symbol,
-            market_cap=market_cap,
-        )
+    def fake_market_cap(symbol):
+        if symbol == "NOCAP":
+            raise MarketCapDataError("No market-cap data")
+
+        return 1_000_000_000
 
     monkeypatch.setattr(
         research_scanner,
-        "get_stock_candidate",
-        fake_candidate,
+        "get_market_cap",
+        fake_market_cap,
     )
 
     results = research_scanner.scan_stocks([
         ("GOOD", 1_000_000_000),
-        ("LOW", 1_000_000_000),
         ("NOCAP", None),
+        ("ALSO", None),
     ])
 
     assert len(results) == 3
     assert results[0].qualifies is True
     assert results[1].qualifies is False
-    assert results[2].qualifies is False
+    assert results[2].qualifies is True
 
 
 def test_print_results(capsys):

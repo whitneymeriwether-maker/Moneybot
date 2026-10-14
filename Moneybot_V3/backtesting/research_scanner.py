@@ -1,14 +1,20 @@
 
 """Moneybot V3 stock research scanner.
 
-Combines read-only market data with stock screening rules.
+Combines read-only market data, market capitalization,
+and stock screening rules.
 
 Research only. No brokerage orders or live trading.
 """
 
 from dataclasses import dataclass
+from math import isfinite
 
 from backtesting.download_data import validate_symbol
+from backtesting.market_cap_data import (
+    MarketCapDataError,
+    get_market_cap,
+)
 from backtesting.market_data import get_stock_candidate
 from backtesting.stock_screener import screen_stock
 
@@ -25,13 +31,32 @@ def scan_stock(symbol, market_cap=None):
 
     symbol = validate_symbol(symbol)
 
+    # Retrieve market capitalization automatically when
+    # no value was provided.
     if market_cap is None:
+        try:
+            market_cap = get_market_cap(symbol)
+        except (MarketCapDataError, RuntimeError, ValueError) as error:
+            return ResearchResult(
+                symbol=symbol,
+                qualifies=False,
+                reasons=(
+                    f"Verified market capitalization is required: {error}",
+                ),
+            )
+
+    # Reject invalid market-cap inputs before requesting
+    # any additional market data.
+    if (
+        isinstance(market_cap, bool)
+        or not isinstance(market_cap, (int, float))
+        or not isfinite(market_cap)
+        or market_cap <= 0
+    ):
         return ResearchResult(
             symbol=symbol,
             qualifies=False,
-            reasons=(
-                "Verified market capitalization is required",
-            ),
+            reasons=("Invalid market capitalization",),
         )
 
     try:
@@ -87,5 +112,5 @@ def print_results(results):
 if __name__ == "__main__":
     print("Moneybot V3 Research Scanner")
     print("Research universe: $2-$30 stocks")
-    print("Verified market-cap data required.")
+    print("Market capitalization: FMP data provider")
     print("Read-only research. No trades submitted.")
