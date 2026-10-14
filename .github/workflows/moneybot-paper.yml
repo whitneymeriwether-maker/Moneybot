@@ -26,6 +26,9 @@ jobs:
       - name: Install dependencies
         working-directory: Moneybot_v2_5_corrected_structure
         run: pip install -r requirements.txt
+      - name: Run automated tests
+        working-directory: Moneybot_v2_5_corrected_structure
+        run: python -m pytest -q
       - name: Run paper-only worker once
         working-directory: Moneybot_v2_5_corrected_structure
         run: python worker_once.py
