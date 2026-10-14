@@ -2,7 +2,7 @@ import os
 import pandas as pd
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockBarsRequest
-from alpaca.data.timeframe import TimeFrame
+from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
 from alpaca.data.enums import DataFeed
 
 def get_recent_bars(symbol, start, end):
@@ -16,7 +16,7 @@ def get_recent_bars(symbol, start, end):
     client = StockHistoricalDataClient(key, secret)
     req = StockBarsRequest(
         symbol_or_symbols=symbol,
-        timeframe=TimeFrame(5, TimeFrame.Unit.Minute),
+        timeframe=TimeFrame(5, TimeFrameUnit.Minute),
         start=start,
         end=end,
         feed=feed,
