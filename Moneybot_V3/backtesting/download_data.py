@@ -1,5 +1,5 @@
 
-"""Download six months of SPY minute bars for V3 research.
+"""Download historical minute bars for Moneybot V3 research.
 
 Read-only market data. No brokerage orders.
 """
@@ -7,6 +7,7 @@ Read-only market data. No brokerage orders.
 import csv
 import json
 import os
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -18,12 +19,29 @@ DATA_URL = "https://data.alpaca.markets/v2/stocks/bars"
 
 START = "2026-04-01T00:00:00Z"
 END = "2026-10-01T00:00:00Z"
-SYMBOL = "SPY"
 
-OUTPUT_NAME = "SPY_1min_2026_04_to_09.csv"
+# SPY remains the default so the existing historical workflow
+# continues to work without changes.
+DEFAULT_SYMBOL = "SPY"
+
+# Experimental research universe, not an automatic stock filter.
+RESEARCH_MIN_PRICE = 2.00
+RESEARCH_MAX_PRICE = 30.00
 
 
-def download_history():
+def validate_symbol(symbol):
+    """Allow conventional stock ticker symbols only."""
+    symbol = symbol.strip().upper()
+
+    if not re.fullmatch(r"[A-Z][A-Z0-9.-]{0,9}", symbol):
+        raise ValueError(f"Invalid stock symbol: {symbol!r}")
+
+    return symbol
+
+
+def download_history(symbol=None):
+    """Download six months of minute bars for one stock."""
+
     key = os.environ.get("APCA_API_KEY_ID")
     secret = os.environ.get("APCA_API_SECRET_KEY")
 
@@ -33,10 +51,20 @@ def download_history():
             "Use GitHub Actions secrets, not hardcoded keys."
         )
 
+    if symbol is None:
+        symbol = os.environ.get(
+            "MONEYBOT_V3_SYMBOL",
+            DEFAULT_SYMBOL,
+        )
+
+    symbol = validate_symbol(symbol)
+
+    output_name = f"{symbol}_1min_2026_04_to_09.csv"
+
     output = (
         Path(__file__).resolve().parents[1]
         / "data"
-        / OUTPUT_NAME
+        / output_name
     )
     output.parent.mkdir(parents=True, exist_ok=True)
 
@@ -45,7 +73,7 @@ def download_history():
 
     while True:
         params = {
-            "symbols": SYMBOL,
+            "symbols": symbol,
             "timeframe": "1Min",
             "start": START,
             "end": END,
@@ -73,25 +101,32 @@ def download_history():
                 payload = json.load(response)
         except (HTTPError, URLError) as error:
             raise RuntimeError(
-                "Historical data download failed"
+                f"Historical data download failed for {symbol}"
             ) from error
 
-        bars.extend(payload.get("bars", {}).get(SYMBOL, []))
+        bars.extend(payload.get("bars", {}).get(symbol, []))
         next_page_token = payload.get("next_page_token")
 
         if not next_page_token:
             break
 
     if not bars:
-        raise RuntimeError("Alpaca returned no historical price bars")
+        raise RuntimeError(
+            f"Alpaca returned no historical bars for {symbol}"
+        )
 
     bars.sort(key=lambda bar: bar["t"])
 
     with output.open("w", newline="", encoding="utf-8") as file:
         writer = csv.writer(file)
-        writer.writerow(
-            ["timestamp", "open", "high", "low", "close", "volume"]
-        )
+        writer.writerow([
+            "timestamp",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+        ])
 
         for bar in bars:
             timestamp = datetime.fromisoformat(
@@ -107,7 +142,12 @@ def download_history():
                 bar["v"],
             ])
 
-    print(f"Downloaded {len(bars)} bars to {output}")
+    print(f"Symbol: {symbol}")
+    print(f"Downloaded bars: {len(bars)}")
+    print(f"Saved historical data: {output}")
+    print("Research data only. No orders submitted.")
+
+    return output
 
 
 if __name__ == "__main__":
