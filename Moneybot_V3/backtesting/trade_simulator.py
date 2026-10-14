@@ -1,10 +1,14 @@
 
-"""Historical trade simulator for research only. No broker connections."""
+"""Historical trade simulator for Moneybot V3 research.
+
+Paper simulation only. No broker connections or real orders.
+"""
 
 from dataclasses import dataclass
 from datetime import time
 from math import isfinite
 from zoneinfo import ZoneInfo
+
 
 NEW_YORK = ZoneInfo("America/New_York")
 
@@ -26,16 +30,22 @@ def simulate_trades(
     risk_per_trade=0.015,
     slippage_pct=0.001,
 ):
-    """Simulate long trades with next-minute entries and same-day exits."""
+    """Simulate cash-funded long trades with same-day exits."""
+
     if not isfinite(starting_cash) or starting_cash <= 0:
         raise ValueError("Invalid starting cash")
+
     if not isfinite(risk_per_trade) or not 0 < risk_per_trade <= 1:
         raise ValueError("Invalid risk per trade")
+
     if not isfinite(slippage_pct) or not 0 <= slippage_pct < 1:
         raise ValueError("Invalid slippage")
 
     bars = list(bars)
-    signals_by_time = {s.timestamp: s for s in signals}
+    signals_by_time = {
+        signal.timestamp: signal for signal in signals
+    }
+
     completed = []
     cash = starting_cash
     position = None
@@ -47,7 +57,9 @@ def simulate_trades(
 
         exit_price = price * (1 - slippage_pct)
         quantity = position["quantity"]
-        cash += (exit_price - position["entry"]) * quantity
+
+        # Return the proceeds from selling the shares.
+        cash += exit_price * quantity
 
         completed.append(
             SimulatedTrade(
@@ -59,6 +71,7 @@ def simulate_trades(
                 exit_reason=reason,
             )
         )
+
         position = None
 
     for bar in bars:
@@ -67,9 +80,11 @@ def simulate_trades(
         day = local.date()
 
         if previous_bar is not None:
-            previous_day = previous_bar.timestamp.astimezone(
-                NEW_YORK
-            ).date()
+            previous_day = (
+                previous_bar.timestamp
+                .astimezone(NEW_YORK)
+                .date()
+            )
 
             if day != previous_day:
                 if position is not None:
@@ -78,37 +93,57 @@ def simulate_trades(
                         previous_bar.close,
                         "session_end",
                     )
+
                 pending = None
 
         if not (time(9, 30) <= clock < time(16, 0)):
             previous_bar = bar
             continue
 
-        entered_this_bar = False
-
         if pending is not None and position is None:
-            signal_day = pending.timestamp.astimezone(
-                NEW_YORK
-            ).date()
+            signal_day = (
+                pending.timestamp
+                .astimezone(NEW_YORK)
+                .date()
+            )
 
             minutes_since_signal = (
                 bar.timestamp - pending.timestamp
             ).total_seconds() / 60
 
-            if day == signal_day and minutes_since_signal == 1:
+            if (
+                day == signal_day
+                and minutes_since_signal == 1
+            ):
                 entry = bar.open * (1 + slippage_pct)
+
                 stop_distance = max(
                     pending.opening_range_high
                     - pending.opening_range_low,
                     entry * 0.002,
                 )
 
+                risk_budget = cash * risk_per_trade
+
+                risk_quantity = int(
+                    risk_budget / stop_distance
+                )
+
+                affordable_quantity = int(
+                    cash / entry
+                )
+
                 quantity = min(
-                    int(cash * risk_per_trade / stop_distance),
-                    int(cash / entry),
+                    risk_quantity,
+                    affordable_quantity,
                 )
 
                 if quantity > 0:
+                    purchase_cost = entry * quantity
+
+                    # Reserve the cost of purchased shares.
+                    cash -= purchase_cost
+
                     position = {
                         "entry_time": bar.timestamp,
                         "entry": entry,
@@ -116,24 +151,52 @@ def simulate_trades(
                         "stop": entry - stop_distance,
                         "target": entry + 2 * stop_distance,
                     }
-                    entered_this_bar = True
 
             pending = None
 
         if position is not None:
             if bar.open <= position["stop"]:
-                close_position(bar, bar.open, "stop")
+                close_position(
+                    bar,
+                    bar.open,
+                    "stop",
+                )
+
             elif bar.open >= position["target"]:
-                close_position(bar, bar.open, "target")
+                close_position(
+                    bar,
+                    bar.open,
+                    "target",
+                )
+
             elif bar.low <= position["stop"]:
-                close_position(bar, position["stop"], "stop")
+                close_position(
+                    bar,
+                    position["stop"],
+                    "stop",
+                )
+
             elif bar.high >= position["target"]:
-                close_position(bar, position["target"], "target")
+                close_position(
+                    bar,
+                    position["target"],
+                    "target",
+                )
 
-        if position is not None and clock >= time(15, 59):
-            close_position(bar, bar.close, "end_of_day")
+        if (
+            position is not None
+            and clock >= time(15, 59)
+        ):
+            close_position(
+                bar,
+                bar.close,
+                "end_of_day",
+            )
 
-        if position is None and bar.timestamp in signals_by_time:
+        if (
+            position is None
+            and bar.timestamp in signals_by_time
+        ):
             pending = signals_by_time[bar.timestamp]
 
         previous_bar = bar
