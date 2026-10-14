@@ -1,4 +1,6 @@
 
+"""Tests for Moneybot V3 opening-range breakout signals."""
+
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -87,3 +89,37 @@ def test_no_signal_without_opening_range():
     bars = [make_bar(10, 0, 105)]
 
     assert generate_breakout_signals(bars) == []
+
+
+def test_rejects_incomplete_opening_range():
+    bars = opening_range()
+
+    # Remove the 9:35 AM bar.
+    bars = [
+        bar for bar in bars
+        if bar.timestamp.minute != 35
+    ]
+
+    bars.append(make_bar(9, 45, 105))
+
+    signals = generate_breakout_signals(bars)
+
+    assert signals == []
+
+
+def test_duplicate_minute_does_not_replace_missing_minute():
+    bars = opening_range()
+
+    # Remove 9:35 and duplicate 9:34 instead.
+    bars = [
+        bar for bar in bars
+        if bar.timestamp.minute != 35
+    ]
+
+    bars.append(make_bar(9, 34, 100, high=101, low=99))
+    bars.sort(key=lambda bar: bar.timestamp)
+    bars.append(make_bar(9, 45, 105))
+
+    signals = generate_breakout_signals(bars)
+
+    assert signals == []

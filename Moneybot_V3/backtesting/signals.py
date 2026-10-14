@@ -24,13 +24,16 @@ def generate_breakout_signals(bars):
     Opening range: 9:30-9:44 AM New York time.
     First eligible signal: 9:45 AM.
 
-    Requires close above opening-range high and session VWAP.
+    Requires all 15 opening-range minutes, plus a close above
+    the opening-range high and session VWAP.
+
     Emits at most one signal per trading day.
     """
     signals = []
     current_day = None
     opening_high = None
     opening_low = None
+    opening_minutes = set()
     cumulative_price_volume = 0.0
     cumulative_volume = 0
     signaled_today = False
@@ -44,6 +47,7 @@ def generate_breakout_signals(bars):
             current_day = day
             opening_high = None
             opening_low = None
+            opening_minutes = set()
             cumulative_price_volume = 0.0
             cumulative_volume = 0
             signaled_today = False
@@ -56,12 +60,16 @@ def generate_breakout_signals(bars):
         cumulative_volume += bar.volume
 
         if time(9, 30) <= clock < time(9, 45):
+            opening_minutes.add((clock.hour, clock.minute))
+
             opening_high = (
-                bar.high if opening_high is None
+                bar.high
+                if opening_high is None
                 else max(opening_high, bar.high)
             )
             opening_low = (
-                bar.low if opening_low is None
+                bar.low
+                if opening_low is None
                 else min(opening_low, bar.low)
             )
             continue
@@ -69,6 +77,7 @@ def generate_breakout_signals(bars):
         if (
             clock >= time(9, 45)
             and opening_high is not None
+            and len(opening_minutes) == 15
             and cumulative_volume > 0
             and not signaled_today
         ):
