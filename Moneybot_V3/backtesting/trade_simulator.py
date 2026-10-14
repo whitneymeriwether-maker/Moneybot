@@ -120,7 +120,7 @@ def simulate_trades(
 
             pending = None
 
-        if position is not None and not entered_this_bar:
+        if position is not None:
             if bar.open <= position["stop"]:
                 close_position(bar, bar.open, "stop")
             elif bar.open >= position["target"]:

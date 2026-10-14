@@ -147,3 +147,22 @@ def test_invalid_risk_percentage():
         assert False, "Expected ValueError"
     except ValueError:
         pass
+
+def test_stop_loss_on_entry_minute():
+    bars = [
+        make_bar(0, 100, 101, 99, 100),
+        make_bar(1, 101, 102, 98, 100),
+    ]
+
+    trades = simulate_trades(
+        bars,
+        [make_signal(bars[0].timestamp)],
+        slippage_pct=0,
+    )
+
+    assert len(trades) == 1
+    assert trades[0].entry_time == bars[1].timestamp
+    assert trades[0].exit_time == bars[1].timestamp
+    assert trades[0].exit_reason == "stop"
+    assert trades[0].exit_price == 99
+
