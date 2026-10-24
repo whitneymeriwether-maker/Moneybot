@@ -10,6 +10,9 @@ import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
+from tempfile import NamedTemporaryFile
+
+from backtesting.historical_data import load_price_bars
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -70,8 +73,11 @@ def download_history(symbol=None):
 
     bars = []
     next_page_token = None
+    seen_page_tokens = set()
 
-    while True:
+    # Six months of minute bars cannot require 100 pages at 10,000
+    # bars per page. Reject cyclic or malformed pagination.
+    for _ in range(100):
         params = {
             "symbols": symbol,
             "timeframe": "1Min",
@@ -104,11 +110,28 @@ def download_history(symbol=None):
                 f"Historical data download failed for {symbol}"
             ) from error
 
-        bars.extend(payload.get("bars", {}).get(symbol, []))
-        next_page_token = payload.get("next_page_token")
+        if not isinstance(payload, dict):
+            raise RuntimeError(f"Invalid historical response for {symbol}")
+        symbol_bars = payload.get("bars")
+        if not isinstance(symbol_bars, dict):
+            raise RuntimeError(f"Invalid historical response for {symbol}")
+        page_bars = symbol_bars.get(symbol, [])
+        if not isinstance(page_bars, list):
+            raise RuntimeError(f"Invalid historical response for {symbol}")
+        bars.extend(page_bars)
 
-        if not next_page_token:
+        next_page_token = payload.get("next_page_token")
+        if next_page_token is None:
             break
+        if (
+            not isinstance(next_page_token, str)
+            or not next_page_token.strip()
+            or next_page_token in seen_page_tokens
+        ):
+            raise RuntimeError(f"Invalid historical pagination for {symbol}")
+        seen_page_tokens.add(next_page_token)
+    else:
+        raise RuntimeError(f"Historical pagination limit reached for {symbol}")
 
     if not bars:
         raise RuntimeError(
@@ -117,30 +140,44 @@ def download_history(symbol=None):
 
     bars.sort(key=lambda bar: bar["t"])
 
-    with output.open("w", newline="", encoding="utf-8") as file:
-        writer = csv.writer(file)
-        writer.writerow([
-            "timestamp",
-            "open",
-            "high",
-            "low",
-            "close",
-            "volume",
-        ])
-
-        for bar in bars:
-            timestamp = datetime.fromisoformat(
-                bar["t"].replace("Z", "+00:00")
-            ).astimezone(timezone.utc)
-
+    # Validate the full dataset before replacing a previously good CSV.
+    # A malformed bar must not corrupt the research history.
+    temporary = None
+    try:
+        with NamedTemporaryFile(
+            mode="w",
+            newline="",
+            encoding="utf-8",
+            dir=output.parent,
+            prefix=f".{symbol}-",
+            suffix=".csv",
+            delete=False,
+        ) as file:
+            temporary = Path(file.name)
+            writer = csv.writer(file)
             writer.writerow([
-                timestamp.isoformat(),
-                bar["o"],
-                bar["h"],
-                bar["l"],
-                bar["c"],
-                bar["v"],
+                "timestamp", "open", "high", "low", "close", "volume",
             ])
+
+            for bar in bars:
+                timestamp = datetime.fromisoformat(
+                    bar["t"].replace("Z", "+00:00")
+                ).astimezone(timezone.utc)
+
+                writer.writerow([
+                    timestamp.isoformat(),
+                    bar["o"],
+                    bar["h"],
+                    bar["l"],
+                    bar["c"],
+                    bar["v"],
+                ])
+
+        load_price_bars(temporary)
+        temporary.replace(output)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
     print(f"Symbol: {symbol}")
     print(f"Downloaded bars: {len(bars)}")
