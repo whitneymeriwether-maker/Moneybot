@@ -15,13 +15,30 @@ from backtesting.research_scanner import (
 )
 
 
+# Preliminary research candidates.
 # Market capitalization is retrieved automatically from FMP.
+# None of these stocks is assumed to qualify.
 WATCHLIST = [
     ("SOFI", None),
     ("F", None),
     ("SNAP", None),
     ("PLUG", None),
     ("LCID", None),
+    ("OPEN", None),
+    ("RIG", None),
+    ("NOK", None),
+    ("BB", None),
+    ("ACHR", None),
+    ("JOBY", None),
+    ("SOUN", None),
+    ("BBAI", None),
+    ("CLSK", None),
+    ("HIMS", None),
+    ("WULF", None),
+    ("MARA", None),
+    ("RIOT", None),
+    ("CHPT", None),
+    ("DNA", None),
 ]
 
 
