@@ -1,5 +1,11 @@
 
-"""Moneybot V3 read-only stock research scan."""
+"""Moneybot V3 read-only stock research scan.
+
+Reports verified passes, provisional candidates,
+and rejected stocks separately.
+
+No brokerage orders or live trading.
+"""
 
 import sys
 from pathlib import Path
@@ -16,8 +22,9 @@ from backtesting.research_scanner import (
 
 
 # Preliminary research candidates.
-# Market capitalization is retrieved automatically from FMP.
-# None of these stocks is assumed to qualify.
+# FMP market cap is requested first.
+# SEC/Alpaca estimates are provisional only.
+# No stock is assumed to qualify.
 WATCHLIST = [
     ("SOFI", None),
     ("F", None),
@@ -43,7 +50,7 @@ WATCHLIST = [
 
 
 def run_scan(watchlist=None):
-    """Screen stocks using FMP and Alpaca market data."""
+    """Screen stocks using FMP, SEC, and Alpaca research data."""
 
     if watchlist is None:
         watchlist = WATCHLIST
@@ -56,6 +63,7 @@ def run_scan(watchlist=None):
     print("Minimum average daily volume: 1,000,000 shares")
     print("Market capitalization: $300M to $10B")
     print("Maximum bid-ask spread: 0.15%")
+    print("SEC estimates are provisional, not verified.")
     print(f"Stocks requested: {len(watchlist)}")
     print()
 
@@ -63,12 +71,22 @@ def run_scan(watchlist=None):
 
     print_results(results)
 
-    passed = sum(result.qualifies for result in results)
-    rejected = len(results) - passed
+    passed = sum(
+        result.qualifies
+        for result in results
+    )
+
+    provisional = sum(
+        result.provisional and not result.qualifies
+        for result in results
+    )
+
+    rejected = len(results) - passed - provisional
 
     print()
     print("=" * 50)
     print(f"Passed: {passed}")
+    print(f"Provisional: {provisional}")
     print(f"Rejected: {rejected}")
     print("=" * 50)
 

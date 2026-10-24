@@ -1,13 +1,11 @@
 
 """Moneybot V3 stock research scanner.
 
-Combines read-only market data, market capitalization,
-and stock screening rules.
+Uses FMP market capitalization when available.
+Uses SEC shares outstanding and Alpaca prices as a
+provisional research fallback.
 
-SEC estimates are diagnostic only and cannot qualify
-a stock for the verified research universe.
-
-No brokerage orders or live trading.
+Research only. No brokerage orders or live trading.
 """
 
 from dataclasses import dataclass
@@ -34,10 +32,11 @@ class ResearchResult:
     symbol: str
     qualifies: bool
     reasons: tuple
+    provisional: bool = False
 
 
 def _estimate_using_sec(symbol):
-    """Try SEC share data with Alpaca's recent closing price."""
+    """Estimate market cap using SEC shares and Alpaca price."""
 
     bars = get_recent_daily_bars(symbol)
 
@@ -57,9 +56,11 @@ def _estimate_using_sec(symbol):
 
 
 def scan_stock(symbol, market_cap=None):
-    """Evaluate one stock against V3 research requirements."""
+    """Evaluate a stock using verified or provisional data."""
 
     symbol = validate_symbol(symbol)
+    estimated = False
+    estimate_details = None
 
     if market_cap is None:
         try:
@@ -67,28 +68,9 @@ def scan_stock(symbol, market_cap=None):
 
         except (MarketCapDataError, RuntimeError, ValueError) as fmp_error:
             try:
-                estimate = _estimate_using_sec(symbol)
-
-                return ResearchResult(
-                    symbol=symbol,
-                    qualifies=False,
-                    reasons=(
-                        "ESTIMATE ONLY - not approved by verified screener",
-                        (
-                            "SEC/Alpaca estimated market cap: "
-                            f"${estimate['estimated_market_cap']:,.0f}"
-                        ),
-                        (
-                            "SEC shares observation date: "
-                            f"{estimate['observation_date']}"
-                        ),
-                        (
-                            "SEC shares filing date: "
-                            f"{estimate['filed_date']}"
-                        ),
-                        f"FMP unavailable: {fmp_error}",
-                    ),
-                )
+                estimate_details = _estimate_using_sec(symbol)
+                market_cap = estimate_details["estimated_market_cap"]
+                estimated = True
 
             except (
                 SECMarketCapError,
@@ -126,6 +108,34 @@ def scan_stock(symbol, market_cap=None):
 
         screening = screen_stock(candidate)
 
+        if estimated:
+            details = (
+                "Market cap is an SEC/Alpaca estimate, not verified",
+                f"Estimated market cap: ${market_cap:,.0f}",
+                (
+                    "SEC shares observation date: "
+                    f"{estimate_details['observation_date']}"
+                ),
+                (
+                    "SEC shares filing date: "
+                    f"{estimate_details['filed_date']}"
+                ),
+            )
+
+            if screening.qualifies:
+                return ResearchResult(
+                    symbol=symbol,
+                    qualifies=False,
+                    provisional=True,
+                    reasons=details,
+                )
+
+            return ResearchResult(
+                symbol=symbol,
+                qualifies=False,
+                reasons=screening.reasons + details,
+            )
+
         return ResearchResult(
             symbol=symbol,
             qualifies=screening.qualifies,
@@ -143,24 +153,22 @@ def scan_stock(symbol, market_cap=None):
 def scan_stocks(stock_list):
     """Evaluate multiple (symbol, market_cap) pairs."""
 
-    results = []
-
-    for symbol, market_cap in stock_list:
-        results.append(
-            scan_stock(
-                symbol=symbol,
-                market_cap=market_cap,
-            )
-        )
-
-    return results
+    return [
+        scan_stock(symbol=symbol, market_cap=market_cap)
+        for symbol, market_cap in stock_list
+    ]
 
 
 def print_results(results):
-    """Display research results in a readable format."""
+    """Display verified, provisional, and rejected stocks."""
 
     for result in results:
-        status = "PASS" if result.qualifies else "REJECT"
+        if result.qualifies:
+            status = "PASS"
+        elif result.provisional:
+            status = "PROVISIONAL"
+        else:
+            status = "REJECT"
 
         print(f"{result.symbol}: {status}")
 
@@ -171,6 +179,6 @@ def print_results(results):
 if __name__ == "__main__":
     print("Moneybot V3 Research Scanner")
     print("Research universe: $2-$30 stocks")
-    print("Market capitalization: FMP verified data")
-    print("SEC/Alpaca fallback: estimate only")
-    print("Read-only research. No trades submitted.")
+    print("FMP: verified market-cap provider")
+    print("SEC/Alpaca: provisional estimates only")
+    print("No brokerage orders submitted.")

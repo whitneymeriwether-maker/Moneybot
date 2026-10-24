@@ -1,7 +1,7 @@
 
-"""Tests for Moneybot V3 research scanner.
+"""Automated tests for Moneybot V3 research scanner.
 
-All external data is simulated. No network requests or trades.
+All market data is simulated. No network requests or trades.
 """
 
 import sys
@@ -61,28 +61,22 @@ def fake_fmp_failure(monkeypatch):
     )
 
 
-def fake_sec_estimate(monkeypatch):
+def fake_sec_estimate(monkeypatch, market_cap=500_000_000):
     monkeypatch.setattr(
         research_scanner,
-        "get_recent_daily_bars",
-        lambda symbol: [{"c": 5.0}],
-    )
-
-    monkeypatch.setattr(
-        research_scanner,
-        "estimate_market_cap",
-        lambda symbol, price: {
+        "_estimate_using_sec",
+        lambda symbol: {
             "symbol": symbol,
             "shares_outstanding": 100_000_000,
             "observation_date": "2026-08-01",
             "filed_date": "2026-08-10",
-            "estimated_market_cap": 500_000_000,
+            "estimated_market_cap": market_cap,
             "estimate_only": True,
         },
     )
 
 
-def test_qualifying_stock_passes(monkeypatch):
+def test_verified_stock_passes(monkeypatch):
     fake_stock_data(monkeypatch)
 
     result = research_scanner.scan_stock(
@@ -90,12 +84,12 @@ def test_qualifying_stock_passes(monkeypatch):
         market_cap=1_000_000_000,
     )
 
-    assert result.symbol == "TEST"
     assert result.qualifies is True
+    assert result.provisional is False
     assert result.reasons == ()
 
 
-def test_automatic_market_cap_lookup(monkeypatch):
+def test_automatic_fmp_lookup(monkeypatch):
     requested = []
 
     def fake_market_cap(symbol):
@@ -114,62 +108,63 @@ def test_automatic_market_cap_lookup(monkeypatch):
 
     assert requested == ["TEST"]
     assert result.qualifies is True
+    assert result.provisional is False
 
 
-def test_fmp_failure_uses_sec_estimate(monkeypatch):
+def test_sec_estimate_is_provisional(monkeypatch):
     fake_fmp_failure(monkeypatch)
     fake_sec_estimate(monkeypatch)
+    fake_stock_data(monkeypatch)
 
     result = research_scanner.scan_stock("TEST")
 
+    assert result.symbol == "TEST"
     assert result.qualifies is False
-    assert "ESTIMATE ONLY" in result.reasons[0]
+    assert result.provisional is True
+    assert "not verified" in result.reasons[0]
     assert "$500,000,000" in result.reasons[1]
-    assert "2026-08-01" in result.reasons[2]
-    assert "Simulated FMP outage" in result.reasons[-1]
 
 
-def test_sec_estimate_cannot_approve_stock(monkeypatch):
+def test_sec_estimate_failing_screen_is_rejected(monkeypatch):
     fake_fmp_failure(monkeypatch)
     fake_sec_estimate(monkeypatch)
-
-    def forbidden_candidate(symbol, market_cap):
-        raise AssertionError(
-            "An SEC estimate must not enter the verified screener"
-        )
-
-    monkeypatch.setattr(
-        research_scanner,
-        "get_stock_candidate",
-        forbidden_candidate,
-    )
+    fake_stock_data(monkeypatch, bid=11.50, ask=12.00)
 
     result = research_scanner.scan_stock("TEST")
 
     assert result.qualifies is False
+    assert result.provisional is False
+    assert "Bid-ask spread too wide" in result.reasons
+
+
+def test_sec_estimate_outside_market_cap_range(monkeypatch):
+    fake_fmp_failure(monkeypatch)
+    fake_sec_estimate(monkeypatch, market_cap=100_000_000)
+    fake_stock_data(monkeypatch)
+
+    result = research_scanner.scan_stock("TEST")
+
+    assert result.qualifies is False
+    assert result.provisional is False
+    assert "Market cap outside research range" in result.reasons
 
 
 def test_both_market_cap_sources_fail(monkeypatch):
     fake_fmp_failure(monkeypatch)
 
-    monkeypatch.setattr(
-        research_scanner,
-        "get_recent_daily_bars",
-        lambda symbol: [{"c": 5.0}],
-    )
-
-    def unavailable(symbol, price):
+    def unavailable(symbol):
         raise SECMarketCapError("Simulated SEC outage")
 
     monkeypatch.setattr(
         research_scanner,
-        "estimate_market_cap",
+        "_estimate_using_sec",
         unavailable,
     )
 
     result = research_scanner.scan_stock("TEST")
 
     assert result.qualifies is False
+    assert result.provisional is False
     assert "FMP unavailable" in result.reasons[0]
     assert "SEC estimate unavailable" in result.reasons[1]
 
@@ -179,14 +174,16 @@ def test_missing_fmp_credentials_rejected(monkeypatch):
 
     monkeypatch.setattr(
         research_scanner,
-        "get_recent_daily_bars",
-        lambda symbol: [],
+        "_estimate_using_sec",
+        lambda symbol: (_ for _ in ()).throw(
+            SECMarketCapError("Simulated SEC outage")
+        ),
     )
 
     result = research_scanner.scan_stock("TEST")
 
     assert result.qualifies is False
-    assert "FMP unavailable" in result.reasons[0]
+    assert result.provisional is False
 
 
 @pytest.mark.parametrize(
@@ -201,23 +198,13 @@ def test_missing_fmp_credentials_rejected(monkeypatch):
     ],
 )
 def test_invalid_market_cap_rejected(monkeypatch, invalid_cap):
-    def forbidden_candidate(symbol, market_cap):
-        raise AssertionError(
-            "Invalid market cap must not trigger Alpaca"
-        )
-
-    monkeypatch.setattr(
-        research_scanner,
-        "get_stock_candidate",
-        forbidden_candidate,
-    )
-
     result = research_scanner.scan_stock(
         "TEST",
         market_cap=invalid_cap,
     )
 
     assert result.qualifies is False
+    assert result.provisional is False
     assert "Invalid market capitalization" in result.reasons
 
 
@@ -293,30 +280,18 @@ def test_invalid_symbol_rejected():
 
 def test_multiple_stocks(monkeypatch):
     fake_stock_data(monkeypatch)
+    fake_fmp_failure(monkeypatch)
     fake_sec_estimate(monkeypatch)
 
-    def fake_market_cap(symbol):
-        if symbol == "NOCAP":
-            raise MarketCapDataError("No market-cap data")
-        return 1_000_000_000
-
-    monkeypatch.setattr(
-        research_scanner,
-        "get_market_cap",
-        fake_market_cap,
-    )
-
     results = research_scanner.scan_stocks([
-        ("GOOD", 1_000_000_000),
-        ("NOCAP", None),
-        ("ALSO", None),
+        ("VERIFIED", 1_000_000_000),
+        ("ESTIMATED", None),
     ])
 
-    assert len(results) == 3
+    assert len(results) == 2
     assert results[0].qualifies is True
     assert results[1].qualifies is False
-    assert "ESTIMATE ONLY" in results[1].reasons[0]
-    assert results[2].qualifies is True
+    assert results[1].provisional is True
 
 
 def test_print_results(capsys):
@@ -325,6 +300,12 @@ def test_print_results(capsys):
             symbol="GOOD",
             qualifies=True,
             reasons=(),
+        ),
+        research_scanner.ResearchResult(
+            symbol="MAYBE",
+            qualifies=False,
+            provisional=True,
+            reasons=("Market cap not verified",),
         ),
         research_scanner.ResearchResult(
             symbol="BAD",
@@ -338,5 +319,5 @@ def test_print_results(capsys):
     output = capsys.readouterr().out
 
     assert "GOOD: PASS" in output
+    assert "MAYBE: PROVISIONAL" in output
     assert "BAD: REJECT" in output
-    assert "Insufficient average daily volume" in output
