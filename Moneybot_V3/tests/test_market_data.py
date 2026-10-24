@@ -21,16 +21,23 @@ from backtesting import market_data
 def make_daily_bars(count=20, price=12.0, volume=2_000_000):
     """Create simulated daily stock prices."""
 
+    dates = []
+    day = datetime.now(timezone.utc).date() - timedelta(days=1)
+    while len(dates) < count:
+        if day.weekday() < 5:
+            dates.append(day)
+        day -= timedelta(days=1)
+
     return [
         {
-            "t": f"2026-09-{day:02d}T04:00:00Z",
+            "t": f"{day.isoformat()}T04:00:00Z",
             "o": price,
             "h": price + 0.20,
             "l": price - 0.20,
             "c": price,
             "v": volume,
         }
-        for day in range(1, count + 1)
+        for day in reversed(dates)
     ]
 
 
@@ -292,6 +299,32 @@ def test_duplicate_daily_bar_date_fails_closed(monkeypatch):
     )
 
     with pytest.raises(RuntimeError, match="Invalid daily bar"):
+        market_data.get_stock_candidate(
+            "TEST", market_cap=1_000_000_000
+        )
+
+
+
+def test_stale_daily_history_fails_closed(monkeypatch):
+    bars = make_daily_bars()
+    for bar in bars:
+        bar["t"] = (
+            datetime.fromisoformat(bar["t"].replace("Z", "+00:00"))
+            - timedelta(days=30)
+        ).isoformat()
+
+    monkeypatch.setattr(
+        market_data,
+        "get_recent_daily_bars",
+        lambda symbol: bars,
+    )
+    monkeypatch.setattr(
+        market_data,
+        "get_latest_quote",
+        lambda symbol: (11.99, 12.00),
+    )
+
+    with pytest.raises(RuntimeError, match="Stale daily bars"):
         market_data.get_stock_candidate(
             "TEST", market_cap=1_000_000_000
         )
