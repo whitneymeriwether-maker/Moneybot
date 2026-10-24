@@ -28,7 +28,7 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Run 20-stock research scan
+      - name: Run 20-stock FMP diagnostic scan
         working-directory: Moneybot_V3
         env:
           FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
