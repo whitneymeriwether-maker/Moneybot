@@ -238,6 +238,65 @@ def test_insufficient_daily_history(monkeypatch):
         )
 
 
+
+@pytest.mark.parametrize(
+    "invalid_fields",
+    [
+        {"v": -1},
+        {"v": float("nan")},
+        {"v": True},
+        {"c": float("inf")},
+        {"c": 0},
+        {"h": 11.0},
+        {"l": 13.0},
+        {"o": -1},
+        {"t": "invalid"},
+        {"t": "2026-09-20T04:00:00"},
+        {"t": "2099-09-20T04:00:00Z"},
+    ],
+)
+def test_malformed_daily_bar_fails_closed(monkeypatch, invalid_fields):
+    bars = make_daily_bars()
+    bars[-1].update(invalid_fields)
+
+    monkeypatch.setattr(
+        market_data,
+        "get_recent_daily_bars",
+        lambda symbol: bars,
+    )
+    monkeypatch.setattr(
+        market_data,
+        "get_latest_quote",
+        lambda symbol: (11.99, 12.00),
+    )
+
+    with pytest.raises(RuntimeError, match="Invalid daily bar"):
+        market_data.get_stock_candidate(
+            "TEST", market_cap=1_000_000_000
+        )
+
+
+def test_duplicate_daily_bar_date_fails_closed(monkeypatch):
+    bars = make_daily_bars()
+    bars[-1]["t"] = bars[-2]["t"]
+
+    monkeypatch.setattr(
+        market_data,
+        "get_recent_daily_bars",
+        lambda symbol: bars,
+    )
+    monkeypatch.setattr(
+        market_data,
+        "get_latest_quote",
+        lambda symbol: (11.99, 12.00),
+    )
+
+    with pytest.raises(RuntimeError, match="Invalid daily bar"):
+        market_data.get_stock_candidate(
+            "TEST", market_cap=1_000_000_000
+        )
+
+
 def test_market_cap_required():
     with pytest.raises(ValueError, match="numeric market cap"):
         market_data.get_stock_candidate(
