@@ -12,7 +12,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
-from backtesting.historical_data import load_price_bars
+# Support both "python -m backtesting.download_data" and the existing
+# GitHub Actions invocation "python backtesting/download_data.py".
+if __package__:
+    from .historical_data import load_price_bars
+else:
+    from historical_data import load_price_bars
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
