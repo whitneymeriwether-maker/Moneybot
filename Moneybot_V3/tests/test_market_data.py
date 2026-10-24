@@ -1,7 +1,11 @@
 
-"""Tests for Moneybot V3's read-only market data connection."""
+"""Tests for Moneybot V3 read-only market data.
+
+All tests use simulated data. No orders or network calls.
+"""
 
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -30,6 +34,12 @@ def make_daily_bars(count=20, price=12.0, volume=2_000_000):
     ]
 
 
+def fresh_quote_timestamp():
+    """Return a recent timestamp for mocked quotes."""
+
+    return datetime.now(timezone.utc).isoformat()
+
+
 def test_missing_credentials(monkeypatch):
     monkeypatch.delenv("APCA_API_KEY_ID", raising=False)
     monkeypatch.delenv("APCA_API_SECRET_KEY", raising=False)
@@ -42,7 +52,14 @@ def test_latest_quote(monkeypatch):
     def fake_get_json(url):
         assert "quotes/latest" in url
         assert "feed=iex" in url
-        return {"quote": {"bp": 11.99, "ap": 12.00}}
+
+        return {
+            "quote": {
+                "bp": 11.99,
+                "ap": 12.00,
+                "t": fresh_quote_timestamp(),
+            }
+        }
 
     monkeypatch.setattr(market_data, "_get_json", fake_get_json)
 
@@ -63,6 +80,69 @@ def test_missing_quote(monkeypatch):
         market_data.get_latest_quote("TEST")
 
 
+def test_quote_missing_timestamp(monkeypatch):
+    monkeypatch.setattr(
+        market_data,
+        "_get_json",
+        lambda url: {
+            "quote": {"bp": 11.99, "ap": 12.00}
+        },
+    )
+
+    with pytest.raises(RuntimeError, match="Missing quote timestamp"):
+        market_data.get_latest_quote("TEST")
+
+
+def test_stale_quote(monkeypatch):
+    old_timestamp = (
+        datetime.now(timezone.utc) - timedelta(days=3)
+    ).isoformat()
+
+    monkeypatch.setattr(
+        market_data,
+        "_get_json",
+        lambda url: {
+            "quote": {
+                "bp": 11.99,
+                "ap": 12.00,
+                "t": old_timestamp,
+            }
+        },
+    )
+
+    with pytest.raises(RuntimeError, match="Stale quote"):
+        market_data.get_latest_quote("TEST")
+
+
+@pytest.mark.parametrize(
+    "bid,ask",
+    [
+        (0, 12.00),
+        (-1, 12.00),
+        (12.00, 0),
+        (12.01, 12.00),
+        (12.00, 12.00),
+        (float("nan"), 12.00),
+        (11.99, float("inf")),
+    ],
+)
+def test_invalid_bid_ask(monkeypatch, bid, ask):
+    monkeypatch.setattr(
+        market_data,
+        "_get_json",
+        lambda url: {
+            "quote": {
+                "bp": bid,
+                "ap": ask,
+                "t": fresh_quote_timestamp(),
+            }
+        },
+    )
+
+    with pytest.raises(RuntimeError, match="Invalid bid-ask quote"):
+        market_data.get_latest_quote("TEST")
+
+
 def test_invalid_symbol():
     with pytest.raises(ValueError):
         market_data.get_latest_quote("../BAD")
@@ -79,7 +159,11 @@ def test_daily_bars(monkeypatch):
     def fake_get_json(url):
         assert "timeframe=1Day" in url
         assert "feed=iex" in url
-        return {"bars": expected, "next_page_token": None}
+
+        return {
+            "bars": expected,
+            "next_page_token": None,
+        }
 
     monkeypatch.setattr(market_data, "_get_json", fake_get_json)
 

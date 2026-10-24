@@ -1,12 +1,16 @@
 
 """Read-only Alpaca market data for Moneybot V3 research.
 
+IEX volume is partial-market volume, not consolidated volume.
+Quotes are validated for price integrity and basic freshness.
+
 No brokerage orders or live trading.
 """
 
 import json
 import os
 from datetime import datetime, timedelta, timezone
+from math import isfinite
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
@@ -17,6 +21,8 @@ from backtesting.stock_screener import StockCandidate
 
 DATA_BASE = "https://data.alpaca.markets/v2/stocks"
 ASSETS_BASE = "https://paper-api.alpaca.markets/v2/assets"
+
+MAX_QUOTE_AGE = timedelta(hours=72)
 
 
 def _credentials():
@@ -54,8 +60,27 @@ def _get_json(url):
         ) from error
 
 
+def _parse_quote_timestamp(value):
+    """Convert an Alpaca timestamp to UTC."""
+
+    if not isinstance(value, str) or not value.strip():
+        raise RuntimeError("Missing quote timestamp")
+
+    try:
+        timestamp = datetime.fromisoformat(
+            value.replace("Z", "+00:00")
+        )
+    except ValueError:
+        raise RuntimeError("Invalid quote timestamp") from None
+
+    if timestamp.tzinfo is None:
+        raise RuntimeError("Invalid quote timestamp")
+
+    return timestamp.astimezone(timezone.utc)
+
+
 def get_latest_quote(symbol):
-    """Return the latest available IEX bid and ask."""
+    """Return validated IEX bid and ask prices."""
 
     symbol = validate_symbol(symbol)
 
@@ -75,11 +100,42 @@ def get_latest_quote(symbol):
             f"Missing bid-ask quote for {symbol}"
         )
 
-    return float(bid), float(ask)
+    timestamp = _parse_quote_timestamp(
+        quote_data.get("t")
+    )
+
+    age = datetime.now(timezone.utc) - timestamp
+
+    if age > MAX_QUOTE_AGE or age < timedelta(minutes=-5):
+        raise RuntimeError(
+            f"Stale quote for {symbol}: "
+            f"timestamp {timestamp.isoformat()}"
+        )
+
+    try:
+        bid = float(bid)
+        ask = float(ask)
+    except (TypeError, ValueError, OverflowError):
+        raise RuntimeError(
+            f"Invalid bid-ask quote for {symbol}"
+        ) from None
+
+    if (
+        not isfinite(bid)
+        or not isfinite(ask)
+        or bid <= 0
+        or ask <= 0
+        or bid >= ask
+    ):
+        raise RuntimeError(
+            f"Invalid bid-ask quote for {symbol}"
+        )
+
+    return bid, ask
 
 
 def get_recent_daily_bars(symbol, days=45):
-    """Fetch recent daily bars using the IEX feed."""
+    """Fetch recent daily bars using the partial-market IEX feed."""
 
     symbol = validate_symbol(symbol)
 
@@ -97,11 +153,6 @@ def get_recent_daily_bars(symbol, days=45):
         "feed": "iex",
         "adjustment": "raw",
     }
-
-    url = (
-        f"{DATA_BASE}/{quote(symbol, safe='')}/bars?"
-        + urlencode(params)
-    )
 
     bars = []
     next_page_token = None
@@ -129,11 +180,13 @@ def get_recent_daily_bars(symbol, days=45):
 
 
 def get_stock_candidate(symbol, market_cap):
-    """Build a candidate for the V3 stock screener.
+    """Build a research candidate using IEX market data.
 
-    Market capitalization must come from a separate,
-    verified, time-appropriate data source. Alpaca's
-    standard stock bars do not provide market cap.
+    IMPORTANT:
+    Average daily volume here is IEX-only volume.
+    It must not be represented as consolidated volume.
+
+    Market cap must come from a separate provider.
     """
 
     symbol = validate_symbol(symbol)
@@ -172,6 +225,6 @@ def get_stock_candidate(symbol, market_cap):
 
 if __name__ == "__main__":
     print("Moneybot V3 Market Data")
-    print("Alpaca IEX data: read-only")
-    print("Market cap requires a separate verified source.")
+    print("Alpaca IEX data: read-only, partial-market feed")
+    print("Quote validation: price integrity and freshness")
     print("No brokerage orders submitted.")
