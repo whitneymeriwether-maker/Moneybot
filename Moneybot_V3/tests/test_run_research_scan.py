@@ -13,6 +13,9 @@ sys.path.insert(
 )
 
 from backtesting import run_research_scan
+from backtesting import research_scanner
+from backtesting.market_cap_data import MarketCapDataError
+from backtesting.sec_market_cap import SECMarketCapError
 from backtesting.research_scanner import ResearchResult
 
 
@@ -33,9 +36,25 @@ def test_default_watchlist_has_no_unverified_market_caps():
 
 
 def test_missing_market_caps_are_rejected(monkeypatch):
-    """Unavailable market-cap data must reject every stock."""
+    """Failure of both sources must reject each stock."""
 
-    monkeypatch.delenv("FMP_API_KEY", raising=False)
+    def unavailable_fmp(symbol):
+        raise MarketCapDataError("Simulated FMP outage")
+
+    def unavailable_sec(symbol):
+        raise SECMarketCapError("Simulated SEC outage")
+
+    monkeypatch.setattr(
+        research_scanner,
+        "get_market_cap",
+        unavailable_fmp,
+    )
+
+    monkeypatch.setattr(
+        research_scanner,
+        "_estimate_using_sec",
+        unavailable_sec,
+    )
 
     results = run_research_scan.run_scan([
         ("SOFI", None),
@@ -47,7 +66,11 @@ def test_missing_market_caps_are_rejected(monkeypatch):
 
     for result in results:
         assert any(
-            "Verified market capitalization is required" in reason
+            "FMP unavailable" in reason
+            for reason in result.reasons
+        )
+        assert any(
+            "SEC estimate unavailable" in reason
             for reason in result.reasons
         )
 
@@ -118,22 +141,52 @@ def test_empty_watchlist(monkeypatch, capsys):
     assert "Rejected: 0" in output
 
 
-def test_default_scan_does_not_request_alpaca_data(monkeypatch):
-    """Missing market-cap data must block Alpaca requests."""
+def test_default_scan_does_not_approve_unverified_stocks(
+    monkeypatch,
+):
+    """SEC estimates must never qualify stocks automatically."""
 
-    monkeypatch.delenv("FMP_API_KEY", raising=False)
+    def unavailable_fmp(symbol):
+        raise MarketCapDataError("Simulated FMP outage")
 
-    def forbidden_request(symbol, market_cap):
+    def estimated_sec(symbol):
+        return {
+            "symbol": symbol,
+            "shares_outstanding": 100_000_000,
+            "observation_date": "2026-08-01",
+            "filed_date": "2026-08-10",
+            "estimated_market_cap": 500_000_000,
+            "estimate_only": True,
+        }
+
+    def forbidden_candidate(symbol, market_cap):
         raise AssertionError(
-            "Alpaca should not be called without market cap"
+            "Estimated market cap must not enter verified screener"
         )
 
     monkeypatch.setattr(
-        "backtesting.research_scanner.get_stock_candidate",
-        forbidden_request,
+        research_scanner,
+        "get_market_cap",
+        unavailable_fmp,
+    )
+
+    monkeypatch.setattr(
+        research_scanner,
+        "_estimate_using_sec",
+        estimated_sec,
+    )
+
+    monkeypatch.setattr(
+        research_scanner,
+        "get_stock_candidate",
+        forbidden_candidate,
     )
 
     results = run_research_scan.run_scan()
 
     assert len(results) == 20
     assert all(result.qualifies is False for result in results)
+    assert all(
+        "ESTIMATE ONLY" in result.reasons[0]
+        for result in results
+    )
