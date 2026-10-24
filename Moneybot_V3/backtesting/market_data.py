@@ -156,8 +156,11 @@ def get_recent_daily_bars(symbol, days=45):
 
     bars = []
     next_page_token = None
+    seen_tokens = set()
 
-    while True:
+    # A malformed or cyclic pagination response must not hang a scan.
+    # 365 daily bars should need far fewer than 100 pages at limit=1000.
+    for _ in range(100):
         page_params = dict(params)
 
         if next_page_token:
@@ -169,12 +172,26 @@ def get_recent_daily_bars(symbol, days=45):
         )
 
         payload = _get_json(page_url)
-        bars.extend(payload.get("bars") or [])
+        if not isinstance(payload, dict):
+            raise RuntimeError(f"Invalid daily bars response for {symbol}")
+
+        page_bars = payload.get("bars")
+        if not isinstance(page_bars, list):
+            raise RuntimeError(f"Invalid daily bars response for {symbol}")
+        bars.extend(page_bars)
 
         next_page_token = payload.get("next_page_token")
-
-        if not next_page_token:
+        if next_page_token is None:
             break
+        if (
+            not isinstance(next_page_token, str)
+            or not next_page_token.strip()
+            or next_page_token in seen_tokens
+        ):
+            raise RuntimeError(f"Invalid daily bars pagination for {symbol}")
+        seen_tokens.add(next_page_token)
+    else:
+        raise RuntimeError(f"Daily bars pagination limit reached for {symbol}")
 
     return sorted(bars, key=lambda bar: bar["t"])
 
