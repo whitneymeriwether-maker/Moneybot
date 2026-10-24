@@ -19,12 +19,17 @@ from backtesting.research_scanner import ResearchResult
 def test_default_watchlist_has_no_unverified_market_caps():
     """The watchlist must not contain guessed market caps."""
 
-    assert len(run_research_scan.WATCHLIST) == 5
+    assert len(run_research_scan.WATCHLIST) == 20
+
+    symbols = []
 
     for symbol, market_cap in run_research_scan.WATCHLIST:
         assert isinstance(symbol, str)
         assert symbol
         assert market_cap is None
+        symbols.append(symbol)
+
+    assert len(symbols) == len(set(symbols))
 
 
 def test_missing_market_caps_are_rejected(monkeypatch):
@@ -130,5 +135,5 @@ def test_default_scan_does_not_request_alpaca_data(monkeypatch):
 
     results = run_research_scan.run_scan()
 
-    assert len(results) == 5
+    assert len(results) == 20
     assert all(result.qualifies is False for result in results)
