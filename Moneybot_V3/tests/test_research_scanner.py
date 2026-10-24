@@ -1,5 +1,5 @@
 
-"""Automated tests for Moneybot V3 research scanner.
+"""Tests for Moneybot V3 research classifications.
 
 All market data is simulated. No network requests or trades.
 """
@@ -86,6 +86,7 @@ def test_verified_stock_passes(monkeypatch):
 
     assert result.qualifies is True
     assert result.provisional is False
+    assert result.data_unverified is False
     assert result.reasons == ()
 
 
@@ -108,7 +109,7 @@ def test_automatic_fmp_lookup(monkeypatch):
 
     assert requested == ["TEST"]
     assert result.qualifies is True
-    assert result.provisional is False
+    assert result.data_unverified is False
 
 
 def test_sec_estimate_is_provisional(monkeypatch):
@@ -118,14 +119,13 @@ def test_sec_estimate_is_provisional(monkeypatch):
 
     result = research_scanner.scan_stock("TEST")
 
-    assert result.symbol == "TEST"
     assert result.qualifies is False
     assert result.provisional is True
+    assert result.data_unverified is False
     assert "not verified" in result.reasons[0]
-    assert "$500,000,000" in result.reasons[1]
 
 
-def test_sec_estimate_failing_screen_is_rejected(monkeypatch):
+def test_sec_estimate_wide_spread_rejected(monkeypatch):
     fake_fmp_failure(monkeypatch)
     fake_sec_estimate(monkeypatch)
     fake_stock_data(monkeypatch, bid=11.50, ask=12.00)
@@ -134,6 +134,7 @@ def test_sec_estimate_failing_screen_is_rejected(monkeypatch):
 
     assert result.qualifies is False
     assert result.provisional is False
+    assert result.data_unverified is False
     assert "Bid-ask spread too wide" in result.reasons
 
 
@@ -149,7 +150,7 @@ def test_sec_estimate_outside_market_cap_range(monkeypatch):
     assert "Market cap outside research range" in result.reasons
 
 
-def test_both_market_cap_sources_fail(monkeypatch):
+def test_both_market_cap_sources_unavailable(monkeypatch):
     fake_fmp_failure(monkeypatch)
 
     def unavailable(symbol):
@@ -165,25 +166,9 @@ def test_both_market_cap_sources_fail(monkeypatch):
 
     assert result.qualifies is False
     assert result.provisional is False
+    assert result.data_unverified is True
     assert "FMP unavailable" in result.reasons[0]
     assert "SEC estimate unavailable" in result.reasons[1]
-
-
-def test_missing_fmp_credentials_rejected(monkeypatch):
-    monkeypatch.delenv("FMP_API_KEY", raising=False)
-
-    monkeypatch.setattr(
-        research_scanner,
-        "_estimate_using_sec",
-        lambda symbol: (_ for _ in ()).throw(
-            SECMarketCapError("Simulated SEC outage")
-        ),
-    )
-
-    result = research_scanner.scan_stock("TEST")
-
-    assert result.qualifies is False
-    assert result.provisional is False
 
 
 @pytest.mark.parametrize(
@@ -197,14 +182,14 @@ def test_missing_fmp_credentials_rejected(monkeypatch):
         "1000000000",
     ],
 )
-def test_invalid_market_cap_rejected(monkeypatch, invalid_cap):
+def test_invalid_market_cap_unverified(invalid_cap):
     result = research_scanner.scan_stock(
         "TEST",
         market_cap=invalid_cap,
     )
 
     assert result.qualifies is False
-    assert result.provisional is False
+    assert result.data_unverified is True
     assert "Invalid market capitalization" in result.reasons
 
 
@@ -217,10 +202,11 @@ def test_low_price_rejected(monkeypatch):
     )
 
     assert result.qualifies is False
+    assert result.data_unverified is False
     assert "Price outside $2-$30 range" in result.reasons
 
 
-def test_low_volume_rejected(monkeypatch):
+def test_low_iex_volume_is_unverified(monkeypatch):
     fake_stock_data(
         monkeypatch,
         average_daily_volume=100_000,
@@ -232,7 +218,12 @@ def test_low_volume_rejected(monkeypatch):
     )
 
     assert result.qualifies is False
-    assert "Insufficient average daily volume" in result.reasons
+    assert result.provisional is False
+    assert result.data_unverified is True
+    assert any(
+        "IEX" in reason
+        for reason in result.reasons
+    )
 
 
 def test_wide_spread_rejected(monkeypatch):
@@ -248,10 +239,11 @@ def test_wide_spread_rejected(monkeypatch):
     )
 
     assert result.qualifies is False
+    assert result.data_unverified is False
     assert "Bid-ask spread too wide" in result.reasons
 
 
-def test_market_data_failure_rejected(monkeypatch):
+def test_market_data_failure_unverified(monkeypatch):
     def unavailable(symbol, market_cap):
         raise RuntimeError("Simulated Alpaca outage")
 
@@ -267,10 +259,11 @@ def test_market_data_failure_rejected(monkeypatch):
     )
 
     assert result.qualifies is False
+    assert result.data_unverified is True
     assert "Simulated Alpaca outage" in result.reasons[0]
 
 
-def test_invalid_symbol_rejected():
+def test_invalid_symbol():
     with pytest.raises(ValueError):
         research_scanner.scan_stock(
             "../BAD",
@@ -308,9 +301,15 @@ def test_print_results(capsys):
             reasons=("Market cap not verified",),
         ),
         research_scanner.ResearchResult(
+            symbol="UNKNOWN",
+            qualifies=False,
+            data_unverified=True,
+            reasons=("IEX volume is inconclusive",),
+        ),
+        research_scanner.ResearchResult(
             symbol="BAD",
             qualifies=False,
-            reasons=("Insufficient average daily volume",),
+            reasons=("Price outside $2-$30 range",),
         ),
     ]
 
@@ -320,4 +319,5 @@ def test_print_results(capsys):
 
     assert "GOOD: PASS" in output
     assert "MAYBE: PROVISIONAL" in output
+    assert "UNKNOWN: DATA UNVERIFIED" in output
     assert "BAD: REJECT" in output

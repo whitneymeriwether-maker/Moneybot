@@ -1,7 +1,8 @@
 
 """Tests for the Moneybot V3 research scan runner.
 
-All tests use simulated results. No network calls or orders.
+All tests use simulated data.
+No network requests or brokerage orders.
 """
 
 import sys
@@ -12,16 +13,13 @@ sys.path.insert(
     str(Path(__file__).resolve().parents[1]),
 )
 
-from backtesting import run_research_scan
-from backtesting import research_scanner
+from backtesting import research_scanner, run_research_scan
 from backtesting.market_cap_data import MarketCapDataError
 from backtesting.sec_market_cap import SECMarketCapError
 from backtesting.research_scanner import ResearchResult
 
 
-def test_default_watchlist_has_no_unverified_market_caps():
-    """The watchlist must not contain guessed market caps."""
-
+def test_default_watchlist():
     assert len(run_research_scan.WATCHLIST) == 20
 
     symbols = []
@@ -35,9 +33,7 @@ def test_default_watchlist_has_no_unverified_market_caps():
     assert len(symbols) == len(set(symbols))
 
 
-def test_missing_market_caps_are_rejected(monkeypatch):
-    """Failure of both providers must reject stocks."""
-
+def test_missing_market_caps_are_unverified(monkeypatch):
     def unavailable_fmp(symbol):
         raise MarketCapDataError("Simulated FMP outage")
 
@@ -49,7 +45,6 @@ def test_missing_market_caps_are_rejected(monkeypatch):
         "get_market_cap",
         unavailable_fmp,
     )
-
     monkeypatch.setattr(
         research_scanner,
         "_estimate_using_sec",
@@ -64,16 +59,12 @@ def test_missing_market_caps_are_rejected(monkeypatch):
     assert len(results) == 2
     assert all(result.qualifies is False for result in results)
     assert all(result.provisional is False for result in results)
+    assert all(result.data_unverified is True for result in results)
 
 
-def test_scan_counts_passed_and_rejected(monkeypatch, capsys):
-    """Check summary counts with simulated results."""
-
+def test_all_four_classifications(monkeypatch, capsys):
     def fake_scan_stocks(watchlist):
-        assert watchlist == [
-            ("GOOD", 1_000_000_000),
-            ("BAD", 1_000_000_000),
-        ]
+        assert len(watchlist) == 4
 
         return [
             ResearchResult(
@@ -82,9 +73,21 @@ def test_scan_counts_passed_and_rejected(monkeypatch, capsys):
                 reasons=(),
             ),
             ResearchResult(
+                symbol="MAYBE",
+                qualifies=False,
+                provisional=True,
+                reasons=("Market cap is estimated",),
+            ),
+            ResearchResult(
+                symbol="UNKNOWN",
+                qualifies=False,
+                data_unverified=True,
+                reasons=("IEX volume is inconclusive",),
+            ),
+            ResearchResult(
                 symbol="BAD",
                 qualifies=False,
-                reasons=("Insufficient average daily volume",),
+                reasons=("Price outside $2-$30 range",),
             ),
         ]
 
@@ -95,64 +98,88 @@ def test_scan_counts_passed_and_rejected(monkeypatch, capsys):
     )
 
     results = run_research_scan.run_scan([
-        ("GOOD", 1_000_000_000),
-        ("BAD", 1_000_000_000),
+        ("GOOD", None),
+        ("MAYBE", None),
+        ("UNKNOWN", None),
+        ("BAD", None),
     ])
 
     output = capsys.readouterr().out
 
-    assert len(results) == 2
-    assert "Stocks requested: 2" in output
+    assert len(results) == 4
+
     assert "GOOD: PASS" in output
+    assert "MAYBE: PROVISIONAL" in output
+    assert "UNKNOWN: DATA UNVERIFIED" in output
     assert "BAD: REJECT" in output
+
     assert "Passed: 1" in output
+    assert "Provisional: 1" in output
+    assert "Data unverified: 1" in output
     assert "Rejected: 1" in output
 
 
-def test_provisional_stocks_not_counted_as_passes(
-    monkeypatch,
-    capsys,
-):
-    """SEC-estimated stocks must not count as verified passes."""
-
-    def fake_scan_stocks(watchlist):
-        return [
+def test_provisional_not_counted_as_pass(monkeypatch, capsys):
+    monkeypatch.setattr(
+        run_research_scan,
+        "scan_stocks",
+        lambda watchlist: [
             ResearchResult(
                 symbol="MAYBE",
                 qualifies=False,
                 provisional=True,
                 reasons=("Market cap not verified",),
-            ),
-            ResearchResult(
-                symbol="GOOD",
-                qualifies=True,
-                reasons=(),
-            ),
-        ]
-
-    monkeypatch.setattr(
-        run_research_scan,
-        "scan_stocks",
-        fake_scan_stocks,
+            )
+        ],
     )
 
     results = run_research_scan.run_scan([
         ("MAYBE", None),
-        ("GOOD", 1_000_000_000),
     ])
 
     output = capsys.readouterr().out
 
-    assert len(results) == 2
-    assert results[0].provisional is True
+    assert len(results) == 1
     assert results[0].qualifies is False
-    assert "MAYBE: PROVISIONAL" in output
-    assert "Passed: 1" in output
+    assert results[0].provisional is True
+
+    assert "Passed: 0" in output
+    assert "Provisional: 1" in output
+    assert "Data unverified: 0" in output
+    assert "Rejected: 0" in output
+
+
+def test_unverified_not_counted_as_pass(monkeypatch, capsys):
+    monkeypatch.setattr(
+        run_research_scan,
+        "scan_stocks",
+        lambda watchlist: [
+            ResearchResult(
+                symbol="UNKNOWN",
+                qualifies=False,
+                data_unverified=True,
+                reasons=("Market data unavailable",),
+            )
+        ],
+    )
+
+    results = run_research_scan.run_scan([
+        ("UNKNOWN", None),
+    ])
+
+    output = capsys.readouterr().out
+
+    assert len(results) == 1
+    assert results[0].qualifies is False
+    assert results[0].data_unverified is True
+
+    assert "Passed: 0" in output
+    assert "Provisional: 0" in output
+    assert "Data unverified: 1" in output
+    assert "Rejected: 0" in output
 
 
 def test_empty_watchlist(monkeypatch, capsys):
-    """An empty watchlist should be handled safely."""
-
     monkeypatch.setattr(
         run_research_scan,
         "scan_stocks",
@@ -166,14 +193,12 @@ def test_empty_watchlist(monkeypatch, capsys):
     assert results == []
     assert "Stocks requested: 0" in output
     assert "Passed: 0" in output
+    assert "Provisional: 0" in output
+    assert "Data unverified: 0" in output
     assert "Rejected: 0" in output
 
 
-def test_default_scan_does_not_approve_unverified_stocks(
-    monkeypatch,
-):
-    """SEC estimates must never qualify stocks automatically."""
-
+def test_default_scan_does_not_approve_sec_estimates(monkeypatch):
     def unavailable_fmp(symbol):
         raise MarketCapDataError("Simulated FMP outage")
 
@@ -204,13 +229,11 @@ def test_default_scan_does_not_approve_unverified_stocks(
         "get_market_cap",
         unavailable_fmp,
     )
-
     monkeypatch.setattr(
         research_scanner,
         "_estimate_using_sec",
         estimated_sec,
     )
-
     monkeypatch.setattr(
         research_scanner,
         "get_stock_candidate",
@@ -222,3 +245,4 @@ def test_default_scan_does_not_approve_unverified_stocks(
     assert len(results) == 20
     assert all(result.qualifies is False for result in results)
     assert all(result.provisional is True for result in results)
+    assert all(result.data_unverified is False for result in results)

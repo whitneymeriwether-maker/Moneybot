@@ -5,6 +5,9 @@ Uses FMP market capitalization when available.
 Uses SEC shares outstanding and Alpaca prices as a
 provisional research fallback.
 
+Separates verified passes, provisional candidates,
+unverified data, and confirmed screening failures.
+
 Research only. No brokerage orders or live trading.
 """
 
@@ -33,6 +36,7 @@ class ResearchResult:
     qualifies: bool
     reasons: tuple
     provisional: bool = False
+    data_unverified: bool = False
 
 
 def _estimate_using_sec(symbol):
@@ -55,12 +59,29 @@ def _estimate_using_sec(symbol):
     return estimate_market_cap(symbol, price)
 
 
+def _estimate_details(market_cap, estimate):
+    """Describe the limitations of an SEC market-cap estimate."""
+
+    return (
+        "Market cap is an SEC/Alpaca estimate, not verified",
+        f"Estimated market cap: ${market_cap:,.0f}",
+        (
+            "SEC shares observation date: "
+            f"{estimate['observation_date']}"
+        ),
+        (
+            "SEC shares filing date: "
+            f"{estimate['filed_date']}"
+        ),
+    )
+
+
 def scan_stock(symbol, market_cap=None):
-    """Evaluate a stock using verified or provisional data."""
+    """Classify a stock using available research data."""
 
     symbol = validate_symbol(symbol)
     estimated = False
-    estimate_details = None
+    estimate_details = ()
 
     if market_cap is None:
         try:
@@ -68,9 +89,13 @@ def scan_stock(symbol, market_cap=None):
 
         except (MarketCapDataError, RuntimeError, ValueError) as fmp_error:
             try:
-                estimate_details = _estimate_using_sec(symbol)
-                market_cap = estimate_details["estimated_market_cap"]
+                estimate = _estimate_using_sec(symbol)
+                market_cap = estimate["estimated_market_cap"]
                 estimated = True
+                estimate_details = _estimate_details(
+                    market_cap,
+                    estimate,
+                )
 
             except (
                 SECMarketCapError,
@@ -82,6 +107,7 @@ def scan_stock(symbol, market_cap=None):
                 return ResearchResult(
                     symbol=symbol,
                     qualifies=False,
+                    data_unverified=True,
                     reasons=(
                         f"FMP unavailable: {fmp_error}",
                         f"SEC estimate unavailable: {sec_error}",
@@ -97,6 +123,7 @@ def scan_stock(symbol, market_cap=None):
         return ResearchResult(
             symbol=symbol,
             qualifies=False,
+            data_unverified=True,
             reasons=("Invalid market capitalization",),
         )
 
@@ -107,33 +134,46 @@ def scan_stock(symbol, market_cap=None):
         )
 
         screening = screen_stock(candidate)
+        reasons = tuple(screening.reasons)
 
-        if estimated:
-            details = (
-                "Market cap is an SEC/Alpaca estimate, not verified",
-                f"Estimated market cap: ${market_cap:,.0f}",
-                (
-                    "SEC shares observation date: "
-                    f"{estimate_details['observation_date']}"
-                ),
-                (
-                    "SEC shares filing date: "
-                    f"{estimate_details['filed_date']}"
-                ),
+        # IEX-only volume is not consolidated U.S. volume.
+        # A low IEX reading cannot prove that the stock
+        # fails the overall daily-volume requirement.
+        low_iex_volume = (
+            candidate.average_daily_volume < 1_000_000
+        )
+
+        if low_iex_volume:
+            reasons = tuple(
+                reason
+                for reason in reasons
+                if reason != "Insufficient average daily volume"
             )
 
-            if screening.qualifies:
-                return ResearchResult(
-                    symbol=symbol,
-                    qualifies=False,
-                    provisional=True,
-                    reasons=details,
-                )
-
+        if reasons:
             return ResearchResult(
                 symbol=symbol,
                 qualifies=False,
-                reasons=screening.reasons + details,
+                reasons=reasons + estimate_details,
+            )
+
+        if low_iex_volume:
+            return ResearchResult(
+                symbol=symbol,
+                qualifies=False,
+                data_unverified=True,
+                reasons=(
+                    "IEX-only volume below 1,000,000 shares; "
+                    "consolidated volume not verified",
+                ) + estimate_details,
+            )
+
+        if estimated:
+            return ResearchResult(
+                symbol=symbol,
+                qualifies=False,
+                provisional=True,
+                reasons=estimate_details,
             )
 
         return ResearchResult(
@@ -142,11 +182,20 @@ def scan_stock(symbol, market_cap=None):
             reasons=screening.reasons,
         )
 
-    except (RuntimeError, ValueError, KeyError, TypeError) as error:
+    except (
+        RuntimeError,
+        ValueError,
+        KeyError,
+        TypeError,
+        OverflowError,
+    ) as error:
         return ResearchResult(
             symbol=symbol,
             qualifies=False,
-            reasons=(f"Market data unavailable: {error}",),
+            data_unverified=True,
+            reasons=(
+                f"Market data unavailable: {error}",
+            ) + estimate_details,
         )
 
 
@@ -160,10 +209,12 @@ def scan_stocks(stock_list):
 
 
 def print_results(results):
-    """Display verified, provisional, and rejected stocks."""
+    """Display research classifications."""
 
     for result in results:
-        if result.qualifies:
+        if result.data_unverified:
+            status = "DATA UNVERIFIED"
+        elif result.qualifies:
             status = "PASS"
         elif result.provisional:
             status = "PROVISIONAL"
@@ -179,6 +230,7 @@ def print_results(results):
 if __name__ == "__main__":
     print("Moneybot V3 Research Scanner")
     print("Research universe: $2-$30 stocks")
-    print("FMP: verified market-cap provider")
+    print("FMP: market-cap provider")
     print("SEC/Alpaca: provisional estimates only")
+    print("IEX volume: partial-market data")
     print("No brokerage orders submitted.")
