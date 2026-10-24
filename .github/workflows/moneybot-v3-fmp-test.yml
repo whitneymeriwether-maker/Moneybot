@@ -28,11 +28,12 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Run 20-stock FMP diagnostic scan
+      - name: Run 20-stock FMP and SEC research scan
         working-directory: Moneybot_V3
         env:
           FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
           APCA_API_KEY_ID: ${{ secrets.APCA_API_KEY_ID }}
           APCA_API_SECRET_KEY: ${{ secrets.APCA_API_SECRET_KEY }}
+          SEC_CONTACT_EMAIL: ${{ vars.SEC_CONTACT_EMAIL }}
         run: |
           python backtesting/run_research_scan.py
