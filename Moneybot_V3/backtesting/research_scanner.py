@@ -136,20 +136,25 @@ def scan_stock(symbol, market_cap=None):
         screening = screen_stock(candidate)
         reasons = tuple(screening.reasons)
 
-        # IEX-only volume is not consolidated U.S. volume.
-        # A low IEX reading cannot prove that the stock
-        # fails the overall daily-volume requirement.
+        # IEX-only volume and spread are not consolidated market
+        # measurements. Low IEX volume and a wide IEX spread
+        # cannot establish a failure of the market-wide rules.
         low_iex_volume = (
             candidate.average_daily_volume < 1_000_000
         )
+        wide_iex_spread = "Bid-ask spread too wide" in reasons
 
-        if low_iex_volume:
-            reasons = tuple(
-                reason
-                for reason in reasons
-                if reason != "Insufficient average daily volume"
-            )
+        inconclusive_reasons = {
+            "Insufficient average daily volume",
+            "Bid-ask spread too wide",
+        }
+        reasons = tuple(
+            reason for reason in reasons
+            if reason not in inconclusive_reasons
+        )
 
+        # Confirmed failures take precedence over inconclusive
+        # IEX observations. Never promote uncertain data to PASS.
         if reasons:
             return ResearchResult(
                 symbol=symbol,
@@ -157,15 +162,24 @@ def scan_stock(symbol, market_cap=None):
                 reasons=reasons + estimate_details,
             )
 
-        if low_iex_volume:
+        if low_iex_volume or wide_iex_spread:
+            unverified = []
+            if low_iex_volume:
+                unverified.append(
+                    "IEX-only volume below 1,000,000 shares; "
+                    "consolidated volume not verified"
+                )
+            if wide_iex_spread:
+                unverified.append(
+                    "IEX-only bid-ask spread exceeds 0.15%; "
+                    "consolidated NBBO spread not verified"
+                )
+
             return ResearchResult(
                 symbol=symbol,
                 qualifies=False,
                 data_unverified=True,
-                reasons=(
-                    "IEX-only volume below 1,000,000 shares; "
-                    "consolidated volume not verified",
-                ) + estimate_details,
+                reasons=tuple(unverified) + estimate_details,
             )
 
         if estimated:
