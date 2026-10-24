@@ -8,20 +8,18 @@ Read-only research. No brokerage orders.
 import json
 import math
 import os
-from datetime import datetime, timedelta, timezone
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote, urlencode
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from backtesting.download_data import validate_symbol
 
 
 FMP_BASE_URL = "https://financialmodelingprep.com/stable"
-MAX_DATA_AGE_DAYS = 7
 
 
 class MarketCapDataError(RuntimeError):
-    """Raised when verified market-cap data is unavailable."""
+    """Raised when market-cap data is unavailable."""
 
 
 def get_market_cap(symbol):
@@ -53,21 +51,35 @@ def get_market_cap(symbol):
     try:
         with urlopen(request, timeout=30) as response:
             payload = json.load(response)
-    except (HTTPError, URLError, ValueError) as error:
+
+    except HTTPError as error:
+        # Report only the HTTP status, not the request URL.
+        # The URL contains the secret API key.
         raise MarketCapDataError(
-            f"Unable to retrieve market cap for {symbol}"
-        ) from error
+            f"FMP HTTP {error.code} for {symbol}"
+        ) from None
+
+    except URLError:
+        raise MarketCapDataError(
+            f"FMP network connection failed for {symbol}"
+        ) from None
+
+    except (ValueError, UnicodeError):
+        raise MarketCapDataError(
+            f"FMP returned invalid JSON for {symbol}"
+        ) from None
 
     if not isinstance(payload, list) or not payload:
         raise MarketCapDataError(
-            f"No market-cap data returned for {symbol}"
+            f"No market-cap records returned for {symbol}"
         )
 
     matching_records = [
         record
         for record in payload
         if isinstance(record, dict)
-        and record.get("symbol", "").upper() == symbol
+        and isinstance(record.get("symbol"), str)
+        and record["symbol"].upper() == symbol
     ]
 
     if not matching_records:
@@ -75,9 +87,7 @@ def get_market_cap(symbol):
             f"No matching market-cap record for {symbol}"
         )
 
-    record = matching_records[0]
-
-    value = record.get("marketCap")
+    value = matching_records[0].get("marketCap")
 
     if (
         isinstance(value, bool)
@@ -89,15 +99,11 @@ def get_market_cap(symbol):
             f"Invalid market capitalization for {symbol}"
         )
 
-    # A current market-cap endpoint does not necessarily
-    # supply a reliable observation timestamp. Do not
-    # invent one or claim historical verification.
     return float(value)
 
 
 if __name__ == "__main__":
     print("Moneybot V3 Market Capitalization Data")
     print("Provider: Financial Modeling Prep")
-    print("API key required for real requests.")
     print("Current data only; not historical backtest data.")
-    print("No brokerage orders submitted.")
+    print("Read-only research. No brokerage orders.")
