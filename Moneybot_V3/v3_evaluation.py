@@ -1,6 +1,6 @@
 """Independent, reproducible evaluation of completed paper trades. No market data fetched."""
 from dataclasses import dataclass
-from math import sqrt
+from math import isfinite
 from statistics import mean
 
 @dataclass(frozen=True)
@@ -17,13 +17,22 @@ def evaluate_closed_trades(trades: list[ClosedTrade], starting_capital: float) -
     The caller must use point-in-time data and independently model fees,
     slippage, unfilled orders, splits, and overnight gaps.
     """
-    if starting_capital <= 0:
-        raise ValueError('Starting capital must be positive')
+    if (isinstance(starting_capital, bool)
+            or not isinstance(starting_capital, (int, float))
+            or not isfinite(starting_capital)
+            or starting_capital <= 0):
+        raise ValueError('Starting capital must be finite and positive')
     equity = peak = starting_capital
     max_drawdown = 0.0
     pnls = []
     for trade in trades:
+        if (isinstance(trade.pnl, bool)
+                or not isinstance(trade.pnl, (int, float))
+                or not isfinite(trade.pnl)):
+            raise ValueError('Trade PnL must be a finite number')
         equity += trade.pnl
+        if not isfinite(equity):
+            raise ValueError('Non-finite cumulative equity')
         peak = max(peak, equity)
         max_drawdown = max(max_drawdown, (peak-equity)/peak)
         pnls.append(trade.pnl)
