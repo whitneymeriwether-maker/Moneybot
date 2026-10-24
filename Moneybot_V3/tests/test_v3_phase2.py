@@ -1,3 +1,4 @@
+import pytest
 from datetime import datetime, timezone
 from dataclasses import replace
 from v3_decision import Candidate, AIProposal, PaperAccount, RiskPolicy, validate_paper_entry, validate_overnight_hold
@@ -54,3 +55,28 @@ def test_evaluator_and_baseline():
 
 def test_empty_evaluation():
     assert evaluate_closed_trades([], 1000)['win_rate_pct'] is None
+
+
+@pytest.mark.parametrize('invalid', [0, -1, float('nan'), float('inf'), float('-inf'), True, '1000'])
+def test_evaluator_rejects_invalid_starting_capital(invalid):
+    with pytest.raises(ValueError, match='Starting capital'):
+        evaluate_closed_trades([], invalid)
+
+
+@pytest.mark.parametrize('invalid', [float('nan'), float('inf'), float('-inf'), True, '10'])
+def test_evaluator_rejects_invalid_trade_pnl(invalid):
+    trades = [ClosedTrade('AMD', invalid, 'a', 'b')]
+    with pytest.raises(ValueError, match='Trade PnL'):
+        evaluate_closed_trades(trades, 1000)
+
+
+def test_evaluator_rejects_cumulative_equity_overflow():
+    trades = [ClosedTrade('AMD', 1e308, 'a', 'b')]
+    with pytest.raises(ValueError, match='Non-finite cumulative equity'):
+        evaluate_closed_trades(trades, 1e308)
+
+
+def test_strategy_comparison_rejects_invalid_pnl():
+    trades = [ClosedTrade('AMD', float('nan'), 'a', 'b')]
+    with pytest.raises(ValueError, match='Trade PnL'):
+        compare_paper_strategies([], trades, 1000)
