@@ -205,6 +205,44 @@ def test_daily_bar_pagination(monkeypatch):
     assert len(calls) == 2
 
 
+
+def test_repeated_daily_bar_page_token_fails_closed(monkeypatch):
+    calls = []
+
+    def fake_get_json(url):
+        calls.append(url)
+        return {
+            "bars": make_daily_bars(1),
+            "next_page_token": "repeated",
+        }
+
+    monkeypatch.setattr(market_data, "_get_json", fake_get_json)
+
+    with pytest.raises(RuntimeError, match="Invalid daily bars pagination"):
+        market_data.get_recent_daily_bars("TEST")
+
+    # The second response repeats the first page token; do not loop.
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        None,
+        [],
+        {"bars": None, "next_page_token": None},
+        {"bars": "not a list", "next_page_token": None},
+        {"bars": [], "next_page_token": 123},
+        {"bars": [], "next_page_token": ""},
+    ],
+)
+def test_malformed_daily_bar_page_fails_closed(monkeypatch, payload):
+    monkeypatch.setattr(market_data, "_get_json", lambda url: payload)
+
+    with pytest.raises(RuntimeError, match="Invalid daily bars"):
+        market_data.get_recent_daily_bars("TEST")
+
+
 def test_build_stock_candidate(monkeypatch):
     monkeypatch.setattr(
         market_data,
