@@ -179,6 +179,43 @@ def get_recent_daily_bars(symbol, days=45):
     return sorted(bars, key=lambda bar: bar["t"])
 
 
+
+def _validate_daily_bars(bars, symbol):
+    """Fail closed on malformed OHLCV data before screening a stock.
+
+    One IEX daily bar per UTC date is expected. An invalid bar must
+    never contribute to the volume average or closing price.
+    """
+
+    observed_dates = set()
+    now = datetime.now(timezone.utc)
+
+    for bar in bars:
+        try:
+            timestamp = _parse_quote_timestamp(bar["t"])
+            values = [bar[field] for field in ("o", "h", "l", "c", "v")]
+            if any(isinstance(value, bool) for value in values):
+                raise ValueError("Boolean OHLCV value")
+            open_price, high, low, close, volume = map(float, values)
+        except (KeyError, TypeError, ValueError, OverflowError, RuntimeError):
+            raise RuntimeError(f"Invalid daily bar for {symbol}") from None
+
+        if (
+            not all(isfinite(value) for value in (
+                open_price, high, low, close, volume
+            ))
+            or low <= 0
+            or volume < 0
+            or not low <= min(open_price, close)
+            or not max(open_price, close) <= high
+            or timestamp > now + timedelta(minutes=5)
+            or timestamp.date() in observed_dates
+        ):
+            raise RuntimeError(f"Invalid daily bar for {symbol}")
+
+        observed_dates.add(timestamp.date())
+
+
 def get_stock_candidate(symbol, market_cap):
     """Build a research candidate using IEX market data.
 
@@ -205,6 +242,7 @@ def get_stock_candidate(symbol, market_cap):
         )
 
     recent = bars[-20:]
+    _validate_daily_bars(recent, symbol)
 
     average_daily_volume = (
         sum(float(bar["v"]) for bar in recent) / len(recent)
