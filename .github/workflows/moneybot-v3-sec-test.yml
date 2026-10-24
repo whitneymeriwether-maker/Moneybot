@@ -1,0 +1,61 @@
+
+name: Moneybot V3 SEC Connection Test
+
+on:
+  push:
+    branches:
+      - moneybot-v3-research
+    paths:
+      - .github/workflows/moneybot-v3-sec-test.yml
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sec-connection:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out V3 research branch
+        uses: actions/checkout@v4
+        with:
+          ref: moneybot-v3-research
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Test SEC shares-outstanding data
+        working-directory: Moneybot_V3
+        env:
+          SEC_CONTACT_EMAIL: ${{ vars.SEC_CONTACT_EMAIL }}
+        run: |
+          python - <<'PY'
+          from backtesting.sec_market_cap import (
+              SECMarketCapError,
+              get_reported_shares_outstanding,
+          )
+
+          symbols = ["PLUG", "ACHR", "JOBY", "SOUN", "CHPT"]
+
+          print("Moneybot V3 SEC connection test")
+          print("Read-only research. No trades.")
+          print()
+
+          for symbol in symbols:
+              try:
+                  result = get_reported_shares_outstanding(
+                      symbol
+                  )
+                  print(
+                      f"{symbol}: "
+                      f"{result['shares_outstanding']:,.0f} shares; "
+                      f"observed {result['observation_date']}; "
+                      f"filed {result['filed_date']}"
+                  )
+              except SECMarketCapError as error:
+                  print(f"{symbol}: {error}")
+          PY
