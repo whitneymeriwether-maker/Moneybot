@@ -1,5 +1,5 @@
 
-name: Moneybot V3 FMP Connection Test
+name: Moneybot V3 Research Scan
 
 on:
   push:
@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 jobs:
-  test-fmp:
+  research-scan:
     runs-on: ubuntu-latest
 
     steps:
@@ -28,29 +28,11 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Test FMP market-cap connection
+      - name: Run five-stock research scan
         working-directory: Moneybot_V3
         env:
           FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
+          APCA_API_KEY_ID: ${{ secrets.APCA_API_KEY_ID }}
+          APCA_API_SECRET_KEY: ${{ secrets.APCA_API_SECRET_KEY }}
         run: |
-          python - <<'PY'
-          from backtesting.market_cap_data import (
-              MarketCapDataError,
-              get_market_cap,
-          )
-
-          symbol = "SPY"
-
-          print("Moneybot V3 FMP Connection Test")
-          print(f"Testing symbol: {symbol}")
-          print("Read-only request. No trades.")
-
-          try:
-              market_cap = get_market_cap(symbol)
-          except MarketCapDataError as error:
-              print(f"FMP connection test failed: {error}")
-              raise SystemExit(1)
-
-          print(f"Market capitalization: ${market_cap:,.0f}")
-          print("FMP market-cap request succeeded.")
-          PY
+          python backtesting/run_research_scan.py
