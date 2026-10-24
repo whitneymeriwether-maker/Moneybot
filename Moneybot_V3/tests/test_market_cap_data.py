@@ -8,7 +8,7 @@ import io
 import json
 import sys
 from pathlib import Path
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 
 import pytest
 
@@ -92,7 +92,7 @@ def test_empty_response_rejected(monkeypatch):
 
     with pytest.raises(
         market_cap_data.MarketCapDataError,
-        match="No market-cap data",
+        match="No market-cap records returned",
     ):
         market_cap_data.get_market_cap("TEST")
 
@@ -149,9 +149,36 @@ def test_network_failure_rejected(monkeypatch):
 
     with pytest.raises(
         market_cap_data.MarketCapDataError,
-        match="Unable to retrieve market cap",
+        match="FMP network connection failed",
     ):
         market_cap_data.get_market_cap("TEST")
+
+
+def test_http_error_rejected_without_exposing_key(monkeypatch):
+    monkeypatch.setenv("FMP_API_KEY", "fake-test-key")
+
+    def fake_urlopen(request, timeout=30):
+        raise HTTPError(
+            url=request.full_url,
+            code=403,
+            msg="Forbidden",
+            hdrs=None,
+            fp=None,
+        )
+
+    monkeypatch.setattr(
+        market_cap_data,
+        "urlopen",
+        fake_urlopen,
+    )
+
+    with pytest.raises(
+        market_cap_data.MarketCapDataError,
+        match="FMP HTTP 403 for TEST",
+    ) as error:
+        market_cap_data.get_market_cap("TEST")
+
+    assert "fake-test-key" not in str(error.value)
 
 
 def test_invalid_symbol_rejected():
