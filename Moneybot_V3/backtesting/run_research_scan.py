@@ -1,15 +1,9 @@
 
-"""Run a small, read-only Moneybot V3 stock research scan.
+"""Moneybot V3 read-only stock research scan."""
 
-Market capitalization must be independently verified.
-No orders or live trading.
-"""
-
-import os
 import sys
 from pathlib import Path
 
-# Allow direct execution from the Moneybot_V3 directory.
 sys.path.insert(
     0,
     str(Path(__file__).resolve().parents[1]),
@@ -21,11 +15,7 @@ from backtesting.research_scanner import (
 )
 
 
-# Initial research watchlist.
-# None means market capitalization has NOT been verified.
-#
-# Do not replace None with guesses. A verified market-cap
-# data source will be connected in a later step.
+# Market capitalization is retrieved automatically from FMP.
 WATCHLIST = [
     ("SOFI", None),
     ("F", None),
@@ -36,15 +26,20 @@ WATCHLIST = [
 
 
 def run_scan(watchlist=None):
-    """Run a research scan and return the results."""
+    """Screen stocks using FMP and Alpaca market data."""
 
     if watchlist is None:
         watchlist = WATCHLIST
 
-    print("Moneybot V3 Research Scan")
-    print("-------------------------")
-    print(f"Stocks requested: {len(watchlist)}")
+    print("=" * 50)
+    print("MONEYBOT V3 STOCK RESEARCH")
+    print("=" * 50)
     print("Research only. No orders submitted.")
+    print("Price range: $2 to $30")
+    print("Minimum average daily volume: 1,000,000 shares")
+    print("Market capitalization: $300M to $10B")
+    print("Maximum bid-ask spread: 0.15%")
+    print(f"Stocks requested: {len(watchlist)}")
     print()
 
     results = scan_stocks(watchlist)
@@ -52,10 +47,13 @@ def run_scan(watchlist=None):
     print_results(results)
 
     passed = sum(result.qualifies for result in results)
+    rejected = len(results) - passed
 
     print()
-    print(f"Passed: {passed}")
-    print(f"Rejected: {len(results) - passed}")
+    print("=" * 50)
+    print(f"PASSED: {passed}")
+    print(f"REJECTED: {rejected}")
+    print("=" * 50)
 
     return results
 
