@@ -125,7 +125,7 @@ def test_sec_estimate_is_provisional(monkeypatch):
     assert "not verified" in result.reasons[0]
 
 
-def test_sec_estimate_wide_spread_rejected(monkeypatch):
+def test_sec_estimate_wide_iex_spread_is_unverified(monkeypatch):
     fake_fmp_failure(monkeypatch)
     fake_sec_estimate(monkeypatch)
     fake_stock_data(monkeypatch, bid=11.50, ask=12.00)
@@ -134,8 +134,9 @@ def test_sec_estimate_wide_spread_rejected(monkeypatch):
 
     assert result.qualifies is False
     assert result.provisional is False
-    assert result.data_unverified is False
-    assert "Bid-ask spread too wide" in result.reasons
+    assert result.data_unverified is True
+    assert any("NBBO spread not verified" in r for r in result.reasons)
+    assert any("SEC/Alpaca estimate" in r for r in result.reasons)
 
 
 def test_sec_estimate_outside_market_cap_range(monkeypatch):
@@ -226,7 +227,7 @@ def test_low_iex_volume_is_unverified(monkeypatch):
     )
 
 
-def test_wide_spread_rejected(monkeypatch):
+def test_wide_iex_spread_is_unverified(monkeypatch):
     fake_stock_data(
         monkeypatch,
         bid=11.90,
@@ -239,8 +240,46 @@ def test_wide_spread_rejected(monkeypatch):
     )
 
     assert result.qualifies is False
+    assert result.provisional is False
+    assert result.data_unverified is True
+    assert any("NBBO spread not verified" in r for r in result.reasons)
+
+
+def test_low_iex_volume_and_wide_spread_both_unverified(monkeypatch):
+    fake_stock_data(
+        monkeypatch,
+        average_daily_volume=100_000,
+        bid=11.90,
+        ask=12.00,
+    )
+
+    result = research_scanner.scan_stock(
+        "TEST",
+        market_cap=1_000_000_000,
+    )
+
+    assert result.qualifies is False
+    assert result.data_unverified is True
+    assert any("consolidated volume not verified" in r for r in result.reasons)
+    assert any("NBBO spread not verified" in r for r in result.reasons)
+
+
+def test_confirmed_price_failure_overrides_wide_iex_spread(monkeypatch):
+    fake_stock_data(
+        monkeypatch,
+        price=1.50,
+        bid=1.45,
+        ask=1.50,
+    )
+
+    result = research_scanner.scan_stock(
+        "TEST",
+        market_cap=1_000_000_000,
+    )
+
+    assert result.qualifies is False
     assert result.data_unverified is False
-    assert "Bid-ask spread too wide" in result.reasons
+    assert result.reasons == ("Price outside $2-$30 range",)
 
 
 def test_market_data_failure_unverified(monkeypatch):
