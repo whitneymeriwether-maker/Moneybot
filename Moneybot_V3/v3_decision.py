@@ -100,11 +100,17 @@ def validate_overnight_hold(sessions_held: int, proposed_exposure: float,
                             evidence_ids: tuple[str, ...],
                             policy: RiskPolicy = RiskPolicy()) -> Decision:
     """Independent overnight gate. This does not implement end-of-day execution."""
-    if sessions_held < 1 or sessions_held >= policy.max_holding_sessions:
+    # A missing or malformed account state must never authorize an
+    # overnight paper hold. Booleans are not monetary values.
+    if type(sessions_held) is not int or sessions_held < 1 or sessions_held >= policy.max_holding_sessions:
         return Decision(False, 'Maximum holding period reached')
-    if not thesis.strip() or not evidence_ids:
+    if not isinstance(thesis, str) or not thesis.strip() or not evidence_ids:
         return Decision(False, 'Overnight thesis and evidence required')
-    if not all(isfinite(v) for v in (proposed_exposure, account.equity, account.peak_equity)) or account.equity <= 0 or proposed_exposure < 0:
+    values = (proposed_exposure, account.equity, account.peak_equity)
+    if any(type(value) not in (int, float) or not isfinite(value) for value in values):
+        return Decision(False, 'Invalid exposure or equity')
+    if (account.equity <= 0 or account.peak_equity <= 0
+            or account.peak_equity < account.equity or proposed_exposure < 0):
         return Decision(False, 'Invalid exposure or equity')
     if account.equity <= account.peak_equity*(1-policy.max_drawdown):
         return Decision(False, 'Maximum portfolio drawdown reached')
