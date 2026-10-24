@@ -244,6 +244,11 @@ def get_stock_candidate(symbol, market_cap):
     recent = bars[-20:]
     _validate_daily_bars(recent, symbol)
 
+    # A successful API response is not proof of current data.
+    latest_bar = _parse_quote_timestamp(recent[-1]["t"])
+    if datetime.now(timezone.utc) - latest_bar > timedelta(days=7):
+        raise RuntimeError(f"Stale daily bars for {symbol}")
+
     average_daily_volume = (
         sum(float(bar["v"]) for bar in recent) / len(recent)
     )
