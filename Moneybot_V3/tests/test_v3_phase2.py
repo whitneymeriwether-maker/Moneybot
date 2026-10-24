@@ -47,6 +47,39 @@ def test_overnight_requires_evidence_and_caps_exposure():
 def test_overnight_two_day_limit():
     assert not validate_overnight_hold(2, 100, A, 'Still strong', ('filing:123',)).approved
 
+@pytest.mark.parametrize('peak', [0, -100, 900, float('nan'), float('inf'), True])
+def test_overnight_rejects_invalid_peak_equity(peak):
+    account = replace(A, peak_equity=peak)
+    decision = validate_overnight_hold(1, 200, account, 'Verified catalyst', ('filing:123',))
+    assert not decision.approved
+    assert decision.reason == 'Invalid exposure or equity'
+
+
+@pytest.mark.parametrize('exposure', [True, -1, float('nan'), float('inf'), '200'])
+def test_overnight_rejects_invalid_exposure(exposure):
+    decision = validate_overnight_hold(1, exposure, A, 'Verified catalyst', ('filing:123',))
+    assert not decision.approved
+    assert decision.reason == 'Invalid exposure or equity'
+
+
+@pytest.mark.parametrize('sessions', [True, 1.0, '1', 0, -1])
+def test_overnight_requires_positive_integer_sessions(sessions):
+    decision = validate_overnight_hold(sessions, 200, A, 'Verified catalyst', ('filing:123',))
+    assert not decision.approved
+
+
+def test_overnight_rejects_missing_thesis_type():
+    decision = validate_overnight_hold(1, 200, A, None, ('filing:123',))
+    assert not decision.approved
+    assert decision.reason == 'Overnight thesis and evidence required'
+
+
+def test_overnight_rejects_equity_above_recorded_peak():
+    account = replace(A, equity=1100, peak_equity=1000)
+    assert not validate_overnight_hold(
+        1, 200, account, 'Verified catalyst', ('filing:123',)
+    ).approved
+
 def test_evaluator_and_baseline():
     t = [ClosedTrade('AMD', 10, 'a', 'b'), ClosedTrade('AMD', -5, 'c', 'd')]
     r = evaluate_closed_trades(t, 1000)
