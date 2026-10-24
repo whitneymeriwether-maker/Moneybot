@@ -1,7 +1,7 @@
 
-"""Automated tests for Moneybot V3's research scanner.
+"""Tests for Moneybot V3 research scanner.
 
-All market data is simulated. No network requests or trades.
+All external data is simulated. No network requests or trades.
 """
 
 import sys
@@ -16,12 +16,11 @@ sys.path.insert(
 
 from backtesting import research_scanner
 from backtesting.market_cap_data import MarketCapDataError
+from backtesting.sec_market_cap import SECMarketCapError
 from backtesting.stock_screener import StockCandidate
 
 
 def make_candidate(**changes):
-    """Create a stock that passes the research filters."""
-
     values = {
         "symbol": "TEST",
         "price": 12.00,
@@ -30,14 +29,11 @@ def make_candidate(**changes):
         "bid": 11.99,
         "ask": 12.00,
     }
-
     values.update(changes)
     return StockCandidate(**values)
 
 
 def fake_stock_data(monkeypatch, **changes):
-    """Replace Alpaca market data with simulated values."""
-
     def get_candidate(symbol, market_cap):
         return make_candidate(
             **{
@@ -51,6 +47,38 @@ def fake_stock_data(monkeypatch, **changes):
         research_scanner,
         "get_stock_candidate",
         get_candidate,
+    )
+
+
+def fake_fmp_failure(monkeypatch):
+    def unavailable(symbol):
+        raise MarketCapDataError("Simulated FMP outage")
+
+    monkeypatch.setattr(
+        research_scanner,
+        "get_market_cap",
+        unavailable,
+    )
+
+
+def fake_sec_estimate(monkeypatch):
+    monkeypatch.setattr(
+        research_scanner,
+        "get_recent_daily_bars",
+        lambda symbol: [{"c": 5.0}],
+    )
+
+    monkeypatch.setattr(
+        research_scanner,
+        "estimate_market_cap",
+        lambda symbol, price: {
+            "symbol": symbol,
+            "shares_outstanding": 100_000_000,
+            "observation_date": "2026-08-01",
+            "filed_date": "2026-08-10",
+            "estimated_market_cap": 500_000_000,
+            "estimate_only": True,
+        },
     )
 
 
@@ -68,8 +96,6 @@ def test_qualifying_stock_passes(monkeypatch):
 
 
 def test_automatic_market_cap_lookup(monkeypatch):
-    """Missing market cap should trigger the FMP provider."""
-
     requested = []
 
     def fake_market_cap(symbol):
@@ -87,53 +113,80 @@ def test_automatic_market_cap_lookup(monkeypatch):
     result = research_scanner.scan_stock("test")
 
     assert requested == ["TEST"]
-    assert result.symbol == "TEST"
     assert result.qualifies is True
 
 
-def test_market_cap_provider_failure_rejected(monkeypatch):
-    """Failed FMP lookup must not approve a stock."""
+def test_fmp_failure_uses_sec_estimate(monkeypatch):
+    fake_fmp_failure(monkeypatch)
+    fake_sec_estimate(monkeypatch)
 
-    def unavailable(symbol):
-        raise MarketCapDataError("Simulated FMP outage")
+    result = research_scanner.scan_stock("TEST")
 
-    monkeypatch.setattr(
-        research_scanner,
-        "get_market_cap",
-        unavailable,
-    )
+    assert result.qualifies is False
+    assert "ESTIMATE ONLY" in result.reasons[0]
+    assert "$500,000,000" in result.reasons[1]
+    assert "2026-08-01" in result.reasons[2]
+    assert "Simulated FMP outage" in result.reasons[-1]
 
-    def forbidden_stock_request(symbol, market_cap):
+
+def test_sec_estimate_cannot_approve_stock(monkeypatch):
+    fake_fmp_failure(monkeypatch)
+    fake_sec_estimate(monkeypatch)
+
+    def forbidden_candidate(symbol, market_cap):
         raise AssertionError(
-            "Alpaca should not be called after FMP failure"
+            "An SEC estimate must not enter the verified screener"
         )
 
     monkeypatch.setattr(
         research_scanner,
         "get_stock_candidate",
-        forbidden_stock_request,
+        forbidden_candidate,
     )
 
     result = research_scanner.scan_stock("TEST")
 
     assert result.qualifies is False
-    assert "Verified market capitalization is required" in (
-        result.reasons[0]
+
+
+def test_both_market_cap_sources_fail(monkeypatch):
+    fake_fmp_failure(monkeypatch)
+
+    monkeypatch.setattr(
+        research_scanner,
+        "get_recent_daily_bars",
+        lambda symbol: [{"c": 5.0}],
     )
-    assert "Simulated FMP outage" in result.reasons[0]
+
+    def unavailable(symbol, price):
+        raise SECMarketCapError("Simulated SEC outage")
+
+    monkeypatch.setattr(
+        research_scanner,
+        "estimate_market_cap",
+        unavailable,
+    )
+
+    result = research_scanner.scan_stock("TEST")
+
+    assert result.qualifies is False
+    assert "FMP unavailable" in result.reasons[0]
+    assert "SEC estimate unavailable" in result.reasons[1]
 
 
 def test_missing_fmp_credentials_rejected(monkeypatch):
-    """Missing API credentials should fail safely."""
-
     monkeypatch.delenv("FMP_API_KEY", raising=False)
+
+    monkeypatch.setattr(
+        research_scanner,
+        "get_recent_daily_bars",
+        lambda symbol: [],
+    )
 
     result = research_scanner.scan_stock("TEST")
 
     assert result.qualifies is False
-    assert "Verified market capitalization is required" in (
-        result.reasons[0]
-    )
+    assert "FMP unavailable" in result.reasons[0]
 
 
 @pytest.mark.parametrize(
@@ -148,7 +201,7 @@ def test_missing_fmp_credentials_rejected(monkeypatch):
     ],
 )
 def test_invalid_market_cap_rejected(monkeypatch, invalid_cap):
-    def forbidden_stock_request(symbol, market_cap):
+    def forbidden_candidate(symbol, market_cap):
         raise AssertionError(
             "Invalid market cap must not trigger Alpaca"
         )
@@ -156,7 +209,7 @@ def test_invalid_market_cap_rejected(monkeypatch, invalid_cap):
     monkeypatch.setattr(
         research_scanner,
         "get_stock_candidate",
-        forbidden_stock_request,
+        forbidden_candidate,
     )
 
     result = research_scanner.scan_stock(
@@ -240,11 +293,11 @@ def test_invalid_symbol_rejected():
 
 def test_multiple_stocks(monkeypatch):
     fake_stock_data(monkeypatch)
+    fake_sec_estimate(monkeypatch)
 
     def fake_market_cap(symbol):
         if symbol == "NOCAP":
             raise MarketCapDataError("No market-cap data")
-
         return 1_000_000_000
 
     monkeypatch.setattr(
@@ -262,6 +315,7 @@ def test_multiple_stocks(monkeypatch):
     assert len(results) == 3
     assert results[0].qualifies is True
     assert results[1].qualifies is False
+    assert "ESTIMATE ONLY" in results[1].reasons[0]
     assert results[2].qualifies is True
 
 
