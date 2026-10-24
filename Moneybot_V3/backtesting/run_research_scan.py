@@ -51,8 +51,8 @@ def run_scan(watchlist=None):
 
     print()
     print("=" * 50)
-    print(f"PASSED: {passed}")
-    print(f"REJECTED: {rejected}")
+    print(f"Passed: {passed}")
+    print(f"Rejected: {rejected}")
     print("=" * 50)
 
     return results
