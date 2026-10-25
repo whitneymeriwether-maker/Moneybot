@@ -270,3 +270,26 @@ def test_evaluator_rejects_nonfinite_gross_pnl_even_if_equity_is_finite():
     ]
     with pytest.raises(ValueError, match='Non-finite aggregate PnL'):
         evaluate_closed_trades(trades, 1e308)
+
+
+def test_entry_rejects_overflowed_share_ratios_without_crashing():
+    # All inputs are finite, but risk_budget / stop_distance is infinite.
+    candidate = replace(C, price=1e-320, atr=5e-321)
+    decision = validate_paper_entry(candidate, P, A)
+    assert not decision.approved
+    assert decision.reason == 'Non-finite paper sizing arithmetic'
+
+
+def test_entry_rejects_overflowed_target_without_approval():
+    # Position sizing permits one share, but the 2R target is infinite.
+    candidate = replace(C, price=8e307, atr=7e307)
+    account = PaperAccount(
+        cash=1.6e308, equity=1.6e308, current_exposure=0,
+        realized_pnl_today=0, starting_equity=1.6e308,
+        peak_equity=1.6e308,
+    )
+    decision = validate_paper_entry(
+        candidate, P, account, RiskPolicy(risk_per_trade=1),
+    )
+    assert not decision.approved
+    assert decision.reason == 'Non-finite paper sizing arithmetic'
