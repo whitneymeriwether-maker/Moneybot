@@ -48,11 +48,19 @@ def load_price_bars(filename):
                 raise ValueError("High price is inconsistent")
             if low > min(opening, close, high):
                 raise ValueError("Low price is inconsistent")
-            if volume < 0:
-                raise ValueError("Negative volume")
+            # int() accepts arbitrarily large CSV integers, but such a
+            # volume cannot be used safely in floating-point VWAP math.
+            try:
+                valid_volume = volume >= 0 and isfinite(volume)
+            except OverflowError:
+                valid_volume = False
+            if not valid_volume:
+                raise ValueError("Invalid historical volume")
 
             if timestamp.tzinfo is None or timestamp.utcoffset() is None:
                 raise ValueError("Timestamp must include timezone")
+            if timestamp.second or timestamp.microsecond:
+                raise ValueError("Historical minute bar must be minute-aligned")
 
             if previous_timestamp is not None and timestamp <= previous_timestamp:
                 raise ValueError("Timestamps must be increasing")

@@ -643,3 +643,17 @@ def test_weekend_bars_cannot_fill_direct_paper_signal():
     assert simulate_trades(
         bars, [make_signal(bars[0].timestamp)], slippage_pct=0
     ) == []
+
+
+def test_simulator_rejects_subminute_bar_timestamp():
+    bar = make_bar(0, 100, 101, 99, 100)
+    bar.timestamp += timedelta(seconds=30)
+    with pytest.raises(ValueError, match="Bar timestamp must be minute-aligned"):
+        simulate_trades([bar], [])
+
+
+def test_simulator_rejects_subminute_signal_timestamp():
+    bar = make_bar(0, 100, 101, 99, 100)
+    signal = make_signal(bar.timestamp + timedelta(seconds=30))
+    with pytest.raises(ValueError, match="Signal timestamp must be minute-aligned"):
+        simulate_trades([bar], [signal])

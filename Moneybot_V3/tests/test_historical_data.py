@@ -89,3 +89,21 @@ def test_rejects_empty_data(tmp_path):
 
     with pytest.raises(ValueError):
         load_price_bars(filename)
+
+
+def test_rejects_subminute_historical_timestamp(tmp_path):
+    filename = write_csv(
+        tmp_path,
+        "2026-01-05T09:30:30-05:00,100,105,99,103,10000\n",
+    )
+    with pytest.raises(ValueError, match="minute-aligned"):
+        load_price_bars(filename)
+
+
+def test_rejects_unrepresentably_large_historical_volume(tmp_path):
+    filename = write_csv(
+        tmp_path,
+        "2026-01-05T09:30:00-05:00,100,105,99,103," + "9" * 400 + "\n",
+    )
+    with pytest.raises(ValueError, match="Invalid historical volume"):
+        load_price_bars(filename)
