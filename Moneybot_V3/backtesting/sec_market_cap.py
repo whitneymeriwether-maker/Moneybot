@@ -27,6 +27,16 @@ class SECMarketCapError(RuntimeError):
     """Raised when reliable SEC share data is unavailable."""
 
 
+def _valid_positive_number(value):
+    """Reject malformed, non-finite, and oversized integer inputs."""
+    if type(value) not in (int, float):
+        return False
+    try:
+        return math.isfinite(value) and value > 0
+    except (OverflowError, ValueError):
+        return False
+
+
 def _request_json(url):
     """Retrieve public SEC JSON without exposing credentials."""
 
@@ -126,10 +136,7 @@ def get_reported_shares_outstanding(symbol):
             continue
 
         if (
-            isinstance(shares, bool)
-            or not isinstance(shares, (int, float))
-            or not math.isfinite(shares)
-            or shares <= 0
+            not _valid_positive_number(shares)
             or not earliest <= observation_date <= today
             or filed_date > today
         ):
@@ -161,21 +168,17 @@ def get_reported_shares_outstanding(symbol):
 def estimate_market_cap(symbol, share_price):
     """Estimate market cap from current price and SEC share count."""
 
-    if (
-        isinstance(share_price, bool)
-        or not isinstance(share_price, (int, float))
-        or not math.isfinite(share_price)
-        or share_price <= 0
-    ):
+    if not _valid_positive_number(share_price):
         raise ValueError("Share price must be positive")
 
     report = get_reported_shares_outstanding(symbol)
+    estimated_cap = report["shares_outstanding"] * float(share_price)
+    if not math.isfinite(estimated_cap) or estimated_cap <= 0:
+        raise SECMarketCapError("Non-finite SEC market-cap estimate")
 
     return {
         **report,
         "share_price": float(share_price),
-        "estimated_market_cap": (
-            report["shares_outstanding"] * share_price
-        ),
+        "estimated_market_cap": estimated_cap,
         "estimate_only": True,
     }

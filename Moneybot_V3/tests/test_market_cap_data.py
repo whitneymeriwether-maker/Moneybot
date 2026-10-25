@@ -120,6 +120,7 @@ def test_wrong_symbol_rejected(monkeypatch):
         "1000000000",
         float("nan"),
         float("inf"),
+        10 ** 400,
     ],
 )
 def test_invalid_market_cap_rejected(monkeypatch, invalid_value):

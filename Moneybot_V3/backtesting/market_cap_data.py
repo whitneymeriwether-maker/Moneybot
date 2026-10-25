@@ -22,6 +22,16 @@ class MarketCapDataError(RuntimeError):
     """Raised when market-cap data is unavailable."""
 
 
+def _valid_positive_number(value):
+    """Reject malformed, non-finite, and unrepresentably large values."""
+    if type(value) not in (int, float):
+        return False
+    try:
+        return math.isfinite(value) and value > 0
+    except (OverflowError, ValueError):
+        return False
+
+
 def get_market_cap(symbol):
     """Retrieve and validate a stock's reported market cap."""
 
@@ -89,12 +99,7 @@ def get_market_cap(symbol):
 
     value = matching_records[0].get("marketCap")
 
-    if (
-        isinstance(value, bool)
-        or not isinstance(value, (int, float))
-        or not math.isfinite(value)
-        or value <= 0
-    ):
+    if not _valid_positive_number(value):
         raise MarketCapDataError(
             f"Invalid market capitalization for {symbol}"
         )

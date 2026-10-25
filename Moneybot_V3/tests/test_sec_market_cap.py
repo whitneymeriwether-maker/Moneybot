@@ -154,3 +154,31 @@ def test_newest_observation_selected(monkeypatch):
     )
 
     assert result["shares_outstanding"] == 120_000_000
+
+
+def test_oversized_sec_share_count_is_skipped(monkeypatch):
+    configure_fake_sec(monkeypatch, [
+        make_observation(shares=10 ** 400, days_ago=20),
+        make_observation(shares=75_000_000, days_ago=60),
+    ])
+    result = sec_market_cap.get_reported_shares_outstanding("TEST")
+    assert result["shares_outstanding"] == 75_000_000
+
+
+def test_only_oversized_sec_shares_fail_closed(monkeypatch):
+    configure_fake_sec(monkeypatch, [make_observation(shares=10 ** 400)])
+    with pytest.raises(sec_market_cap.SECMarketCapError,
+                       match="No recent SEC shares-outstanding data"):
+        sec_market_cap.get_reported_shares_outstanding("TEST")
+
+
+def test_oversized_share_price_fails_closed():
+    with pytest.raises(ValueError, match="Share price must be positive"):
+        sec_market_cap.estimate_market_cap("TEST", 10 ** 400)
+
+
+def test_overflowing_sec_market_cap_estimate_fails_closed(monkeypatch):
+    configure_fake_sec(monkeypatch, [make_observation(shares=1e308)])
+    with pytest.raises(sec_market_cap.SECMarketCapError,
+                       match="Non-finite SEC market-cap estimate"):
+        sec_market_cap.estimate_market_cap("TEST", 1e308)
