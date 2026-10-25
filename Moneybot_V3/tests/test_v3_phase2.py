@@ -40,9 +40,18 @@ def test_nan_rejected():
     assert not validate_paper_entry(replace(C, atr=float('nan')), P, A).approved
 
 def test_overnight_requires_evidence_and_caps_exposure():
-    assert validate_overnight_hold(1, 200, A, 'Verified catalyst', ('filing:123',)).approved
-    assert not validate_overnight_hold(1, 300, A, 'Verified catalyst', ('filing:123',)).approved
-    assert not validate_overnight_hold(1, 200, A, '', ('filing:123',)).approved
+    account = replace(A, current_exposure=300)
+    assert validate_overnight_hold(1, 200, account, 'Verified catalyst', ('filing:123',)).approved
+    assert not validate_overnight_hold(1, 300, account, 'Verified catalyst', ('filing:123',)).approved
+    assert not validate_overnight_hold(1, 200, account, '', ('filing:123',)).approved
+
+
+@pytest.mark.parametrize('existing,proposed', [(0, 200), (150, 200)])
+def test_overnight_rejects_hold_without_existing_paper_exposure(existing, proposed):
+    account = replace(A, current_exposure=existing)
+    decision = validate_overnight_hold(1, proposed, account, 'Thesis', ('sec:123',))
+    assert not decision.approved
+    assert decision.reason == 'Proposed hold exceeds existing paper exposure'
 
 def test_overnight_two_day_limit():
     assert not validate_overnight_hold(2, 100, A, 'Still strong', ('filing:123',)).approved
