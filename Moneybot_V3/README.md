@@ -7,6 +7,7 @@
 - Initial V3 policy: 1.5% equity risk per trade, 3% of starting equity daily realized-loss stop, 50% total notional exposure, 10% peak-equity drawdown pause, 25% overnight exposure, maximum two trading sessions.
 - Separate overnight-hold eligibility gate, and basic closed-trade evaluator for AI vs baseline.
 - Historical one-position simulator caps notional exposure at 50% of current paper equity and entries at 10% of observed minute volume by default, in addition to cash and stop-distance risk limits. It rejects nonpositive stop prices, malformed bar volumes, and never assumes an entry or exit fill on a zero-volume minute. The entry participation cap does **not** model partial exit fills, order-book depth, market impact, or full-session liquidity. Opening-range and breakout signals also require traded volume. This is not a live execution guarantee.
+- Opening-range signals and direct historical paper fills skip weekends; this is not an exchange-holiday calendar.
 - Offline automated unit tests: `python -m pytest -q`.
 
 ## Still required before autonomous paper operation

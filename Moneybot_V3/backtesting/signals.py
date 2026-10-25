@@ -52,7 +52,9 @@ def generate_breakout_signals(bars):
             cumulative_volume = 0
             signaled_today = False
 
-        if not (time(9, 30) <= clock < time(16, 0)):
+        # A weekend print is not a regular US equity trading session.
+        # Exchange holidays still require a separate market calendar.
+        if local_time.weekday() >= 5 or not (time(9, 30) <= clock < time(16, 0)):
             continue
 
         typical_price = (bar.high + bar.low + bar.close) / 3

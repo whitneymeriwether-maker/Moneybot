@@ -2,6 +2,7 @@
 """Tests for Moneybot V3 opening-range breakout signals."""
 
 import sys
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -140,3 +141,15 @@ def test_duplicate_minute_does_not_replace_missing_minute():
     signals = generate_breakout_signals(bars)
 
     assert signals == []
+
+
+def test_weekend_opening_range_never_generates_signal():
+    """A synthetic Sunday session cannot be mistaken for Monday trading."""
+    monday_bars = opening_range()
+    monday_bars.append(make_bar(9, 45, 102, high=102.5, low=101.5))
+    sunday_bars = [
+        replace(bar, timestamp=bar.timestamp - timedelta(days=1))
+        for bar in monday_bars
+    ]
+    assert sunday_bars[0].timestamp.weekday() == 6
+    assert generate_breakout_signals(sunday_bars) == []

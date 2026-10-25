@@ -630,3 +630,16 @@ def test_simulator_rejects_overflowed_exit_proceeds():
         simulate_trades(
             bars, [signal], starting_cash=1e308, slippage_pct=0,
         )
+
+
+def test_weekend_bars_cannot_fill_direct_paper_signal():
+    """Direct simulator callers must not fabricate Sunday equity fills."""
+    bars = [
+        make_bar(0, 100, 101, 99, 100, day=11),
+        make_bar(1, 101, 101.5, 100.5, 101, day=11),
+        make_bar(2, 102, 106, 101, 105, day=11),
+    ]
+    assert bars[0].timestamp.weekday() == 6
+    assert simulate_trades(
+        bars, [make_signal(bars[0].timestamp)], slippage_pct=0
+    ) == []

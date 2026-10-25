@@ -188,7 +188,9 @@ def simulate_trades(
                 pending = None
                 last_regular_bar = None
 
-        if not (time(9, 30) <= clock < time(16, 0)):
+        # Ignore weekend prints even if a caller supplies a fabricated
+        # regular-session signal. Holidays require an exchange calendar.
+        if local.weekday() >= 5 or not (time(9, 30) <= clock < time(16, 0)):
             previous_bar = bar
             continue
 
