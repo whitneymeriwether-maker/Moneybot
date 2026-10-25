@@ -83,9 +83,33 @@ def simulate_trades(
         if high < max(opening, close, low) or low > min(opening, close, high):
             raise ValueError("Inconsistent simulated OHLC bar")
 
-    signals_by_time = {
-        signal.timestamp: signal for signal in signals
-    }
+    # Direct callers may supply externally constructed signals rather than
+    # signals produced by our historical scanner. Reject invalid or ambiguous
+    # stop distances before they can influence paper position sizing.
+    signals_by_time = {}
+    for signal in signals:
+        timestamp = getattr(signal, "timestamp", None)
+        if (
+            not isinstance(timestamp, datetime)
+            or timestamp.tzinfo is None
+            or timestamp.utcoffset() is None
+        ):
+            raise ValueError("Signal timestamp must be timezone-aware")
+
+        high = getattr(signal, "opening_range_high", None)
+        low = getattr(signal, "opening_range_low", None)
+        if (
+            type(high) not in (int, float)
+            or type(low) not in (int, float)
+            or not isfinite(high)
+            or not isfinite(low)
+            or low <= 0
+            or high <= low
+        ):
+            raise ValueError("Invalid opening range in signal")
+        if timestamp in signals_by_time:
+            raise ValueError("Duplicate signal timestamp")
+        signals_by_time[timestamp] = signal
 
     completed = []
     cash = starting_cash
