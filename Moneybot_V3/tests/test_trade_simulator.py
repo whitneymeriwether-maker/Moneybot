@@ -563,3 +563,22 @@ def test_no_entry_if_opening_range_implies_nonpositive_stop():
     signal.opening_range_low = 1
 
     assert simulate_trades(bars, [signal], slippage_pct=0) == []
+
+
+@pytest.mark.parametrize("parameter,value,expected", [
+    ("starting_cash", True, "Invalid starting cash"),
+    ("starting_cash", "1000", "Invalid starting cash"),
+    ("starting_cash", None, "Invalid starting cash"),
+    ("starting_cash", 10 ** 400, "Invalid starting cash"),
+    ("risk_per_trade", True, "Invalid risk per trade"),
+    ("risk_per_trade", "0.015", "Invalid risk per trade"),
+    ("risk_per_trade", None, "Invalid risk per trade"),
+    ("slippage_pct", False, "Invalid slippage"),
+    ("slippage_pct", "0.001", "Invalid slippage"),
+    ("slippage_pct", None, "Invalid slippage"),
+    ("max_exposure", 10 ** 400, "Invalid maximum exposure"),
+    ("max_participation", 10 ** 400, "Invalid maximum participation"),
+])
+def test_rejects_malformed_simulation_parameters(parameter, value, expected):
+    with pytest.raises(ValueError, match=expected):
+        simulate_trades([], [], **{parameter: value})

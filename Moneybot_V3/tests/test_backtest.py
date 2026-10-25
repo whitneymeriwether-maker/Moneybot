@@ -57,3 +57,36 @@ def test_empty_history():
 def test_invalid_trade_rejected():
     with pytest.raises(ValueError):
         backtest([Trade(10, 11, -5)])
+
+
+@pytest.mark.parametrize("parameter,value,expected", [
+    ("starting_cash", True, "Starting cash"),
+    ("starting_cash", "1000", "Starting cash"),
+    ("starting_cash", None, "Starting cash"),
+    ("starting_cash", 10 ** 400, "Starting cash"),
+    ("slippage_pct", False, "Invalid slippage"),
+    ("slippage_pct", "0.001", "Invalid slippage"),
+    ("slippage_pct", None, "Invalid slippage"),
+])
+def test_rejects_malformed_backtest_parameters(parameter, value, expected):
+    with pytest.raises(ValueError, match=expected):
+        backtest([], **{parameter: value})
+
+
+@pytest.mark.parametrize("field,value", [
+    ("entry_price", True),
+    ("exit_price", "12"),
+    ("entry_fee", True),
+    ("exit_fee", None),
+])
+def test_rejects_malformed_trade_numbers(field, value):
+    values = dict(entry_price=10, exit_price=12, quantity=1, entry_fee=0, exit_fee=0)
+    values[field] = value
+    with pytest.raises(ValueError, match="Invalid trade value"):
+        backtest([Trade(**values)], slippage_pct=0)
+
+
+def test_rejects_overflowed_backtest_equity():
+    with pytest.raises(ValueError, match="Non-finite trade arithmetic"):
+        backtest([Trade(entry_price=1, exit_price=1e308, quantity=1)],
+                 starting_cash=1e308, slippage_pct=0)

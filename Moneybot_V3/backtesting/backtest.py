@@ -5,6 +5,16 @@ from dataclasses import dataclass
 from math import isfinite
 
 
+def _finite_number(value):
+    """Only finite real numeric inputs, never booleans or numeric strings."""
+    if type(value) not in (int, float):
+        return False
+    try:
+        return isfinite(value)
+    except OverflowError:
+        return False
+
+
 @dataclass(frozen=True)
 class Trade:
     """A completed historical trade, using per-share prices."""
@@ -22,9 +32,9 @@ def backtest(trades, starting_cash=1000.0, slippage_pct=0.001):
     Assumes one position at a time, no leverage, and no
     overlapping trades. Slippage applies at entry and exit.
     """
-    if not isfinite(starting_cash) or starting_cash <= 0:
+    if not _finite_number(starting_cash) or starting_cash <= 0:
         raise ValueError("Starting cash must be positive")
-    if not isfinite(slippage_pct) or not 0 <= slippage_pct < 1:
+    if not _finite_number(slippage_pct) or not 0 <= slippage_pct < 1:
         raise ValueError("Invalid slippage")
 
     cash = starting_cash
@@ -39,8 +49,8 @@ def backtest(trades, starting_cash=1000.0, slippage_pct=0.001):
             trade.entry_price, trade.exit_price,
             trade.entry_fee, trade.exit_fee
         )
-        if not all(isfinite(v) for v in values):
-            raise ValueError("Non-finite trade value")
+        if not all(_finite_number(v) for v in values):
+            raise ValueError("Invalid trade value")
         if (trade.entry_price <= 0 or trade.exit_price <= 0
                 or type(trade.quantity) is not int
                 or trade.quantity <= 0
@@ -51,6 +61,8 @@ def backtest(trades, starting_cash=1000.0, slippage_pct=0.001):
         exit_price = trade.exit_price * (1 - slippage_pct)
         cost = entry * trade.quantity + trade.entry_fee
 
+        if not all(isfinite(v) for v in (entry, exit_price, cost)):
+            raise ValueError("Non-finite trade arithmetic")
         if cost > cash:
             raise ValueError("Trade exceeds available cash")
 
@@ -59,6 +71,8 @@ def backtest(trades, starting_cash=1000.0, slippage_pct=0.001):
             - trade.entry_fee - trade.exit_fee
         )
         cash += pnl
+        if not isfinite(pnl) or not isfinite(cash):
+            raise ValueError("Non-finite trade arithmetic")
         completed += 1
         wins += pnl > 0
         peak = max(peak, cash)

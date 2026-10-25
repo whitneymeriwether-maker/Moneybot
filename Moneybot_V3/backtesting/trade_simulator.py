@@ -13,6 +13,16 @@ from zoneinfo import ZoneInfo
 NEW_YORK = ZoneInfo("America/New_York")
 
 
+def _finite_number(value):
+    """Only finite real numeric inputs, never booleans or numeric strings."""
+    if type(value) not in (int, float):
+        return False
+    try:
+        return isfinite(value)
+    except OverflowError:
+        return False
+
+
 @dataclass(frozen=True)
 class SimulatedTrade:
     entry_time: object
@@ -39,22 +49,20 @@ def simulate_trades(
     Exit fills remain simplified; this is not an execution-quality model.
     """
 
-    if not isfinite(starting_cash) or starting_cash <= 0:
+    if not _finite_number(starting_cash) or starting_cash <= 0:
         raise ValueError("Invalid starting cash")
 
-    if not isfinite(risk_per_trade) or not 0 < risk_per_trade <= 1:
+    if not _finite_number(risk_per_trade) or not 0 < risk_per_trade <= 1:
         raise ValueError("Invalid risk per trade")
 
-    if not isfinite(slippage_pct) or not 0 <= slippage_pct < 1:
+    if not _finite_number(slippage_pct) or not 0 <= slippage_pct < 1:
         raise ValueError("Invalid slippage")
 
-    if (type(max_exposure) not in (int, float)
-            or not isfinite(max_exposure)
+    if (not _finite_number(max_exposure)
             or not 0 < max_exposure <= 1):
         raise ValueError("Invalid maximum exposure")
 
-    if (type(max_participation) not in (int, float)
-            or not isfinite(max_participation)
+    if (not _finite_number(max_participation)
             or not 0 < max_participation <= 1):
         raise ValueError("Invalid maximum participation")
 
