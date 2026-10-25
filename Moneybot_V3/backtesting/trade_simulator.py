@@ -272,15 +272,29 @@ def simulate_trades(
                     if not isfinite(purchase_cost):
                         raise ValueError("Non-finite simulated trade arithmetic")
 
-                    # Reserve the cost of purchased shares.
-                    cash -= purchase_cost
+                    # Validate derived stop/target before reserving cash.
+                    # Finite inputs can still overflow the 2R target, which
+                    # would silently create an unreachable paper exit.
+                    stop = entry - stop_distance
+                    target = entry + 2 * stop_distance
+                    remaining_cash = cash - purchase_cost
+                    if (
+                        not all(isfinite(value) for value in (
+                            stop, target, remaining_cash,
+                        ))
+                        or stop <= 0
+                        or target <= entry
+                        or remaining_cash < 0
+                    ):
+                        raise ValueError("Non-finite simulated trade arithmetic")
 
+                    cash = remaining_cash
                     position = {
                         "entry_time": bar.timestamp,
                         "entry": entry,
                         "quantity": quantity,
-                        "stop": entry - stop_distance,
-                        "target": entry + 2 * stop_distance,
+                        "stop": stop,
+                        "target": target,
                     }
 
             pending = None
