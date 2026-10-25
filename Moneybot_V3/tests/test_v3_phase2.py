@@ -293,3 +293,17 @@ def test_entry_rejects_overflowed_target_without_approval():
     )
     assert not decision.approved
     assert decision.reason == 'Non-finite paper sizing arithmetic'
+
+
+def test_evaluator_rejects_nonfinite_percentage_return():
+    # Finite dollars can still yield an unrepresentable percentage.
+    trades = [ClosedTrade('AMD', 1e100, 'a', 'b')]
+    with pytest.raises(ValueError, match='Non-finite return percentage'):
+        evaluate_closed_trades(trades, 1e-300)
+
+
+def test_evaluator_rejects_nonfinite_closed_trade_drawdown():
+    # An extreme loss against tiny starting equity must not report infinity.
+    trades = [ClosedTrade('AMD', -1e100, 'a', 'b')]
+    with pytest.raises(ValueError, match='Non-finite closed-trade drawdown'):
+        evaluate_closed_trades(trades, 1e-300)
