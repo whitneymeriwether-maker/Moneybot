@@ -160,6 +160,12 @@ def test_invalid_history_window():
         market_data.get_recent_daily_bars("TEST", days=0)
 
 
+@pytest.mark.parametrize("invalid", [True, False, 1.0, "45", None])
+def test_history_window_rejects_non_integer_days(invalid):
+    with pytest.raises(ValueError, match="days must be"):
+        market_data.get_recent_daily_bars("TEST", days=invalid)
+
+
 def test_daily_bars(monkeypatch):
     expected = make_daily_bars()
 
@@ -290,6 +296,7 @@ def test_insufficient_daily_history(monkeypatch):
         {"v": -1},
         {"v": float("nan")},
         {"v": True},
+        {"v": 1.5},  # API share volume cannot be fractional.
         {"c": float("inf")},
         {"c": 0},
         {"h": 11.0},
