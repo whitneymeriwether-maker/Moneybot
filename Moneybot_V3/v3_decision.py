@@ -56,8 +56,13 @@ class Decision:
 
 
 def _finite_number(value):
-    """Reject booleans and malformed numeric data before risk calculations."""
-    return type(value) in (int, float) and isfinite(value)
+    """Reject booleans, non-finite numbers, and oversized integers."""
+    if type(value) not in (int, float):
+        return False
+    try:
+        return isfinite(value)
+    except (OverflowError, ValueError):
+        return False
 
 
 def _valid_policy(policy):
