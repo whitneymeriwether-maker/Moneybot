@@ -40,7 +40,10 @@ def evaluate_closed_trades(trades: list[ClosedTrade], starting_capital: float) -
         if not isfinite(equity):
             raise ValueError('Non-finite cumulative equity')
         peak = max(peak, equity)
-        max_drawdown = max(max_drawdown, (peak-equity)/peak)
+        drawdown = (peak - equity) / peak
+        if not isfinite(drawdown):
+            raise ValueError('Non-finite closed-trade drawdown')
+        max_drawdown = max(max_drawdown, drawdown)
         pnls.append(trade.pnl)
     wins = [p for p in pnls if p > 0]
     losses = [p for p in pnls if p < 0]
@@ -52,11 +55,14 @@ def evaluate_closed_trades(trades: list[ClosedTrade], starting_capital: float) -
     profit_factor = gross_wins / abs(gross_losses) if losses else None
     if profit_factor is not None and not isfinite(profit_factor):
         raise ValueError('Non-finite profit factor')
+    return_pct = (net_pnl / starting_capital) * 100
+    if not isfinite(return_pct):
+        raise ValueError('Non-finite return percentage')
     return {
         'trade_count': len(pnls),
         'ending_equity': round(equity, 2),
         'net_pnl': round(net_pnl, 2),
-        'return_pct': round(100 * net_pnl/starting_capital, 3),
+        'return_pct': round(return_pct, 3),
         'win_rate_pct': round(100*len(wins)/len(pnls), 2) if pnls else None,
         'expectancy_per_trade': round(mean(pnls), 2) if pnls else None,
         'max_closed_trade_drawdown_pct': round(max_drawdown*100, 3),
