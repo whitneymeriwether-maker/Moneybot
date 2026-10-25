@@ -41,12 +41,15 @@ def simulate_trades(
     slippage_pct=0.001,
     max_exposure=0.5,
     max_participation=0.10,
+    daily_loss_limit=0.03,
 ):
     """Simulate cash-funded long trades with same-day exits.
 
     Cap gross notional and entry size relative to observed minute volume.
 
     Exit fills remain simplified; this is not an execution-quality model.
+    Stop new entries after the day's realized losses reach a percentage of
+    initial paper capital. This cannot prevent gap losses on open positions.
     """
 
     if not _finite_number(starting_cash) or starting_cash <= 0:
@@ -65,6 +68,10 @@ def simulate_trades(
     if (not _finite_number(max_participation)
             or not 0 < max_participation <= 1):
         raise ValueError("Invalid maximum participation")
+
+    if (not _finite_number(daily_loss_limit)
+            or not 0 < daily_loss_limit <= 1):
+        raise ValueError("Invalid daily loss limit")
 
     bars = list(bars)
     # Reject malformed or nonchronological direct simulator inputs.
@@ -136,6 +143,7 @@ def simulate_trades(
 
     completed = []
     cash = starting_cash
+    realized_pnl_today = 0.0
     position = None
     pending = None
     previous_bar = None
@@ -144,7 +152,7 @@ def simulate_trades(
     last_regular_bar = None
 
     def close_position(bar, price, reason):
-        nonlocal position, cash
+        nonlocal position, cash, realized_pnl_today
 
         exit_price = price * (1 - slippage_pct)
         quantity = position["quantity"]
@@ -152,9 +160,14 @@ def simulate_trades(
         # Reject arithmetic overflow rather than recording a fictitious
         # profitable fill or contaminating subsequent paper-account state.
         proceeds = exit_price * quantity
-        if not isfinite(proceeds) or not isfinite(cash + proceeds):
+        realized_pnl = (exit_price - position["entry"]) * quantity
+        if not all(isfinite(value) for value in (
+            proceeds, realized_pnl, cash + proceeds,
+            realized_pnl_today + realized_pnl,
+        )):
             raise ValueError("Non-finite simulated trade arithmetic")
         cash += proceeds
+        realized_pnl_today += realized_pnl
 
         completed.append(
             SimulatedTrade(
@@ -191,6 +204,7 @@ def simulate_trades(
 
                 pending = None
                 last_regular_bar = None
+                realized_pnl_today = 0.0
 
         # Ignore weekend prints even if a caller supplies a fabricated
         # regular-session signal. Holidays require an exchange calendar.
@@ -223,6 +237,13 @@ def simulate_trades(
                 day == signal_day
                 and minutes_since_signal == 1
             ):
+                # Recheck the circuit breaker at fill time, not only when
+                # the signal is observed. Realized PnL includes slippage.
+                if realized_pnl_today <= -starting_cash * daily_loss_limit:
+                    pending = None
+                    previous_bar = bar
+                    continue
+
                 entry = bar.open * (1 + slippage_pct)
                 if not isfinite(entry):
                     raise ValueError("Non-finite simulated trade arithmetic")
