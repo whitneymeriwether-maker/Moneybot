@@ -143,7 +143,7 @@ def get_recent_daily_bars(symbol, days=45):
 
     symbol = validate_symbol(symbol)
 
-    if not isinstance(days, int) or not 1 <= days <= 365:
+    if type(days) is not int or not 1 <= days <= 365:
         raise ValueError("days must be between 1 and 365")
 
     end = datetime.now(timezone.utc)
@@ -227,6 +227,7 @@ def _validate_daily_bars(bars, symbol):
             ))
             or low <= 0
             or volume < 0
+            or not volume.is_integer()  # Share counts cannot be fractional.
             or not low <= min(open_price, close)
             or not max(open_price, close) <= high
             or timestamp > now + timedelta(minutes=5)
