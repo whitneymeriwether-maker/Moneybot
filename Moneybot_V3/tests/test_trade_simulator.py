@@ -495,3 +495,71 @@ def test_data_end_uses_last_traded_bar_not_zero_volume_bar():
     assert trades[0].exit_reason == "data_end"
     assert trades[0].exit_time == bars[1].timestamp
     assert trades[0].exit_price == 101
+
+
+
+def test_entry_participation_caps_shares_on_thin_minute():
+    """Do not assume a fill larger than 10% of observed minute volume."""
+    bars = [
+        make_bar(0, 100, 101, 99, 100),
+        make_bar(1, 101, 101.5, 100.5, 101),
+        make_bar(2, 102, 106, 101, 105),
+    ]
+    bars[1].volume = 15
+
+    trades = simulate_trades(
+        bars, [make_signal(bars[0].timestamp)], slippage_pct=0
+    )
+
+    assert len(trades) == 1
+    assert trades[0].quantity == 1
+
+
+def test_entry_skipped_if_participation_allows_no_whole_share():
+    bars = [
+        make_bar(0, 100, 101, 99, 100),
+        make_bar(1, 101, 101.5, 100.5, 101),
+        make_bar(2, 102, 106, 101, 105),
+    ]
+    bars[1].volume = 9
+
+    assert simulate_trades(
+        bars, [make_signal(bars[0].timestamp)], slippage_pct=0
+    ) == []
+
+
+def test_participation_limit_can_be_explicitly_tightened():
+    bars = [
+        make_bar(0, 100, 101, 99, 100),
+        make_bar(1, 101, 101.5, 100.5, 101),
+        make_bar(2, 102, 106, 101, 105),
+    ]
+    bars[1].volume = 100
+
+    trades = simulate_trades(
+        bars, [make_signal(bars[0].timestamp)],
+        slippage_pct=0, max_participation=0.01,
+    )
+    assert len(trades) == 1
+    assert trades[0].quantity == 1
+
+
+@pytest.mark.parametrize("invalid", [
+    0, -0.1, 1.01, True, float("nan"), float("inf"), "0.1",
+])
+def test_invalid_participation_limit_fails_closed(invalid):
+    with pytest.raises(ValueError, match="maximum participation"):
+        simulate_trades([], [], max_participation=invalid)
+
+
+def test_no_entry_if_opening_range_implies_nonpositive_stop():
+    bars = [
+        make_bar(0, 100, 101, 99, 100),
+        make_bar(1, 101, 101.5, 100.5, 101),
+        make_bar(2, 102, 106, 101, 105),
+    ]
+    signal = make_signal(bars[0].timestamp)
+    signal.opening_range_high = 150
+    signal.opening_range_low = 1
+
+    assert simulate_trades(bars, [signal], slippage_pct=0) == []
