@@ -5,7 +5,7 @@ Paper simulation only. No broker connections or real orders.
 """
 
 from dataclasses import dataclass
-from datetime import time
+from datetime import datetime, time
 from math import isfinite
 from zoneinfo import ZoneInfo
 
@@ -51,6 +51,38 @@ def simulate_trades(
         raise ValueError("Invalid maximum exposure")
 
     bars = list(bars)
+    # Reject malformed or nonchronological direct simulator inputs.
+    # The CSV loader validates these too, but callers can pass bars directly.
+    previous_timestamp = None
+    for bar in bars:
+        timestamp = getattr(bar, "timestamp", None)
+        if (
+            not isinstance(timestamp, datetime)
+            or timestamp.tzinfo is None
+            or timestamp.utcoffset() is None
+        ):
+            raise ValueError("Bar timestamp must be timezone-aware")
+        if previous_timestamp is not None and timestamp <= previous_timestamp:
+            raise ValueError("Bar timestamps must be strictly increasing")
+        previous_timestamp = timestamp
+
+        prices = (
+            getattr(bar, "open", None),
+            getattr(bar, "high", None),
+            getattr(bar, "low", None),
+            getattr(bar, "close", None),
+        )
+        if any(
+            type(price) not in (int, float)
+            or not isfinite(price)
+            or price <= 0
+            for price in prices
+        ):
+            raise ValueError("Invalid simulated bar price")
+        opening, high, low, close = prices
+        if high < max(opening, close, low) or low > min(opening, close, high):
+            raise ValueError("Inconsistent simulated OHLC bar")
+
     signals_by_time = {
         signal.timestamp: signal for signal in signals
     }
