@@ -60,6 +60,9 @@ def generate_breakout_signals(bars):
         cumulative_volume += bar.volume
 
         if time(9, 30) <= clock < time(9, 45):
+            # A no-trade minute cannot establish a traded opening range.
+            if bar.volume <= 0:
+                continue
             opening_minutes.add((clock.hour, clock.minute))
 
             opening_high = (
@@ -79,6 +82,7 @@ def generate_breakout_signals(bars):
             and opening_high is not None
             and len(opening_minutes) == 15
             and cumulative_volume > 0
+            and bar.volume > 0  # No fillable breakout without a trade.
             and not signaled_today
         ):
             vwap = cumulative_price_volume / cumulative_volume
