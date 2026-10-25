@@ -67,16 +67,33 @@ def test_only_one_signal_per_day():
     assert len(generate_breakout_signals(bars)) == 1
 
 
-def test_requires_price_above_vwap():
+def test_zero_volume_breakout_cannot_generate_signal():
     bars = opening_range()
     bars.append(
         make_bar(9, 45, 102, high=102.5, low=101.5, volume=0)
     )
 
+    assert generate_breakout_signals(bars) == []
+
+
+def test_later_traded_breakout_after_zero_volume_minute():
+    bars = opening_range()
+    bars.append(make_bar(9, 45, 102, high=102.5, low=101.5, volume=0))
+    bars.append(make_bar(9, 46, 102, high=102.5, low=101.5, volume=1000))
+
     signals = generate_breakout_signals(bars)
 
     assert len(signals) == 1
+    assert signals[0].timestamp == bars[-1].timestamp
     assert signals[0].entry_price > signals[0].vwap
+
+
+def test_zero_volume_opening_minute_makes_range_incomplete():
+    bars = opening_range()
+    bars[5] = make_bar(9, 35, 100, high=101, low=99, volume=0)
+    bars.append(make_bar(9, 45, 102, high=102.5, low=101.5))
+
+    assert generate_breakout_signals(bars) == []
 
 
 def test_no_signal_before_market_open():
