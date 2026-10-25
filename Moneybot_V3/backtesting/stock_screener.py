@@ -8,6 +8,16 @@ from dataclasses import dataclass
 from math import isfinite
 
 
+def _finite_number(value):
+    """Fail closed on booleans, malformed numbers, and oversized integers."""
+    if type(value) not in (int, float):
+        return False
+    try:
+        return isfinite(value)
+    except (OverflowError, ValueError):
+        return False
+
+
 MIN_PRICE = 2.00
 MAX_PRICE = 30.00
 
@@ -40,7 +50,7 @@ def screen_stock(candidate):
 
     reasons = []
 
-    if not candidate.symbol or not candidate.symbol.strip():
+    if not isinstance(candidate.symbol, str) or not candidate.symbol.strip():
         reasons.append("Missing stock symbol")
 
     numeric_values = (
@@ -51,11 +61,7 @@ def screen_stock(candidate):
         candidate.ask,
     )
 
-    if not all(
-        isinstance(value, (int, float))
-        and isfinite(value)
-        for value in numeric_values
-    ):
+    if not all(_finite_number(value) for value in numeric_values):
         return ScreeningResult(
             symbol=candidate.symbol,
             qualifies=False,
@@ -76,6 +82,9 @@ def screen_stock(candidate):
 
     elif candidate.ask < candidate.bid:
         reasons.append("Ask price below bid price")
+
+    elif candidate.ask == candidate.bid:
+        reasons.append("Locked bid-ask quote")
 
     else:
         midpoint = (candidate.bid + candidate.ask) / 2
