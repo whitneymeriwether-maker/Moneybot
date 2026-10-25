@@ -269,3 +269,36 @@ def test_invalid_risk_percentage():
         assert False, "Expected ValueError"
     except ValueError:
         pass
+
+
+def test_session_rollover_uses_last_regular_bar_not_after_hours():
+    """An after-hours print must never determine a day-trade exit."""
+    bars = [
+        make_bar(0, 100, 101, 99, 100),
+        make_bar(1, 101, 101.5, 100.5, 101),
+        make_bar(435, 200, 201, 199, 200),  # 5:00 PM
+        make_bar(-45, 150, 151, 149, 150, day=13),  # 9:00 AM
+    ]
+    trades = simulate_trades(
+        bars, [make_signal(bars[0].timestamp)], slippage_pct=0
+    )
+    assert len(trades) == 1
+    assert trades[0].exit_reason == "session_end"
+    assert trades[0].exit_time == bars[1].timestamp
+    assert trades[0].exit_price == 101
+
+
+def test_data_end_uses_last_regular_bar_not_after_hours():
+    """End-of-file liquidation cannot use extended-hours prices."""
+    bars = [
+        make_bar(0, 100, 101, 99, 100),
+        make_bar(1, 101, 101.5, 100.5, 101),
+        make_bar(435, 200, 201, 199, 200),  # 5:00 PM
+    ]
+    trades = simulate_trades(
+        bars, [make_signal(bars[0].timestamp)], slippage_pct=0
+    )
+    assert len(trades) == 1
+    assert trades[0].exit_reason == "data_end"
+    assert trades[0].exit_time == bars[1].timestamp
+    assert trades[0].exit_price == 101
