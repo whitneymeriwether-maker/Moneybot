@@ -90,7 +90,11 @@ def get_latest_quote(symbol):
     )
 
     payload = _get_json(url)
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"Invalid quote response for {symbol}")
     quote_data = payload.get("quote") or {}
+    if not isinstance(quote_data, dict):
+        raise RuntimeError(f"Invalid quote response for {symbol}")
 
     bid = quote_data.get("bp")
     ask = quote_data.get("ap")
@@ -249,6 +253,12 @@ def get_stock_candidate(symbol, market_cap):
         market_cap, (int, float)
     ):
         raise ValueError("A numeric market cap is required")
+    try:
+        valid_market_cap = isfinite(market_cap) and market_cap > 0
+    except (OverflowError, ValueError):
+        valid_market_cap = False
+    if not valid_market_cap:
+        raise ValueError("A finite positive market cap is required")
 
     bars = get_recent_daily_bars(symbol)
 
@@ -266,9 +276,12 @@ def get_stock_candidate(symbol, market_cap):
     if datetime.now(timezone.utc) - latest_bar > timedelta(days=7):
         raise RuntimeError(f"Stale daily bars for {symbol}")
 
-    average_daily_volume = (
-        sum(float(bar["v"]) for bar in recent) / len(recent)
-    )
+    # Individually finite daily volumes can overflow when summed.
+    # Such data is unverified, not a confirmed liquidity-screen failure.
+    total_volume = sum(float(bar["v"]) for bar in recent)
+    average_daily_volume = total_volume / len(recent)
+    if not isfinite(average_daily_volume):
+        raise RuntimeError(f"Invalid daily volume average for {symbol}")
 
     price = float(recent[-1]["c"])
     bid, ask = get_latest_quote(symbol)
