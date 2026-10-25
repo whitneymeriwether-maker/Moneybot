@@ -87,14 +87,19 @@ def screen_stock(candidate):
         reasons.append("Locked bid-ask quote")
 
     else:
+        # Finite inputs can overflow when combined. Never interpret an
+        # infinite midpoint as a zero-percent spread and approve the stock.
         midpoint = (candidate.bid + candidate.ask) / 2
-
-        spread_pct = (
-            100 * (candidate.ask - candidate.bid) / midpoint
-        )
-
-        if spread_pct > MAX_SPREAD_PCT:
-            reasons.append("Bid-ask spread too wide")
+        if not isfinite(midpoint) or midpoint <= 0:
+            reasons.append("Invalid numeric market data")
+        else:
+            spread_pct = (
+                100 * (candidate.ask - candidate.bid) / midpoint
+            )
+            if not isfinite(spread_pct):
+                reasons.append("Invalid numeric market data")
+            elif spread_pct > MAX_SPREAD_PCT:
+                reasons.append("Bid-ask spread too wide")
 
     return ScreeningResult(
         symbol=candidate.symbol,
