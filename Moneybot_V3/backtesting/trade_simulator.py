@@ -29,8 +29,12 @@ def simulate_trades(
     starting_cash=1000.0,
     risk_per_trade=0.015,
     slippage_pct=0.001,
+    max_exposure=0.5,
 ):
-    """Simulate cash-funded long trades with same-day exits."""
+    """Simulate cash-funded long trades with same-day exits.
+
+    Cap gross notional at a fraction of current paper equity (cash when flat).
+    """
 
     if not isfinite(starting_cash) or starting_cash <= 0:
         raise ValueError("Invalid starting cash")
@@ -40,6 +44,11 @@ def simulate_trades(
 
     if not isfinite(slippage_pct) or not 0 <= slippage_pct < 1:
         raise ValueError("Invalid slippage")
+
+    if (type(max_exposure) not in (int, float)
+            or not isfinite(max_exposure)
+            or not 0 < max_exposure <= 1):
+        raise ValueError("Invalid maximum exposure")
 
     bars = list(bars)
     signals_by_time = {
@@ -138,10 +147,14 @@ def simulate_trades(
                 affordable_quantity = int(
                     cash / entry
                 )
+                exposure_quantity = int(
+                    cash * max_exposure / entry
+                )
 
                 quantity = min(
                     risk_quantity,
                     affordable_quantity,
+                    exposure_quantity,
                 )
 
                 if quantity > 0:

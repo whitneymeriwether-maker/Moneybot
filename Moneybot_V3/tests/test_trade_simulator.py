@@ -116,7 +116,7 @@ def test_position_sizing():
         slippage_pct=0,
     )
 
-    assert trades[0].quantity == 7
+    assert trades[0].quantity == 4  # 50% of $1,000 at $101/share
 
 
 def test_cash_limits_share_quantity():
@@ -135,7 +135,7 @@ def test_cash_limits_share_quantity():
     )
 
     assert len(trades) == 1
-    assert trades[0].quantity == 2
+    assert trades[0].quantity == 1  # 50% of $250 at $101/share
 
 
 def test_slippage_affects_affordability():
@@ -182,6 +182,7 @@ def test_cash_restored_after_sale():
         starting_cash=100,
         risk_per_trade=0.5,
         slippage_pct=0,
+        max_exposure=1.0,  # This test isolates cash restoration.
     )
 
     assert len(trades) == 2
@@ -302,3 +303,27 @@ def test_data_end_uses_last_regular_bar_not_after_hours():
     assert trades[0].exit_reason == "data_end"
     assert trades[0].exit_time == bars[1].timestamp
     assert trades[0].exit_price == 101
+
+
+def test_full_exposure_requires_explicit_override():
+    bars = [
+        make_bar(0, 100, 101, 99, 100),
+        make_bar(1, 101, 101.5, 100.5, 101),
+        make_bar(2, 102, 106, 101, 105),
+    ]
+    trades = simulate_trades(
+        bars, [make_signal(bars[0].timestamp)],
+        slippage_pct=0, max_exposure=1.0,
+    )
+    assert len(trades) == 1
+    assert trades[0].quantity == 7  # Risk budget binds, not cash.
+
+
+def test_invalid_exposure_cap_fails_closed():
+    for invalid in (0, -0.1, 1.01, True, float("nan"), float("inf"), "0.5"):
+        try:
+            simulate_trades([], [], max_exposure=invalid)
+        except ValueError as exc:
+            assert "maximum exposure" in str(exc)
+        else:
+            raise AssertionError(f"Accepted invalid exposure: {invalid!r}")
