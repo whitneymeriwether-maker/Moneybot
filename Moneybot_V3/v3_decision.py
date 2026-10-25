@@ -197,6 +197,11 @@ def validate_overnight_hold(sessions_held: int, proposed_exposure: float,
         return Decision(False, 'Daily realized-loss circuit breaker')
     if account.current_exposure > account.equity*policy.max_exposure:
         return Decision(False, 'Maximum portfolio exposure exceeded')
+    # An overnight hold must refer to an existing paper position. Never
+    # authorize holding more notional than the account currently owns.
+    # This is an advisory check; the paper engine must revalidate at close.
+    if proposed_exposure > account.current_exposure:
+        return Decision(False, 'Proposed hold exceeds existing paper exposure')
     if proposed_exposure > account.equity*policy.overnight_exposure:
         return Decision(False, 'Overnight exposure limit exceeded')
     return Decision(True, 'Eligible for paper overnight review only')
