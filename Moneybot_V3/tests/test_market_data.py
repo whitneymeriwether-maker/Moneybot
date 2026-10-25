@@ -382,3 +382,35 @@ def test_market_cap_cannot_be_boolean():
             "TEST",
             market_cap=True,
         )
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [None, [], "invalid", {"quote": [1]}, {"quote": "invalid"}],
+)
+def test_malformed_quote_response_fails_closed(monkeypatch, payload):
+    monkeypatch.setattr(market_data, "_get_json", lambda url: payload)
+
+    with pytest.raises(RuntimeError, match="Invalid quote response"):
+        market_data.get_latest_quote("TEST")
+
+
+def test_overflowed_daily_volume_average_is_unverified(monkeypatch):
+    # Every daily volume is finite, but the 20-day sum overflows.
+    monkeypatch.setattr(
+        market_data, "get_recent_daily_bars",
+        lambda symbol: make_daily_bars(volume=1e308),
+    )
+    monkeypatch.setattr(
+        market_data, "get_latest_quote",
+        lambda symbol: pytest.fail("Do not request a quote after bad volume"),
+    )
+
+    with pytest.raises(RuntimeError, match="Invalid daily volume average"):
+        market_data.get_stock_candidate("TEST", market_cap=1_000_000_000)
+
+
+@pytest.mark.parametrize("invalid_cap", [0, -1, float("nan"), float("inf"), 10 ** 400])
+def test_stock_candidate_rejects_nonfinite_or_nonpositive_market_cap(invalid_cap):
+    with pytest.raises(ValueError, match="finite positive market cap"):
+        market_data.get_stock_candidate("TEST", market_cap=invalid_cap)
