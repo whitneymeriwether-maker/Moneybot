@@ -5,6 +5,7 @@ All market data is simulated. No network requests or trades.
 """
 
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -398,3 +399,79 @@ def test_overflowed_quote_is_unverified_not_approved(monkeypatch):
     assert result.provisional is False
     assert result.data_unverified is True
     assert "Invalid numeric market data" in result.reasons
+
+
+def make_sec_fallback_bars(age_days=0, count=20):
+    """Generate recent weekday OHLCV bars without network access."""
+    dates = []
+    day = datetime.now(timezone.utc).date() - timedelta(days=age_days + 1)
+    while len(dates) < count:
+        if day.weekday() < 5:
+            dates.append(day)
+        day -= timedelta(days=1)
+
+    return [
+        {
+            "t": f"{day.isoformat()}T04:00:00Z",
+            "o": 12.0,
+            "h": 12.2,
+            "l": 11.8,
+            "c": 12.0,
+            "v": 2_000_000,
+        }
+        for day in reversed(dates)
+    ]
+
+
+def test_sec_fallback_uses_validated_recent_closing_price(monkeypatch):
+    monkeypatch.setattr(
+        research_scanner,
+        "get_recent_daily_bars",
+        lambda symbol: make_sec_fallback_bars(),
+    )
+    calls = []
+
+    def fake_estimate(symbol, price):
+        calls.append((symbol, price))
+        return {"estimated_market_cap": 500_000_000}
+
+    monkeypatch.setattr(
+        research_scanner, "estimate_market_cap", fake_estimate
+    )
+
+    result = research_scanner._estimate_using_sec("TEST")
+
+    assert result["estimated_market_cap"] == 500_000_000
+    assert calls == [("TEST", 12.0)]
+
+
+@pytest.mark.parametrize(
+    "problem,expected_error",
+    [
+        ("stale", "Stale Alpaca daily price"),
+        ("short", "Not enough recent Alpaca daily bars"),
+        ("malformed", "Invalid daily bar"),
+    ],
+)
+def test_sec_fallback_rejects_unreliable_price_before_estimate(
+    monkeypatch, problem, expected_error
+):
+    bars = make_sec_fallback_bars(age_days=30 if problem == "stale" else 0)
+    if problem == "short":
+        bars = bars[-19:]
+    elif problem == "malformed":
+        bars[-1]["c"] = -12.0
+
+    monkeypatch.setattr(
+        research_scanner, "get_recent_daily_bars", lambda symbol: bars
+    )
+
+    def should_not_estimate(symbol, price):
+        pytest.fail("SEC estimate must not use unreliable Alpaca prices")
+
+    monkeypatch.setattr(
+        research_scanner, "estimate_market_cap", should_not_estimate
+    )
+
+    with pytest.raises(RuntimeError, match=expected_error):
+        research_scanner._estimate_using_sec("TEST")
