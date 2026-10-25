@@ -147,14 +147,26 @@ def validate_overnight_hold(sessions_held: int, proposed_exposure: float,
         return Decision(False, 'Maximum holding period reached')
     if not isinstance(thesis, str) or not thesis.strip() or not _valid_evidence(evidence_ids):
         return Decision(False, 'Overnight thesis and evidence required')
-    values = (proposed_exposure, account.equity, account.peak_equity)
-    if any(type(value) not in (int, float) or not isfinite(value) for value in values):
+    # Apply the same account-integrity and daily-loss checks used for
+    # entries. A hold must not bypass the paper account's risk stops.
+    values = (
+        proposed_exposure, account.cash, account.equity,
+        account.current_exposure, account.realized_pnl_today,
+        account.starting_equity, account.peak_equity,
+    )
+    if not all(_finite_number(value) for value in values):
         return Decision(False, 'Invalid exposure or equity')
-    if (account.equity <= 0 or account.peak_equity <= 0
-            or account.peak_equity < account.equity or proposed_exposure < 0):
+    if (account.cash < 0 or account.equity <= 0
+            or account.current_exposure < 0 or account.starting_equity <= 0
+            or account.peak_equity <= 0 or account.peak_equity < account.equity
+            or proposed_exposure <= 0):
         return Decision(False, 'Invalid exposure or equity')
     if account.equity <= account.peak_equity*(1-policy.max_drawdown):
         return Decision(False, 'Maximum portfolio drawdown reached')
+    if account.realized_pnl_today <= -account.starting_equity*policy.daily_loss_limit:
+        return Decision(False, 'Daily realized-loss circuit breaker')
+    if account.current_exposure > account.equity*policy.max_exposure:
+        return Decision(False, 'Maximum portfolio exposure exceeded')
     if proposed_exposure > account.equity*policy.overnight_exposure:
         return Decision(False, 'Overnight exposure limit exceeded')
     return Decision(True, 'Eligible for paper overnight review only')
