@@ -674,3 +674,83 @@ def test_simulator_rejects_overflowed_target_before_opening_position():
             bars, [signal], starting_cash=1.6e308,
             risk_per_trade=1.0, max_exposure=1.0, slippage_pct=0,
         )
+
+
+@pytest.mark.parametrize("invalid", [
+    0, -0.01, 1.01, True, float("nan"), float("inf"), "0.03",
+])
+def test_invalid_daily_loss_limit_fails_closed(invalid):
+    with pytest.raises(ValueError, match="Invalid daily loss limit"):
+        simulate_trades([], [], daily_loss_limit=invalid)
+
+
+def _daily_stop_bars(day=12):
+    """One losing position, then a second entry opportunity that day."""
+    bars = [
+        make_bar(0, 100, 101, 99, 100, day=day),
+        make_bar(1, 100, 101, 99, 100, day=day),
+        make_bar(2, 89, 90, 88, 89, day=day),
+        make_bar(3, 100, 101, 99, 100, day=day),
+        make_bar(4, 100, 101, 99, 100, day=day),
+        make_bar(5, 100, 101, 99, 100, day=day),
+    ]
+    return bars
+
+
+def _daily_stop_signal(timestamp):
+    signal = make_signal(timestamp)
+    signal.opening_range_high = 110.0
+    signal.opening_range_low = 100.0
+    return signal
+
+
+def test_daily_loss_circuit_breaker_blocks_later_same_day_entry():
+    bars = _daily_stop_bars()
+    signals = [
+        _daily_stop_signal(bars[0].timestamp),
+        _daily_stop_signal(bars[3].timestamp),
+    ]
+    trades = simulate_trades(
+        bars, signals, slippage_pct=0, risk_per_trade=0.10,
+        max_exposure=1.0,
+    )
+    assert len(trades) == 1
+    assert trades[0].exit_reason == "stop"
+    assert trades[0].quantity == 10
+    assert (trades[0].exit_price - trades[0].entry_price) * 10 == -110
+
+
+def test_daily_loss_circuit_breaker_resets_on_new_session():
+    first_day = _daily_stop_bars()
+    second_day = [
+        make_bar(0, 100, 101, 99, 100, day=13),
+        make_bar(1, 100, 101, 99, 100, day=13),
+        make_bar(2, 100, 101, 99, 100, day=13),
+    ]
+    bars = first_day + second_day
+    signals = [
+        _daily_stop_signal(first_day[0].timestamp),
+        _daily_stop_signal(first_day[3].timestamp),
+        _daily_stop_signal(second_day[0].timestamp),
+    ]
+    trades = simulate_trades(
+        bars, signals, slippage_pct=0, risk_per_trade=0.10,
+        max_exposure=1.0,
+    )
+    assert len(trades) == 2
+    assert trades[0].exit_reason == "stop"
+    assert trades[1].entry_time == second_day[1].timestamp
+    assert trades[1].exit_reason == "data_end"
+
+
+def test_daily_loss_limit_can_be_tightened_for_paper_research():
+    bars = _daily_stop_bars()
+    signals = [
+        _daily_stop_signal(bars[0].timestamp),
+        _daily_stop_signal(bars[3].timestamp),
+    ]
+    # The first loss is $110. Both default and tighter limits halt trading.
+    assert len(simulate_trades(
+        bars, signals, slippage_pct=0, risk_per_trade=0.10,
+        max_exposure=1.0, daily_loss_limit=0.01,
+    )) == 1
