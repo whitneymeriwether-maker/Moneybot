@@ -82,6 +82,9 @@ def simulate_trades(
         opening, high, low, close = prices
         if high < max(opening, close, low) or low > min(opening, close, high):
             raise ValueError("Inconsistent simulated OHLC bar")
+        volume = getattr(bar, "volume", None)
+        if type(volume) is not int or volume < 0:
+            raise ValueError("Invalid simulated bar volume")
 
     # Direct callers may supply externally constructed signals rather than
     # signals produced by our historical scanner. Reject invalid or ambiguous
@@ -166,6 +169,14 @@ def simulate_trades(
                 last_regular_bar = None
 
         if not (time(9, 30) <= clock < time(16, 0)):
+            previous_bar = bar
+            continue
+
+        # A zero-volume minute contains no observable trades: it cannot
+        # provide an entry, stop, target, or end-of-day fill. Retain the
+        # last tradeable regular-session bar for conservative data-end exits.
+        if bar.volume == 0:
+            pending = None
             previous_bar = bar
             continue
 
