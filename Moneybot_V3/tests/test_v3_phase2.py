@@ -252,3 +252,21 @@ def test_malformed_paper_objects_fail_closed():
     assert not validate_paper_entry(C, None, A).approved
     assert not validate_paper_entry(C, P, None).approved
     assert not validate_overnight_hold(1, 100, None, 'Thesis', ('sec:123',)).approved
+
+
+def test_evaluator_rejects_oversized_integers_without_crashing():
+    huge = 10 ** 400
+    with pytest.raises(ValueError, match='Starting capital'):
+        evaluate_closed_trades([], huge)
+    with pytest.raises(ValueError, match='Trade PnL'):
+        evaluate_closed_trades([ClosedTrade('AMD', huge, 'a', 'b')], 1000)
+
+
+def test_evaluator_rejects_nonfinite_gross_pnl_even_if_equity_is_finite():
+    trades = [
+        ClosedTrade('AMD', pnl, 'a', 'b')
+        for _ in range(5)
+        for pnl in (4e307, -4e307)
+    ]
+    with pytest.raises(ValueError, match='Non-finite aggregate PnL'):
+        evaluate_closed_trades(trades, 1e308)
