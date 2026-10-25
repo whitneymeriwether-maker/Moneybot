@@ -90,3 +90,32 @@ def test_rejects_overflowed_backtest_equity():
     with pytest.raises(ValueError, match="Non-finite trade arithmetic"):
         backtest([Trade(entry_price=1, exit_price=1e308, quantity=1)],
                  starting_cash=1e308, slippage_pct=0)
+
+
+def test_rejects_nonfinite_return_percentage_with_finite_cash():
+    # Dollar PnL remains finite, but percentage return overflows.
+    with pytest.raises(ValueError, match="Non-finite backtest performance metric"):
+        backtest(
+            [Trade(entry_price=1e-300, exit_price=1e100, quantity=1)],
+            starting_cash=1e-300, slippage_pct=0,
+        )
+
+
+def test_rejects_nonfinite_closed_trade_drawdown():
+    # A very large exit fee can produce an unrepresentable drawdown.
+    with pytest.raises(ValueError, match="Non-finite backtest drawdown"):
+        backtest(
+            [Trade(entry_price=1e-300, exit_price=1e-300, quantity=1,
+                   exit_fee=1e100)],
+            starting_cash=1e-300, slippage_pct=0,
+        )
+
+
+def test_rejects_overflowed_drawdown_percentage():
+    # The ratio itself fits in a float, but percentage conversion does not.
+    with pytest.raises(ValueError, match="Non-finite backtest performance metric"):
+        backtest(
+            [Trade(entry_price=1e-300, exit_price=1e-300, quantity=1,
+                   exit_fee=1e307)],
+            starting_cash=1e-1, slippage_pct=0,
+        )
