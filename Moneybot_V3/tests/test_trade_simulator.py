@@ -594,7 +594,7 @@ def test_simulator_rejects_oversized_volume_without_overflow():
 def test_simulator_rejects_nonfinite_entry_from_slippage():
     bars = [
         make_bar(0, 100, 101, 99, 100),
-        make_bar(1, 1e308, 1e308, 1e308, 1e308),
+        make_bar(1, 1.5e308, 1.5e308, 1.5e308, 1.5e308),
     ]
     with pytest.raises(ValueError, match="Non-finite simulated trade arithmetic"):
         simulate_trades(
@@ -620,7 +620,7 @@ def test_simulator_rejects_overflowed_position_sizing():
 def test_simulator_rejects_overflowed_exit_proceeds():
     bars = [
         make_bar(0, 1, 2, 1, 1),
-        make_bar(1, 1, 1.1, 0.9, 1),
+        make_bar(1, 1, 1.1, 1, 1),
         make_bar(2, 1e308, 1e308, 1e308, 1e308),
     ]
     signal = make_signal(bars[0].timestamp)
