@@ -74,6 +74,19 @@ def test_overnight_rejects_zero_proposed_exposure():
     assert decision.reason == 'Invalid exposure or equity'
 
 
+def test_risk_gates_reject_oversized_integers_without_crashing():
+    huge = 10 ** 400
+    assert validate_paper_entry(replace(C, price=huge), P, A).reason == 'Invalid numerical input'
+    assert validate_paper_entry(C, P, replace(A, cash=huge)).reason == 'Invalid numerical input'
+    assert validate_paper_entry(C, P, A, RiskPolicy(max_exposure=huge)).reason == 'Invalid risk policy'
+    assert validate_overnight_hold(
+        1, huge, A, 'Thesis', ('sec:123',)
+    ).reason == 'Invalid exposure or equity'
+    assert validate_overnight_hold(
+        1, 200, replace(A, peak_equity=huge), 'Thesis', ('sec:123',)
+    ).reason == 'Invalid exposure or equity'
+
+
 def test_overnight_rejects_existing_overexposure():
     account = replace(A, current_exposure=600)
     decision = validate_overnight_hold(1, 200, account, 'Thesis', ('sec:123',))
