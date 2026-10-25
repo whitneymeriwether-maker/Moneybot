@@ -425,3 +425,73 @@ def test_valid_signal_still_simulates_after_validation():
     trades = simulate_trades(bars, [make_signal(bars[0].timestamp)], slippage_pct=0)
     assert len(trades) == 1
     assert trades[0].quantity == 4
+
+
+@pytest.mark.parametrize("invalid", [-1, 1.5, True, None, "1000"])
+def test_simulator_rejects_invalid_bar_volume(invalid):
+    bar = make_bar(0, 100, 101, 99, 100)
+    bar.volume = invalid
+    with pytest.raises(ValueError, match="Invalid simulated bar volume"):
+        simulate_trades([bar], [])
+
+
+def test_zero_volume_entry_bar_cannot_fill():
+    bars = [
+        make_bar(0, 100, 101, 99, 100),
+        make_bar(1, 101, 102, 100, 101),
+        make_bar(2, 101, 102, 100, 101),
+    ]
+    bars[1].volume = 0
+
+    assert simulate_trades(
+        bars, [make_signal(bars[0].timestamp)], slippage_pct=0
+    ) == []
+
+
+def test_zero_volume_signal_bar_cannot_trigger_entry():
+    bars = [
+        make_bar(0, 100, 101, 99, 100),
+        make_bar(1, 101, 102, 100, 101),
+    ]
+    bars[0].volume = 0
+
+    assert simulate_trades(
+        bars, [make_signal(bars[0].timestamp)], slippage_pct=0
+    ) == []
+
+
+def test_zero_volume_bar_cannot_trigger_target_exit():
+    bars = [
+        make_bar(0, 100, 101, 99, 100),
+        make_bar(1, 101, 101.5, 100.5, 101),
+        make_bar(2, 101, 110, 100, 101),
+        make_bar(3, 101, 102, 100, 101),
+    ]
+    bars[2].volume = 0
+
+    trades = simulate_trades(
+        bars, [make_signal(bars[0].timestamp)], slippage_pct=0
+    )
+
+    assert len(trades) == 1
+    assert trades[0].exit_reason == "data_end"
+    assert trades[0].exit_time == bars[3].timestamp
+    assert trades[0].exit_price == 101
+
+
+def test_data_end_uses_last_traded_bar_not_zero_volume_bar():
+    bars = [
+        make_bar(0, 100, 101, 99, 100),
+        make_bar(1, 101, 101.5, 100.5, 101),
+        make_bar(2, 200, 201, 199, 200),
+    ]
+    bars[2].volume = 0
+
+    trades = simulate_trades(
+        bars, [make_signal(bars[0].timestamp)], slippage_pct=0
+    )
+
+    assert len(trades) == 1
+    assert trades[0].exit_reason == "data_end"
+    assert trades[0].exit_time == bars[1].timestamp
+    assert trades[0].exit_price == 101
