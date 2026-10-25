@@ -128,13 +128,38 @@ def validate_paper_entry(candidate: Candidate, proposal: AIProposal,
     if account.realized_pnl_today <= -account.starting_equity * policy.daily_loss_limit:
         return Decision(False, 'Daily realized-loss circuit breaker')
     distance = max(candidate.atr, candidate.price * .002)
-    headroom = max(0.0, account.equity * policy.max_exposure - account.current_exposure)
-    quantity = min(int(account.equity * policy.risk_per_trade / distance),
-                   int(headroom / candidate.price), int(account.cash / candidate.price))
+    risk_budget = account.equity * policy.risk_per_trade
+    exposure_limit = account.equity * policy.max_exposure
+    headroom = max(0.0, exposure_limit - account.current_exposure)
+    if not all(_finite_number(v) and v >= 0 for v in (
+        distance, risk_budget, exposure_limit, headroom,
+    )):
+        return Decision(False, 'Non-finite paper sizing arithmetic')
+
+    # Validate floating-point ratios before converting to whole shares.
+    # Tiny prices or stop distances can overflow to infinity despite every
+    # original market/account input being individually finite.
+    share_limits = (
+        risk_budget / distance,
+        headroom / candidate.price,
+        account.cash / candidate.price,
+    )
+    if not all(_finite_number(v) and v >= 0 for v in share_limits):
+        return Decision(False, 'Non-finite paper sizing arithmetic')
+    quantity = min(int(v) for v in share_limits)
     if quantity <= 0:
         return Decision(False, 'Insufficient risk budget, exposure headroom, or cash')
-    return Decision(True, 'Approved for paper simulation only', quantity,
-                    candidate.price-distance, candidate.price+2*distance)
+
+    stop = candidate.price - distance
+    target = candidate.price + 2 * distance
+    notional = quantity * candidate.price
+    if (
+        not all(_finite_number(v) and v > 0 for v in (stop, target, notional))
+        or notional > account.cash
+        or notional > headroom
+    ):
+        return Decision(False, 'Non-finite paper sizing arithmetic')
+    return Decision(True, 'Approved for paper simulation only', quantity, stop, target)
 
 
 def validate_overnight_hold(sessions_held: int, proposed_exposure: float,
