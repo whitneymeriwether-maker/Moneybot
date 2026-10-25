@@ -582,3 +582,51 @@ def test_no_entry_if_opening_range_implies_nonpositive_stop():
 def test_rejects_malformed_simulation_parameters(parameter, value, expected):
     with pytest.raises(ValueError, match=expected):
         simulate_trades([], [], **{parameter: value})
+
+
+def test_simulator_rejects_oversized_volume_without_overflow():
+    bar = make_bar(0, 100, 101, 99, 100)
+    bar.volume = 10 ** 400
+    with pytest.raises(ValueError, match="Invalid simulated bar volume"):
+        simulate_trades([bar], [])
+
+
+def test_simulator_rejects_nonfinite_entry_from_slippage():
+    bars = [
+        make_bar(0, 100, 101, 99, 100),
+        make_bar(1, 1e308, 1e308, 1e308, 1e308),
+    ]
+    with pytest.raises(ValueError, match="Non-finite simulated trade arithmetic"):
+        simulate_trades(
+            bars, [make_signal(bars[0].timestamp)],
+            starting_cash=1e308, slippage_pct=0.5,
+        )
+
+
+def test_simulator_rejects_overflowed_position_sizing():
+    bars = [
+        make_bar(0, 1e-300, 2e-300, 1e-300, 1.5e-300),
+        make_bar(1, 1.5e-300, 1.6e-300, 1.4e-300, 1.5e-300),
+    ]
+    signal = make_signal(bars[0].timestamp)
+    signal.opening_range_high = 1.5e-300
+    signal.opening_range_low = 1e-300
+    with pytest.raises(ValueError, match="Non-finite simulated trade arithmetic"):
+        simulate_trades(
+            bars, [signal], starting_cash=1e308, slippage_pct=0,
+        )
+
+
+def test_simulator_rejects_overflowed_exit_proceeds():
+    bars = [
+        make_bar(0, 1, 2, 1, 1),
+        make_bar(1, 1, 1.1, 0.9, 1),
+        make_bar(2, 1e308, 1e308, 1e308, 1e308),
+    ]
+    signal = make_signal(bars[0].timestamp)
+    signal.opening_range_high = 1.01
+    signal.opening_range_low = 1
+    with pytest.raises(ValueError, match="Non-finite simulated trade arithmetic"):
+        simulate_trades(
+            bars, [signal], starting_cash=1e308, slippage_pct=0,
+        )
