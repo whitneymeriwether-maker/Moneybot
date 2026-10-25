@@ -30,10 +30,13 @@ def simulate_trades(
     risk_per_trade=0.015,
     slippage_pct=0.001,
     max_exposure=0.5,
+    max_participation=0.10,
 ):
     """Simulate cash-funded long trades with same-day exits.
 
-    Cap gross notional at a fraction of current paper equity (cash when flat).
+    Cap gross notional and entry size relative to observed minute volume.
+
+    Exit fills remain simplified; this is not an execution-quality model.
     """
 
     if not isfinite(starting_cash) or starting_cash <= 0:
@@ -49,6 +52,11 @@ def simulate_trades(
             or not isfinite(max_exposure)
             or not 0 < max_exposure <= 1):
         raise ValueError("Invalid maximum exposure")
+
+    if (type(max_participation) not in (int, float)
+            or not isfinite(max_participation)
+            or not 0 < max_participation <= 1):
+        raise ValueError("Invalid maximum participation")
 
     bars = list(bars)
     # Reject malformed or nonchronological direct simulator inputs.
@@ -205,6 +213,13 @@ def simulate_trades(
                     entry * 0.002,
                 )
 
+                # An extreme opening-range gap can put the proposed
+                # stop at or below zero. Do not simulate such an entry.
+                if stop_distance >= entry:
+                    pending = None
+                    previous_bar = bar
+                    continue
+
                 risk_budget = cash * risk_per_trade
 
                 risk_quantity = int(
@@ -217,11 +232,17 @@ def simulate_trades(
                 exposure_quantity = int(
                     cash * max_exposure / entry
                 )
+                # A minute with only a handful of shares traded cannot
+                # support an arbitrarily large simulated market entry.
+                # This caps ENTRY size only; exits still need a fuller
+                # liquidity and partial-fill model before deployment.
+                volume_quantity = int(bar.volume * max_participation)
 
                 quantity = min(
                     risk_quantity,
                     affordable_quantity,
                     exposure_quantity,
+                    volume_quantity,
                 )
 
                 if quantity > 0:
