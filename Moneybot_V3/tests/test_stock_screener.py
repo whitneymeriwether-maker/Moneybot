@@ -166,3 +166,29 @@ def test_multiple_rejection_reasons():
 
     assert result.qualifies is False
     assert len(result.reasons) == 4
+
+
+@pytest.mark.parametrize("field,invalid", [
+    ("price", True),
+    ("average_daily_volume", False),
+    ("market_cap", 10 ** 400),
+    ("bid", 10 ** 400),
+    ("ask", "12.00"),
+])
+def test_screener_rejects_malformed_or_oversized_numbers(field, invalid):
+    result = screen_stock(make_candidate(**{field: invalid}))
+    assert result.qualifies is False
+    assert "Invalid numeric market data" in result.reasons
+
+
+@pytest.mark.parametrize("symbol", [None, 123, "   "])
+def test_screener_rejects_malformed_symbols_without_crashing(symbol):
+    result = screen_stock(make_candidate(symbol=symbol))
+    assert result.qualifies is False
+    assert "Missing stock symbol" in result.reasons
+
+
+def test_locked_quote_is_not_a_tradable_spread():
+    result = screen_stock(make_candidate(bid=12.00, ask=12.00))
+    assert result.qualifies is False
+    assert "Locked bid-ask quote" in result.reasons
