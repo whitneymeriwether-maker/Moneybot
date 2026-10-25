@@ -99,7 +99,7 @@ def simulate_trades(
         if high < max(opening, close, low) or low > min(opening, close, high):
             raise ValueError("Inconsistent simulated OHLC bar")
         volume = getattr(bar, "volume", None)
-        if type(volume) is not int or volume < 0:
+        if type(volume) is not int or volume < 0 or not _finite_number(volume):
             raise ValueError("Invalid simulated bar volume")
 
     # Direct callers may supply externally constructed signals rather than
@@ -145,8 +145,12 @@ def simulate_trades(
         exit_price = price * (1 - slippage_pct)
         quantity = position["quantity"]
 
-        # Return the proceeds from selling the shares.
-        cash += exit_price * quantity
+        # Reject arithmetic overflow rather than recording a fictitious
+        # profitable fill or contaminating subsequent paper-account state.
+        proceeds = exit_price * quantity
+        if not isfinite(proceeds) or not isfinite(cash + proceeds):
+            raise ValueError("Non-finite simulated trade arithmetic")
+        cash += proceeds
 
         completed.append(
             SimulatedTrade(
@@ -214,6 +218,8 @@ def simulate_trades(
                 and minutes_since_signal == 1
             ):
                 entry = bar.open * (1 + slippage_pct)
+                if not isfinite(entry):
+                    raise ValueError("Non-finite simulated trade arithmetic")
 
                 stop_distance = max(
                     pending.opening_range_high
@@ -230,21 +236,23 @@ def simulate_trades(
 
                 risk_budget = cash * risk_per_trade
 
-                risk_quantity = int(
-                    risk_budget / stop_distance
-                )
+                # Each ratio must be finite before int() conversion:
+                # tiny positive prices/stops can overflow otherwise.
+                risk_shares = risk_budget / stop_distance
+                affordable_shares = cash / entry
+                exposure_shares = cash * max_exposure / entry
+                volume_shares = bar.volume * max_participation
+                if not all(isfinite(value) for value in (
+                    risk_shares, affordable_shares,
+                    exposure_shares, volume_shares,
+                )):
+                    raise ValueError("Non-finite simulated trade arithmetic")
 
-                affordable_quantity = int(
-                    cash / entry
-                )
-                exposure_quantity = int(
-                    cash * max_exposure / entry
-                )
-                # A minute with only a handful of shares traded cannot
-                # support an arbitrarily large simulated market entry.
-                # This caps ENTRY size only; exits still need a fuller
-                # liquidity and partial-fill model before deployment.
-                volume_quantity = int(bar.volume * max_participation)
+                risk_quantity = int(risk_shares)
+                affordable_quantity = int(affordable_shares)
+                exposure_quantity = int(exposure_shares)
+                # This caps ENTRY size only; exit liquidity remains simplified.
+                volume_quantity = int(volume_shares)
 
                 quantity = min(
                     risk_quantity,
@@ -255,6 +263,8 @@ def simulate_trades(
 
                 if quantity > 0:
                     purchase_cost = entry * quantity
+                    if not isfinite(purchase_cost):
+                        raise ValueError("Non-finite simulated trade arithmetic")
 
                     # Reserve the cost of purchased shares.
                     cash -= purchase_cost
