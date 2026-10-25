@@ -51,6 +51,9 @@ def simulate_trades(
     position = None
     pending = None
     previous_bar = None
+    # Retain the last REGULAR-session bar for conservative liquidation.
+    # Premarket/after-hours prices must not silently become exit fills.
+    last_regular_bar = None
 
     def close_position(bar, price, reason):
         nonlocal position, cash
@@ -89,16 +92,19 @@ def simulate_trades(
             if day != previous_day:
                 if position is not None:
                     close_position(
-                        previous_bar,
-                        previous_bar.close,
+                        last_regular_bar,
+                        last_regular_bar.close,
                         "session_end",
                     )
 
                 pending = None
+                last_regular_bar = None
 
         if not (time(9, 30) <= clock < time(16, 0)):
             previous_bar = bar
             continue
+
+        last_regular_bar = bar
 
         if pending is not None and position is None:
             signal_day = (
@@ -201,10 +207,10 @@ def simulate_trades(
 
         previous_bar = bar
 
-    if position is not None and previous_bar is not None:
+    if position is not None and last_regular_bar is not None:
         close_position(
-            previous_bar,
-            previous_bar.close,
+            last_regular_bar,
+            last_regular_bar.close,
             "data_end",
         )
 
