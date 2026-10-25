@@ -12,6 +12,7 @@ Research only. No brokerage orders or live trading.
 """
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from math import isfinite
 
 from backtesting.download_data import validate_symbol
@@ -20,6 +21,8 @@ from backtesting.market_cap_data import (
     get_market_cap,
 )
 from backtesting.market_data import (
+    _parse_quote_timestamp,
+    _validate_daily_bars,
     get_recent_daily_bars,
     get_stock_candidate,
 )
@@ -54,18 +57,22 @@ def _estimate_using_sec(symbol):
 
     bars = get_recent_daily_bars(symbol)
 
-    if not bars:
+    # The SEC fallback must not bypass the daily-bar integrity and
+    # freshness checks applied to the primary research candidate.
+    # An outdated or malformed closing price would contaminate even
+    # a provisional market-cap estimate.
+    if len(bars) < 20:
         raise RuntimeError(
-            f"No recent Alpaca daily prices for {symbol}"
+            f"Not enough recent Alpaca daily bars for {symbol}"
         )
 
-    price = float(bars[-1]["c"])
+    recent = bars[-20:]
+    _validate_daily_bars(recent, symbol)
+    latest_bar = _parse_quote_timestamp(recent[-1]["t"])
+    if datetime.now(timezone.utc) - latest_bar > timedelta(days=7):
+        raise RuntimeError(f"Stale Alpaca daily price for {symbol}")
 
-    if not isfinite(price) or price <= 0:
-        raise ValueError(
-            f"Invalid Alpaca closing price for {symbol}"
-        )
-
+    price = float(recent[-1]["c"])
     return estimate_market_cap(symbol, price)
 
 
