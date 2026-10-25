@@ -113,3 +113,87 @@ def test_strategy_comparison_rejects_invalid_pnl():
     trades = [ClosedTrade('AMD', float('nan'), 'a', 'b')]
     with pytest.raises(ValueError, match='Trade PnL'):
         compare_paper_strategies([], trades, 1000)
+
+
+@pytest.mark.parametrize('field,invalid', [
+    ('price', True), ('price', '100'), ('atr', None),
+    ('relative_volume', '2'), ('relative_volume', float('inf')),
+])
+def test_entry_rejects_malformed_market_numbers(field, invalid):
+    decision = validate_paper_entry(replace(C, **{field: invalid}), P, A)
+    assert not decision.approved
+    assert decision.reason == 'Invalid numerical input'
+
+
+@pytest.mark.parametrize('field,invalid', [
+    ('cash', True), ('equity', '1000'), ('current_exposure', None),
+    ('realized_pnl_today', float('nan')), ('peak_equity', float('inf')),
+])
+def test_entry_rejects_malformed_account_numbers(field, invalid):
+    decision = validate_paper_entry(C, P, replace(A, **{field: invalid}))
+    assert not decision.approved
+    assert decision.reason == 'Invalid numerical input'
+
+
+def test_entry_rejects_nonpositive_stop():
+    decision = validate_paper_entry(replace(C, atr=100), P, A)
+    assert not decision.approved
+    assert decision.reason == 'Stop would be non-positive'
+
+
+@pytest.mark.parametrize('invalid', [True, 60.0, None, '60'])
+def test_entry_rejects_invalid_data_age_type(invalid):
+    assert not validate_paper_entry(replace(C, data_age_seconds=invalid), P, A).approved
+
+
+@pytest.mark.parametrize('invalid', [None, 12, ''])
+def test_entry_rejects_invalid_symbol_type(invalid):
+    assert not validate_paper_entry(replace(C, symbol=invalid), P, A).approved
+
+
+def test_entry_rejects_invalid_timestamp_type():
+    assert not validate_paper_entry(replace(C, timestamp='2026-10-14'), P, A).approved
+
+
+@pytest.mark.parametrize('field', ['opening_range_breakout', 'above_vwap', 'ema9_above_ema20'])
+def test_entry_requires_boolean_true_signals(field):
+    assert not validate_paper_entry(replace(C, **{field: 1}), P, A).approved
+
+
+@pytest.mark.parametrize('field,invalid', [
+    ('thesis', None), ('risks', None), ('evidence_ids', ('',)),
+    ('evidence_ids', (None,)), ('evidence_ids', 'source:123'),
+])
+def test_entry_rejects_malformed_reasoning(field, invalid):
+    assert not validate_paper_entry(C, replace(P, **{field: invalid}), A).approved
+
+
+@pytest.mark.parametrize('invalid', [True, None, '0.7'])
+def test_entry_rejects_malformed_confidence(invalid):
+    assert not validate_paper_entry(C, replace(P, confidence=invalid), A).approved
+
+
+@pytest.mark.parametrize('policy', [
+    RiskPolicy(risk_per_trade=float('inf')),
+    RiskPolicy(max_exposure=1.5),
+    RiskPolicy(overnight_exposure=.75),
+    RiskPolicy(max_data_age_seconds=-1),
+    RiskPolicy(max_holding_sessions=True),
+])
+def test_invalid_risk_policy_blocks_entry_and_overnight(policy):
+    entry = validate_paper_entry(C, P, A, policy)
+    hold = validate_overnight_hold(1, 100, A, 'Verified catalyst', ('sec:123',), policy)
+    assert not entry.approved and entry.reason == 'Invalid risk policy'
+    assert not hold.approved and hold.reason == 'Invalid risk policy'
+
+
+@pytest.mark.parametrize('invalid', [(' ',), (None,), 'sec:123', []])
+def test_overnight_rejects_malformed_evidence(invalid):
+    assert not validate_overnight_hold(1, 100, A, 'Verified catalyst', invalid).approved
+
+
+def test_malformed_paper_objects_fail_closed():
+    assert not validate_paper_entry(None, P, A).approved
+    assert not validate_paper_entry(C, None, A).approved
+    assert not validate_paper_entry(C, P, None).approved
+    assert not validate_overnight_hold(1, 100, None, 'Thesis', ('sec:123',)).approved

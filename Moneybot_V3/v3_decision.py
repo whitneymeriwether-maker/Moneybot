@@ -54,26 +54,63 @@ class Decision:
     target: float = 0.0
 
 
+
+def _finite_number(value):
+    """Reject booleans and malformed numeric data before risk calculations."""
+    return type(value) in (int, float) and isfinite(value)
+
+
+def _valid_policy(policy):
+    """Fail closed on nonsensical paper-risk settings."""
+    if not isinstance(policy, RiskPolicy):
+        return False
+    fractions = (
+        policy.risk_per_trade, policy.daily_loss_limit, policy.max_exposure,
+        policy.max_drawdown, policy.overnight_exposure,
+    )
+    return (
+        all(_finite_number(value) and 0 < value <= 1 for value in fractions)
+        and policy.overnight_exposure <= policy.max_exposure
+        and type(policy.max_holding_sessions) is int
+        and policy.max_holding_sessions >= 1
+        and type(policy.max_data_age_seconds) is int
+        and policy.max_data_age_seconds >= 0
+    )
+
+
+def _valid_evidence(evidence_ids):
+    return (
+        isinstance(evidence_ids, tuple)
+        and bool(evidence_ids)
+        and all(isinstance(item, str) and bool(item.strip()) for item in evidence_ids)
+    )
+
 def validate_paper_entry(candidate: Candidate, proposal: AIProposal,
                          account: PaperAccount, policy: RiskPolicy = RiskPolicy()) -> Decision:
     """Advisory gate only; real paper engine must recheck atomically before a fill."""
-    if candidate.timestamp.tzinfo is None or candidate.timestamp.utcoffset() is None:
+    if not _valid_policy(policy):
+        return Decision(False, 'Invalid risk policy')
+    if not isinstance(candidate, Candidate) or not isinstance(proposal, AIProposal) or not isinstance(account, PaperAccount):
+        return Decision(False, 'Invalid paper decision input')
+    if not isinstance(candidate.timestamp, datetime) or candidate.timestamp.tzinfo is None or candidate.timestamp.utcoffset() is None:
         return Decision(False, 'Timezone-aware timestamp required')
-    if not candidate.symbol or not candidate.symbol.isascii() or not candidate.symbol.replace('.', '').isalpha():
+    if not isinstance(candidate.symbol, str) or not candidate.symbol or not candidate.symbol.isascii() or not candidate.symbol.replace('.', '').isalpha():
         return Decision(False, 'Invalid symbol')
-    if not 0 <= candidate.data_age_seconds <= policy.max_data_age_seconds:
+    if type(candidate.data_age_seconds) is not int or not 0 <= candidate.data_age_seconds <= policy.max_data_age_seconds:
         return Decision(False, 'Stale or future market data')
     values = (candidate.price, candidate.atr, candidate.relative_volume, proposal.confidence,
               account.cash, account.equity, account.current_exposure,
               account.realized_pnl_today, account.starting_equity, account.peak_equity)
-    if not all(isfinite(v) for v in values) or candidate.price <= 0 or candidate.atr <= 0:
+    if not all(_finite_number(v) for v in values) or candidate.price <= 0 or candidate.atr <= 0:
         return Decision(False, 'Invalid numerical input')
-    if not (candidate.opening_range_breakout and candidate.above_vwap and
-            candidate.relative_volume >= 1.5 and candidate.ema9_above_ema20):
+    if candidate.atr >= candidate.price:
+        return Decision(False, 'Stop would be non-positive')
+    if not (candidate.opening_range_breakout is True and candidate.above_vwap is True and
+            candidate.relative_volume >= 1.5 and candidate.ema9_above_ema20 is True):
         return Decision(False, 'Opening-range breakout criteria not satisfied')
     if proposal.action != 'BUY':
         return Decision(False, f'AI decision: {proposal.action}')
-    if not proposal.thesis.strip() or not proposal.risks.strip() or not proposal.evidence_ids:
+    if not isinstance(proposal.thesis, str) or not proposal.thesis.strip() or not isinstance(proposal.risks, str) or not proposal.risks.strip() or not _valid_evidence(proposal.evidence_ids):
         return Decision(False, 'Missing auditable reasoning or evidence')
     if not 0 <= proposal.confidence <= 1:
         return Decision(False, 'Invalid confidence')
@@ -102,9 +139,13 @@ def validate_overnight_hold(sessions_held: int, proposed_exposure: float,
     """Independent overnight gate. This does not implement end-of-day execution."""
     # A missing or malformed account state must never authorize an
     # overnight paper hold. Booleans are not monetary values.
+    if not _valid_policy(policy):
+        return Decision(False, 'Invalid risk policy')
+    if not isinstance(account, PaperAccount):
+        return Decision(False, 'Invalid paper account')
     if type(sessions_held) is not int or sessions_held < 1 or sessions_held >= policy.max_holding_sessions:
         return Decision(False, 'Maximum holding period reached')
-    if not isinstance(thesis, str) or not thesis.strip() or not evidence_ids:
+    if not isinstance(thesis, str) or not thesis.strip() or not _valid_evidence(evidence_ids):
         return Decision(False, 'Overnight thesis and evidence required')
     values = (proposed_exposure, account.equity, account.peak_equity)
     if any(type(value) not in (int, float) or not isfinite(value) for value in values):
