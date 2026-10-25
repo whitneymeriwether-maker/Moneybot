@@ -3,6 +3,17 @@ from dataclasses import dataclass
 from math import isfinite
 from statistics import mean
 
+
+def _finite_number(value):
+    """Reject booleans, malformed numbers, and integers too large for float."""
+    if type(value) not in (int, float):
+        return False
+    try:
+        return isfinite(value)
+    except (OverflowError, ValueError):
+        return False
+
+
 @dataclass(frozen=True)
 class ClosedTrade:
     symbol: str
@@ -17,18 +28,13 @@ def evaluate_closed_trades(trades: list[ClosedTrade], starting_capital: float) -
     The caller must use point-in-time data and independently model fees,
     slippage, unfilled orders, splits, and overnight gaps.
     """
-    if (isinstance(starting_capital, bool)
-            or not isinstance(starting_capital, (int, float))
-            or not isfinite(starting_capital)
-            or starting_capital <= 0):
+    if not _finite_number(starting_capital) or starting_capital <= 0:
         raise ValueError('Starting capital must be finite and positive')
     equity = peak = starting_capital
     max_drawdown = 0.0
     pnls = []
     for trade in trades:
-        if (isinstance(trade.pnl, bool)
-                or not isinstance(trade.pnl, (int, float))
-                or not isfinite(trade.pnl)):
+        if not _finite_number(trade.pnl):
             raise ValueError('Trade PnL must be a finite number')
         equity += trade.pnl
         if not isfinite(equity):
@@ -38,15 +44,23 @@ def evaluate_closed_trades(trades: list[ClosedTrade], starting_capital: float) -
         pnls.append(trade.pnl)
     wins = [p for p in pnls if p > 0]
     losses = [p for p in pnls if p < 0]
+    net_pnl = sum(pnls)
+    gross_wins = sum(wins)
+    gross_losses = sum(losses)
+    if not all(isfinite(value) for value in (net_pnl, gross_wins, gross_losses)):
+        raise ValueError('Non-finite aggregate PnL')
+    profit_factor = gross_wins / abs(gross_losses) if losses else None
+    if profit_factor is not None and not isfinite(profit_factor):
+        raise ValueError('Non-finite profit factor')
     return {
         'trade_count': len(pnls),
         'ending_equity': round(equity, 2),
-        'net_pnl': round(sum(pnls), 2),
-        'return_pct': round(100 * sum(pnls)/starting_capital, 3),
+        'net_pnl': round(net_pnl, 2),
+        'return_pct': round(100 * net_pnl/starting_capital, 3),
         'win_rate_pct': round(100*len(wins)/len(pnls), 2) if pnls else None,
         'expectancy_per_trade': round(mean(pnls), 2) if pnls else None,
         'max_closed_trade_drawdown_pct': round(max_drawdown*100, 3),
-        'profit_factor': round(sum(wins)/abs(sum(losses)), 3) if losses else None,
+        'profit_factor': round(profit_factor, 3) if losses else None,
     }
 
 
