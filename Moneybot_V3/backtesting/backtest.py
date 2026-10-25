@@ -76,24 +76,29 @@ def backtest(trades, starting_cash=1000.0, slippage_pct=0.001):
         completed += 1
         wins += pnl > 0
         peak = max(peak, cash)
-        max_drawdown = max(
-            max_drawdown, (peak - cash) / peak
-        )
+        drawdown = (peak - cash) / peak
+        if not isfinite(drawdown):
+            raise ValueError("Non-finite backtest drawdown")
+        max_drawdown = max(max_drawdown, drawdown)
         results.append(round(pnl, 2))
+
+    # A finite cash balance can still produce infinite percentage metrics
+    # when starting capital is tiny. Never report an unrepresentable return.
+    net_profit = cash - starting_cash
+    return_pct = 100 * (cash / starting_cash - 1)
+    drawdown_pct = 100 * max_drawdown
+    if not all(isfinite(v) for v in (net_profit, return_pct, drawdown_pct)):
+        raise ValueError("Non-finite backtest performance metric")
 
     return {
         "starting_cash": round(starting_cash, 2),
         "ending_cash": round(cash, 2),
-        "net_profit": round(cash - starting_cash, 2),
-        "return_pct": round(
-            100 * (cash / starting_cash - 1), 2
-        ),
+        "net_profit": round(net_profit, 2),
+        "return_pct": round(return_pct, 2),
         "completed_trades": completed,
         "win_rate_pct": round(
             100 * wins / completed, 2
         ) if completed else 0.0,
-        "max_closed_trade_drawdown_pct": round(
-            100 * max_drawdown, 2
-        ),
+        "max_closed_trade_drawdown_pct": round(drawdown_pct, 2),
         "trade_pnl": results,
     }
