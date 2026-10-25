@@ -2,6 +2,9 @@
 """Tests for Moneybot V3's historical trade simulator."""
 
 from datetime import datetime, timedelta
+from dataclasses import replace
+
+import pytest
 from pathlib import Path
 import sys
 from types import SimpleNamespace
@@ -327,3 +330,41 @@ def test_invalid_exposure_cap_fails_closed():
             assert "maximum exposure" in str(exc)
         else:
             raise AssertionError(f"Accepted invalid exposure: {invalid!r}")
+
+
+def test_simulator_rejects_out_of_order_and_duplicate_bars():
+    bars = [
+        make_bar(0, 100, 101, 99, 100),
+        make_bar(1, 101, 102, 100, 101),
+    ]
+    for invalid_bars in (list(reversed(bars)), [bars[0], bars[0]]):
+        with pytest.raises(ValueError, match="strictly increasing"):
+            simulate_trades(invalid_bars, [], slippage_pct=0)
+
+
+def test_simulator_rejects_naive_bar_timestamp():
+    bar = make_bar(0, 100, 101, 99, 100)
+    bar.timestamp = bar.timestamp.replace(tzinfo=None)
+    with pytest.raises(ValueError, match="timezone-aware"):
+        simulate_trades([bar], [])
+
+
+@pytest.mark.parametrize("field,value", [
+    ("open", float("nan")),
+    ("high", float("inf")),
+    ("low", 0),
+    ("close", True),
+    ("close", "100"),
+])
+def test_simulator_rejects_invalid_bar_prices(field, value):
+    bar = make_bar(0, 100, 101, 99, 100)
+    setattr(bar, field, value)
+    with pytest.raises(ValueError, match="Invalid simulated bar price"):
+        simulate_trades([bar], [])
+
+
+def test_simulator_rejects_inconsistent_ohlc():
+    bar = make_bar(0, 100, 101, 99, 100)
+    bar.high = 99.5
+    with pytest.raises(ValueError, match="Inconsistent simulated OHLC"):
+        simulate_trades([bar], [])
