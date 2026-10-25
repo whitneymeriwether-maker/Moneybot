@@ -2,8 +2,6 @@
 """Tests for Moneybot V3's historical trade simulator."""
 
 from datetime import datetime, timedelta
-from dataclasses import replace
-
 import pytest
 from pathlib import Path
 import sys
