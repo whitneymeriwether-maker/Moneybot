@@ -657,3 +657,20 @@ def test_simulator_rejects_subminute_signal_timestamp():
     signal = make_signal(bar.timestamp + timedelta(seconds=30))
     with pytest.raises(ValueError, match="Signal timestamp must be minute-aligned"):
         simulate_trades([bar], [signal])
+
+
+def test_simulator_rejects_overflowed_target_before_opening_position():
+    """A finite entry and stop can still produce an infinite 2R target."""
+    bars = [
+        make_bar(0, 8e307, 8e307, 8e307, 8e307),
+        make_bar(1, 8e307, 8e307, 8e307, 8e307),
+    ]
+    signal = make_signal(bars[0].timestamp)
+    signal.opening_range_high = 8e307
+    signal.opening_range_low = 1e307
+
+    with pytest.raises(ValueError, match="Non-finite simulated trade arithmetic"):
+        simulate_trades(
+            bars, [signal], starting_cash=1.6e308,
+            risk_per_trade=1.0, max_exposure=1.0, slippage_pct=0,
+        )
