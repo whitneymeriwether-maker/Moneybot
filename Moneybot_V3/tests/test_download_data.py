@@ -195,3 +195,34 @@ def test_invalid_download_does_not_overwrite_good_csv(monkeypatch, tmp_path):
 
     assert output.read_text(encoding="utf-8") == "existing verified history"
     assert sorted(path.name for path in output_dir.iterdir()) == [output.name]
+
+def test_download_rejects_naive_timestamp_without_overwriting_csv(monkeypatch, tmp_path):
+    # A timezone-free API timestamp must not silently inherit runner local time.
+    output_dir = tmp_path / "Moneybot_V3" / "data"
+    output_dir.mkdir(parents=True)
+    output = output_dir / "SPY_1min_2026_04_to_09.csv"
+    output.write_text("existing verified history", encoding="utf-8")
+    mock_download(
+        monkeypatch, tmp_path,
+        [{"bars": {"SPY": [sample_bar("2026-04-01T13:30:00")]},
+          "next_page_token": None}],
+    )
+
+    with pytest.raises(ValueError, match="timestamp must include timezone"):
+        download_history("SPY")
+
+    assert output.read_text(encoding="utf-8") == "existing verified history"
+    assert sorted(path.name for path in output_dir.iterdir()) == [output.name]
+
+
+def test_download_normalizes_explicit_offset_to_utc(monkeypatch, tmp_path):
+    mock_download(
+        monkeypatch, tmp_path,
+        [{"bars": {"SPY": [sample_bar("2026-04-01T09:30:00-04:00")]},
+          "next_page_token": None}],
+    )
+
+    output = download_history("SPY")
+    assert output.read_text(encoding="utf-8").splitlines()[1].startswith(
+        "2026-04-01T13:30:00+00:00,"
+    )

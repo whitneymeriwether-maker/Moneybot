@@ -167,7 +167,12 @@ def download_history(symbol=None):
             for bar in bars:
                 timestamp = datetime.fromisoformat(
                     bar["t"].replace("Z", "+00:00")
-                ).astimezone(timezone.utc)
+                )
+                # Never infer a missing timezone from the CI runner's
+                # local clock. Alpaca bars must carry an explicit offset.
+                if timestamp.tzinfo is None or timestamp.utcoffset() is None:
+                    raise ValueError("Historical bar timestamp must include timezone")
+                timestamp = timestamp.astimezone(timezone.utc)
 
                 writer.writerow([
                     timestamp.isoformat(),
