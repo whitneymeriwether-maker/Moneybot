@@ -192,3 +192,16 @@ def test_locked_quote_is_not_a_tradable_spread():
     result = screen_stock(make_candidate(bid=12.00, ask=12.00))
     assert result.qualifies is False
     assert "Locked bid-ask quote" in result.reasons
+
+
+@pytest.mark.parametrize(
+    "bid,ask",
+    [
+        (1e308, 1.01e308),  # The midpoint addition overflows.
+        (1e308, 1.7e308),   # The spread numerator also overflows.
+    ],
+)
+def test_finite_quote_inputs_cannot_overflow_into_a_false_pass(bid, ask):
+    result = screen_stock(make_candidate(bid=bid, ask=ask))
+    assert result.qualifies is False
+    assert "Invalid numeric market data" in result.reasons
