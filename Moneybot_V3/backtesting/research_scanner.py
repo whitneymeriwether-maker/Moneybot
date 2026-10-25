@@ -158,12 +158,31 @@ def scan_stock(symbol, market_cap=None):
             if reason not in inconclusive_reasons
         )
 
-        # Confirmed failures take precedence over inconclusive
-        # IEX observations. Never promote uncertain data to PASS.
+        # A genuine price or market-cap failure is a REJECT, but malformed
+        # quote/volume inputs are missing evidence, not a verified failure.
+        # Keep the conservative precedence when both are present.
+        data_quality_reasons = {
+            "Invalid numeric market data",
+            "Invalid bid or ask",
+            "Ask price below bid price",
+            "Locked bid-ask quote",
+        }
+        confirmed_failures = tuple(
+            reason for reason in reasons
+            if reason not in data_quality_reasons
+        )
+        if confirmed_failures:
+            return ResearchResult(
+                symbol=symbol,
+                qualifies=False,
+                reasons=confirmed_failures + estimate_details,
+            )
+
         if reasons:
             return ResearchResult(
                 symbol=symbol,
                 qualifies=False,
+                data_unverified=True,
                 reasons=reasons + estimate_details,
             )
 
