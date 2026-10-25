@@ -620,7 +620,7 @@ def test_simulator_rejects_overflowed_position_sizing():
 def test_simulator_rejects_overflowed_exit_proceeds():
     bars = [
         make_bar(0, 1, 2, 1, 1),
-        make_bar(1, 1, 1.1, 1, 1),
+        make_bar(1, 1, 1, 1, 1),
         make_bar(2, 1e308, 1e308, 1e308, 1e308),
     ]
     signal = make_signal(bars[0].timestamp)
