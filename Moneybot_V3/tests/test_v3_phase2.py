@@ -47,6 +47,48 @@ def test_overnight_requires_evidence_and_caps_exposure():
 def test_overnight_two_day_limit():
     assert not validate_overnight_hold(2, 100, A, 'Still strong', ('filing:123',)).approved
 
+def test_overnight_daily_loss_circuit_breaker():
+    account = replace(A, realized_pnl_today=-30)
+    decision = validate_overnight_hold(1, 200, account, 'Thesis', ('sec:123',))
+    assert not decision.approved
+    assert decision.reason == 'Daily realized-loss circuit breaker'
+
+
+@pytest.mark.parametrize('field,invalid', [
+    ('cash', -1), ('cash', True), ('cash', float('nan')),
+    ('current_exposure', -1), ('current_exposure', '100'),
+    ('realized_pnl_today', float('inf')),
+    ('starting_equity', 0), ('starting_equity', None),
+    ('equity', '1000'),
+])
+def test_overnight_rejects_malformed_account_state(field, invalid):
+    account = replace(A, **{field: invalid})
+    decision = validate_overnight_hold(1, 200, account, 'Thesis', ('sec:123',))
+    assert not decision.approved
+    assert decision.reason == 'Invalid exposure or equity'
+
+
+def test_overnight_rejects_zero_proposed_exposure():
+    decision = validate_overnight_hold(1, 0, A, 'Thesis', ('sec:123',))
+    assert not decision.approved
+    assert decision.reason == 'Invalid exposure or equity'
+
+
+def test_overnight_rejects_existing_overexposure():
+    account = replace(A, current_exposure=600)
+    decision = validate_overnight_hold(1, 200, account, 'Thesis', ('sec:123',))
+    assert not decision.approved
+    assert decision.reason == 'Maximum portfolio exposure exceeded'
+
+
+def test_overnight_accepts_zero_cash_with_valid_existing_hold():
+    account = replace(A, cash=0, current_exposure=200)
+    assert validate_overnight_hold(
+        1, 200, account, 'Thesis', ('sec:123',)
+    ).approved
+
+
+
 @pytest.mark.parametrize('peak', [0, -100, 900, float('nan'), float('inf'), True])
 def test_overnight_rejects_invalid_peak_equity(peak):
     account = replace(A, peak_equity=peak)
