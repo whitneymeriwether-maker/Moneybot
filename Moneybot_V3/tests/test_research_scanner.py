@@ -180,6 +180,7 @@ def test_both_market_cap_sources_unavailable(monkeypatch):
         True,
         float("nan"),
         float("inf"),
+        10 ** 400,
         "1000000000",
     ],
 )

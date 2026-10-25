@@ -30,6 +30,16 @@ from backtesting.sec_market_cap import (
 from backtesting.stock_screener import screen_stock
 
 
+def _finite_number(value):
+    """Accept only finite numeric market-cap inputs, including huge-int safety."""
+    if type(value) not in (int, float):
+        return False
+    try:
+        return isfinite(value)
+    except (OverflowError, ValueError):
+        return False
+
+
 @dataclass(frozen=True)
 class ResearchResult:
     symbol: str
@@ -114,12 +124,7 @@ def scan_stock(symbol, market_cap=None):
                     ),
                 )
 
-    if (
-        isinstance(market_cap, bool)
-        or not isinstance(market_cap, (int, float))
-        or not isfinite(market_cap)
-        or market_cap <= 0
-    ):
+    if not _finite_number(market_cap) or market_cap <= 0:
         return ResearchResult(
             symbol=symbol,
             qualifies=False,
