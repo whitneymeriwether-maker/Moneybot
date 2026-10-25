@@ -386,3 +386,15 @@ def test_print_results(capsys):
     assert "MAYBE: PROVISIONAL" in output
     assert "UNKNOWN: DATA UNVERIFIED" in output
     assert "BAD: REJECT" in output
+
+
+def test_overflowed_quote_is_unverified_not_approved(monkeypatch):
+    # A finite bid and ask can produce an infinite computed midpoint.
+    fake_stock_data(monkeypatch, bid=1e308, ask=1.01e308)
+    result = research_scanner.scan_stock(
+        "TEST", market_cap=1_000_000_000,
+    )
+    assert result.qualifies is False
+    assert result.provisional is False
+    assert result.data_unverified is True
+    assert "Invalid numeric market data" in result.reasons
