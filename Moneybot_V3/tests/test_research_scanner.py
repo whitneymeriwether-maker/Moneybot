@@ -149,7 +149,37 @@ def test_sec_estimate_outside_market_cap_range(monkeypatch):
 
     assert result.qualifies is False
     assert result.provisional is False
-    assert "Market cap outside research range" in result.reasons
+    assert result.data_unverified is True
+    assert any("estimated market cap outside research range" in reason
+               for reason in result.reasons)
+    assert any("verified market cap unavailable" in reason
+               for reason in result.reasons)
+
+
+def test_verified_market_cap_outside_range_is_rejected(monkeypatch):
+    fake_stock_data(monkeypatch)
+
+    result = research_scanner.scan_stock(
+        "TEST", market_cap=100_000_000,
+    )
+
+    assert result.qualifies is False
+    assert result.provisional is False
+    assert result.data_unverified is False
+    assert result.reasons == ("Market cap outside research range",)
+
+
+def test_confirmed_price_failure_overrides_out_of_range_sec_estimate(monkeypatch):
+    fake_fmp_failure(monkeypatch)
+    fake_sec_estimate(monkeypatch, market_cap=100_000_000)
+    fake_stock_data(monkeypatch, price=1.50)
+
+    result = research_scanner.scan_stock("TEST")
+
+    assert result.qualifies is False
+    assert result.provisional is False
+    assert result.data_unverified is False
+    assert "Price outside $2-$30 range" in result.reasons
 
 
 def test_both_market_cap_sources_unavailable(monkeypatch):

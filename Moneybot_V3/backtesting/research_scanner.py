@@ -165,7 +165,19 @@ def scan_stock(symbol, market_cap=None):
             if reason not in inconclusive_reasons
         )
 
-        # A genuine price or market-cap failure is a REJECT, but malformed
+        # An SEC/Alpaca market-cap estimate is provisional evidence.
+        # It cannot prove that a stock is outside the verified cap range.
+        # A separately verified price failure still takes precedence.
+        estimated_cap_outside_range = (
+            estimated and "Market cap outside research range" in reasons
+        )
+        if estimated_cap_outside_range:
+            reasons = tuple(
+                reason for reason in reasons
+                if reason != "Market cap outside research range"
+            )
+
+        # A verified price/cap failure is a REJECT, but malformed
         # quote/volume inputs are missing evidence, not a verified failure.
         # Keep the conservative precedence when both are present.
         data_quality_reasons = {
@@ -185,12 +197,19 @@ def scan_stock(symbol, market_cap=None):
                 reasons=confirmed_failures + estimate_details,
             )
 
-        if reasons:
+        if reasons or estimated_cap_outside_range:
+            cap_uncertainty = (
+                (
+                    "SEC/Alpaca estimated market cap outside research range; "
+                    "verified market cap unavailable",
+                )
+                if estimated_cap_outside_range else ()
+            )
             return ResearchResult(
                 symbol=symbol,
                 qualifies=False,
                 data_unverified=True,
-                reasons=reasons + estimate_details,
+                reasons=reasons + cap_uncertainty + estimate_details,
             )
 
         if low_iex_volume or wide_iex_spread:
