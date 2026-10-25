@@ -366,3 +366,62 @@ def test_simulator_rejects_inconsistent_ohlc():
     bar.high = 99.5
     with pytest.raises(ValueError, match="Inconsistent simulated OHLC"):
         simulate_trades([bar], [])
+
+
+
+@pytest.mark.parametrize("invalid", [
+    None,
+    "2026-10-12T09:45:00",
+    datetime(2026, 10, 12, 9, 45),
+])
+def test_simulator_rejects_invalid_signal_timestamp(invalid):
+    bars = [
+        make_bar(0, 100, 101, 99, 100),
+        make_bar(1, 101, 101.5, 100.5, 101),
+    ]
+    signal = make_signal(invalid)
+    with pytest.raises(ValueError, match="Signal timestamp must be timezone-aware"):
+        simulate_trades(bars, [signal], slippage_pct=0)
+
+
+@pytest.mark.parametrize("high,low", [
+    (float("nan"), 99.0),
+    (float("inf"), 99.0),
+    (101.0, float("-inf")),
+    (101.0, -1.0),
+    (101.0, 0.0),
+    (99.0, 99.0),
+    (98.0, 99.0),
+    (True, 99.0),
+    (101.0, "99"),
+])
+def test_simulator_rejects_invalid_signal_opening_range(high, low):
+    bars = [
+        make_bar(0, 100, 101, 99, 100),
+        make_bar(1, 101, 101.5, 100.5, 101),
+    ]
+    signal = make_signal(bars[0].timestamp)
+    signal.opening_range_high = high
+    signal.opening_range_low = low
+    with pytest.raises(ValueError, match="Invalid opening range in signal"):
+        simulate_trades(bars, [signal], slippage_pct=0)
+
+
+def test_simulator_rejects_duplicate_signal_timestamps():
+    bars = [
+        make_bar(0, 100, 101, 99, 100),
+        make_bar(1, 101, 101.5, 100.5, 101),
+    ]
+    signals = [make_signal(bars[0].timestamp), make_signal(bars[0].timestamp)]
+    with pytest.raises(ValueError, match="Duplicate signal timestamp"):
+        simulate_trades(bars, signals, slippage_pct=0)
+
+
+def test_valid_signal_still_simulates_after_validation():
+    bars = [
+        make_bar(0, 100, 101, 99, 100),
+        make_bar(1, 101, 101.5, 100.5, 101),
+    ]
+    trades = simulate_trades(bars, [make_signal(bars[0].timestamp)], slippage_pct=0)
+    assert len(trades) == 1
+    assert trades[0].quantity == 4
