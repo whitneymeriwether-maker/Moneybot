@@ -283,6 +283,31 @@ def test_confirmed_price_failure_overrides_wide_iex_spread(monkeypatch):
     assert result.reasons == ("Price outside $2-$30 range",)
 
 
+@pytest.mark.parametrize(
+    'invalid_quote', [
+        {'average_daily_volume': float('nan')},
+        {'bid': 0},
+        {'bid': 12.10, 'ask': 12.00},
+        {'bid': 12.00, 'ask': 12.00},
+    ],
+)
+def test_malformed_market_data_is_unverified(monkeypatch, invalid_quote):
+    fake_stock_data(monkeypatch, **invalid_quote)
+    result = research_scanner.scan_stock('TEST', market_cap=1_000_000_000)
+    assert result.qualifies is False
+    assert result.provisional is False
+    assert result.data_unverified is True
+    assert result.reasons
+
+
+def test_confirmed_price_failure_overrides_invalid_quote(monkeypatch):
+    fake_stock_data(monkeypatch, price=1.50, bid=0)
+    result = research_scanner.scan_stock('TEST', market_cap=1_000_000_000)
+    assert result.qualifies is False
+    assert result.data_unverified is False
+    assert result.reasons == ('Price outside $2-$30 range',)
+
+
 def test_market_data_failure_unverified(monkeypatch):
     def unavailable(symbol, market_cap):
         raise RuntimeError("Simulated Alpaca outage")
