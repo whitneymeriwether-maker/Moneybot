@@ -14,6 +14,18 @@ sys.path.insert(0, str(V3_FOLDER))
 from backtesting.pipeline import run_backtest
 
 
+# Official NYSE 2026 equity-market closures within this research window:
+# https://www.nyse.com/trade/hours-calendars (checked October 26, 2026).
+# No scheduled early closes occur in this April-September span.
+NYSE_2026_APR_SEP_CLOSED_SESSIONS = frozenset({
+    date(2026, 4, 3),   # Good Friday
+    date(2026, 5, 25),  # Memorial Day
+    date(2026, 6, 19),  # Juneteenth
+    date(2026, 7, 3),   # Independence Day (observed)
+    date(2026, 9, 7),   # Labor Day
+})
+
+
 def main():
     data_file = (
         V3_FOLDER
@@ -42,6 +54,7 @@ def main():
         require_full_regular_sessions=True,
         expected_session_span=(date(2026, 4, 1), date(2026, 9, 30)),
         minimum_observed_sessions=120,
+        closed_sessions=NYSE_2026_APR_SEP_CLOSED_SESSIONS,
     )
 
     print("OVERALL PERFORMANCE")

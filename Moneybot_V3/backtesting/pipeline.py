@@ -5,7 +5,7 @@ Research only. Does not connect to a broker or place orders.
 """
 
 from dataclasses import dataclass
-from datetime import date, time
+from datetime import date, time, timedelta
 from zoneinfo import ZoneInfo
 
 from backtesting.historical_data import load_price_bars
@@ -78,11 +78,14 @@ def validate_regular_session_coverage(bars):
 
 def validate_research_window(
     bars, first_session, last_session, minimum_observed_sessions=1,
+    closed_sessions=None,
 ):
-    """Fail closed on truncated or mislabeled multi-session research files.
+    """Validate expected session dates for a research window.
 
-    Session endpoints are explicitly supplied trading dates; this check
-    cannot identify missing interior dates without an exchange calendar.
+    Without closed_sessions, only endpoints and a coarse session count are
+    checked. Supplying an explicit exchange-closure calendar requires every
+    other weekday in the span and rejects prints on listed closed days.
+    This does not authenticate the calendar or historical market data.
     """
     if (
         type(first_session) is not date
@@ -95,6 +98,18 @@ def validate_research_window(
         or minimum_observed_sessions < 1
     ):
         raise ValueError("Invalid minimum observed sessions")
+
+    if closed_sessions is not None:
+        if type(closed_sessions) not in (tuple, list, set, frozenset):
+            raise ValueError("Invalid exchange closure calendar")
+        if any(
+            type(day) is not date
+            or day < first_session
+            or day > last_session
+            or day.weekday() >= 5
+            for day in closed_sessions
+        ) or len(set(closed_sessions)) != len(closed_sessions):
+            raise ValueError("Invalid exchange closure calendar")
 
     sessions = set()
     for bar in bars:
@@ -113,6 +128,22 @@ def validate_research_window(
             "Insufficient observed sessions in historical research window: "
             f"{len(sessions)} < {minimum_observed_sessions}"
         )
+
+    if closed_sessions is not None:
+        closed = set(closed_sessions)
+        expected = set()
+        for offset in range((last_session - first_session).days + 1):
+            day = first_session + timedelta(days=offset)
+            if day.weekday() < 5 and day not in closed:
+                expected.add(day)
+        if sessions != expected:
+            missing = sorted(expected - sessions)
+            unexpected = sorted(sessions - expected)
+            raise ValueError(
+                "Research session calendar mismatch: "
+                f"missing {len(missing)} session(s) {missing[:3]}, "
+                f"unexpected {len(unexpected)} session(s) {unexpected[:3]}"
+            )
 
 
 @dataclass(frozen=True)
@@ -146,6 +177,7 @@ def run_backtest(
     require_full_regular_sessions=False,
     expected_session_span=None,
     minimum_observed_sessions=1,
+    closed_sessions=None,
 ):
     """Load prices, validate requested session coverage, then simulate."""
 
@@ -159,6 +191,8 @@ def run_backtest(
     if expected_session_span is None:
         if minimum_observed_sessions != 1:
             raise ValueError("Minimum observed sessions requires a session span")
+        if closed_sessions is not None:
+            raise ValueError("Exchange closure calendar requires a session span")
     elif (
         type(expected_session_span) is not tuple
         or len(expected_session_span) != 2
@@ -173,6 +207,7 @@ def run_backtest(
         validate_research_window(
             bars, *expected_session_span,
             minimum_observed_sessions=minimum_observed_sessions,
+            closed_sessions=closed_sessions,
         )
     signals = generate_breakout_signals(bars)
 
