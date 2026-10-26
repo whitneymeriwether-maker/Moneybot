@@ -66,8 +66,11 @@ def _estimate_using_sec(symbol):
             f"Not enough recent Alpaca daily bars for {symbol}"
         )
 
+    # Validate the complete response before choosing the latest 20 bars.
+    # A corrupt or duplicate older observation must not be hidden by the
+    # slice when the primary FMP provider is unavailable.
+    _validate_daily_bars(bars, symbol)
     recent = bars[-20:]
-    _validate_daily_bars(recent, symbol)
     latest_bar = _parse_quote_timestamp(recent[-1]["t"])
     if datetime.now(timezone.utc) - latest_bar > timedelta(days=7):
         raise RuntimeError(f"Stale Alpaca daily price for {symbol}")

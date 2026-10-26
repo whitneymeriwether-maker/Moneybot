@@ -505,3 +505,56 @@ def test_sec_fallback_rejects_unreliable_price_before_estimate(
 
     with pytest.raises(RuntimeError, match=expected_error):
         research_scanner._estimate_using_sec("TEST")
+
+
+@pytest.mark.parametrize("problem", ["malformed_older", "duplicate_older"])
+def test_sec_fallback_rejects_bad_history_outside_recent_twenty(
+    monkeypatch, problem,
+):
+    # Both records are excluded from bars[-20:], but must still be
+    # validated before an SEC market-cap estimate uses Alpaca's price.
+    bars = make_sec_fallback_bars(count=21)
+    if problem == "malformed_older":
+        bars[0]["v"] = -1
+    else:
+        bars[0]["t"] = bars[1]["t"]
+
+    monkeypatch.setattr(
+        research_scanner, "get_recent_daily_bars", lambda symbol: bars,
+    )
+    monkeypatch.setattr(
+        research_scanner, "estimate_market_cap",
+        lambda symbol, price: pytest.fail(
+            "SEC estimate must not use partially invalid history"
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="Invalid daily bar"):
+        research_scanner._estimate_using_sec("TEST")
+
+
+def test_sec_fallback_failure_classifies_as_unverified(monkeypatch):
+    fake_fmp_failure(monkeypatch)
+    bars = make_sec_fallback_bars(count=21)
+    bars[0]["v"] = -1
+    monkeypatch.setattr(
+        research_scanner, "get_recent_daily_bars", lambda symbol: bars,
+    )
+    monkeypatch.setattr(
+        research_scanner, "estimate_market_cap",
+        lambda symbol, price: pytest.fail(
+            "Unverified price must not reach SEC estimation"
+        ),
+    )
+    monkeypatch.setattr(
+        research_scanner, "get_stock_candidate",
+        lambda symbol, market_cap: pytest.fail(
+            "Unverified SEC fallback must not screen a candidate"
+        ),
+    )
+
+    result = research_scanner.scan_stock("TEST")
+    assert result.qualifies is False
+    assert result.provisional is False
+    assert result.data_unverified is True
+    assert any("Invalid daily bar" in reason for reason in result.reasons)
