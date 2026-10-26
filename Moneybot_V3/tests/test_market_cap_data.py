@@ -185,3 +185,56 @@ def test_http_error_rejected_without_exposing_key(monkeypatch):
 def test_invalid_symbol_rejected():
     with pytest.raises(ValueError):
         market_cap_data.get_market_cap("../BAD")
+
+
+def test_identical_duplicate_market_cap_records_are_accepted(monkeypatch):
+    configure_fake_api(
+        monkeypatch,
+        [
+            {"symbol": "TEST", "marketCap": 1_500_000_000},
+            {"symbol": "test", "marketCap": 1_500_000_000},
+        ],
+    )
+    assert market_cap_data.get_market_cap("TEST") == 1_500_000_000
+
+
+def test_conflicting_market_cap_records_are_rejected(monkeypatch):
+    configure_fake_api(
+        monkeypatch,
+        [
+            {"symbol": "TEST", "marketCap": 1_500_000_000},
+            {"symbol": "TEST", "marketCap": 100_000_000},
+        ],
+    )
+    with pytest.raises(
+        market_cap_data.MarketCapDataError,
+        match="Conflicting market capitalization records",
+    ):
+        market_cap_data.get_market_cap("TEST")
+
+
+@pytest.mark.parametrize("invalid", [None, -1, True, "1000000000", 10 ** 400])
+def test_invalid_duplicate_cannot_hide_behind_valid_record(monkeypatch, invalid):
+    configure_fake_api(
+        monkeypatch,
+        [
+            {"symbol": "TEST", "marketCap": 1_500_000_000},
+            {"symbol": "TEST", "marketCap": invalid},
+        ],
+    )
+    with pytest.raises(
+        market_cap_data.MarketCapDataError,
+        match="Invalid market capitalization",
+    ):
+        market_cap_data.get_market_cap("TEST")
+
+
+def test_other_symbols_do_not_conflict_with_requested_market_cap(monkeypatch):
+    configure_fake_api(
+        monkeypatch,
+        [
+            {"symbol": "OTHER", "marketCap": 100_000_000},
+            {"symbol": "TEST", "marketCap": 1_500_000_000},
+        ],
+    )
+    assert market_cap_data.get_market_cap("TEST") == 1_500_000_000

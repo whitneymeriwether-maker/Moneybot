@@ -97,14 +97,22 @@ def get_market_cap(symbol):
             f"No matching market-cap record for {symbol}"
         )
 
-    value = matching_records[0].get("marketCap")
+    # A provider may return repeated records for the requested symbol.
+    # Validate every matching record before choosing a value: taking the
+    # first can silently approve a stock based on contradictory market caps.
+    for record in matching_records:
+        if not _valid_positive_number(record.get("marketCap")):
+            raise MarketCapDataError(
+                f"Invalid market capitalization for {symbol}"
+            )
 
-    if not _valid_positive_number(value):
+    values = {float(record["marketCap"]) for record in matching_records}
+    if len(values) != 1:
         raise MarketCapDataError(
-            f"Invalid market capitalization for {symbol}"
+            f"Conflicting market capitalization records for {symbol}"
         )
 
-    return float(value)
+    return values.pop()
 
 
 if __name__ == "__main__":
