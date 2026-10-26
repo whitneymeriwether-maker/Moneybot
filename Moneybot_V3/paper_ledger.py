@@ -434,3 +434,124 @@ class PaperLedger:
             "cash": _money(cash),
             "realized_pnl": _money(realized),
         }
+
+    def marked_snapshot(self, marks, *, as_of, max_age_seconds=720):
+        """Read-only, point-in-time *hypothetical* equity and exposure estimate.
+
+        Each open position needs a positive, exact-cent mark and a timezone-
+        aware observation timestamp. Reject missing/extra symbols, stale or
+        future observations, and marks preceding that symbol's latest fill.
+        The caller supplies as_of: historical reproducibility is intentional,
+        but this method cannot authenticate quotes, as_of, or data provenance.
+        It is NOT an execution-time risk gate or broker account valuation.
+        """
+        if (
+            not isinstance(as_of, datetime)
+            or as_of.tzinfo is None or as_of.utcoffset() is None
+        ):
+            raise ValueError("Marked snapshot requires timezone-aware as_of")
+        if (
+            type(max_age_seconds) is not int
+            or not 0 <= max_age_seconds <= 86400
+        ):
+            raise ValueError("Invalid maximum mark age")
+        if type(marks) is not dict:
+            raise ValueError("Marks must be a symbol-to-observation dictionary")
+        as_of_utc = as_of.astimezone(timezone.utc)
+        as_of_stamp = as_of_utc.isoformat(timespec="microseconds")
+
+        with closing(self._connect()) as db:
+            try:
+                db.execute("BEGIN")
+                self._assert_consistent(db)
+                start, cash, realized = db.execute(
+                    """SELECT starting_cash_cents, cash_cents,
+                              realized_pnl_cents
+                       FROM paper_account WHERE id=1"""
+                ).fetchone()
+                stored = {
+                    symbol: (quantity, basis)
+                    for symbol, quantity, basis in db.execute(
+                        """SELECT symbol, quantity, cost_basis_cents
+                           FROM paper_positions ORDER BY symbol"""
+                    )
+                }
+                if set(marks) != set(stored):
+                    raise ValueError("Marks must exactly match open paper positions")
+                last_fill = db.execute(
+                    "SELECT MAX(timestamp_utc) FROM paper_fills"
+                ).fetchone()[0]
+                if last_fill is not None and as_of_stamp < last_fill:
+                    raise ValueError("Marked snapshot predates a recorded fill")
+                latest_by_symbol = dict(db.execute(
+                    """SELECT symbol, MAX(timestamp_utc)
+                       FROM paper_fills GROUP BY symbol"""
+                ))
+                positions = {}
+                total_market = 0
+                total_basis = 0
+                for symbol, (quantity, basis) in stored.items():
+                    observation = marks[symbol]
+                    if (
+                        type(observation) is not dict
+                        or set(observation) != {"price", "timestamp"}
+                    ):
+                        raise ValueError("Invalid paper mark observation")
+                    stamp = observation["timestamp"]
+                    if (
+                        not isinstance(stamp, datetime)
+                        or stamp.tzinfo is None or stamp.utcoffset() is None
+                    ):
+                        raise ValueError("Paper mark timestamp must be timezone-aware")
+                    mark_utc = stamp.astimezone(timezone.utc)
+                    age = (as_of_utc - mark_utc).total_seconds()
+                    if not 0 <= age <= max_age_seconds:
+                        raise ValueError("Stale or future paper mark")
+                    mark_stamp = mark_utc.isoformat(timespec="microseconds")
+                    if mark_stamp < latest_by_symbol[symbol]:
+                        raise ValueError("Paper mark predates latest symbol fill")
+                    price_cents = _cents(observation["price"])
+                    market_cents = price_cents * quantity
+                    total_market += market_cents
+                    total_basis += basis
+                    if total_market > MAX_CENTS or cash + total_market > MAX_CENTS:
+                        raise ValueError("Marked paper equity exceeds accounting bounds")
+                    positions[symbol] = {
+                        "quantity": quantity,
+                        "cost_basis": _money(basis),
+                        "mark_price": _money(price_cents),
+                        "mark_timestamp_utc": mark_stamp,
+                        "market_value": _money(market_cents),
+                        "unrealized_pnl": _money(market_cents - basis),
+                    }
+                equity = cash + total_market
+                unrealized = total_market - total_basis
+                total_pnl = realized + unrealized
+                if (
+                    equity <= 0 or abs(unrealized) > MAX_CENTS
+                    or abs(total_pnl) > MAX_CENTS
+                ):
+                    raise ValueError("Marked paper totals exceed accounting bounds")
+                exposure_pct = (
+                    Decimal(100) * Decimal(total_market) / Decimal(equity)
+                ).quantize(Decimal("0.0001"))
+                count = db.execute(
+                    "SELECT COUNT(*) FROM paper_fills"
+                ).fetchone()[0]
+                db.commit()
+            except Exception:
+                db.rollback()
+                raise
+        return {
+            "as_of_utc": as_of_stamp,
+            "starting_cash": _money(start),
+            "cash": _money(cash),
+            "realized_pnl": _money(realized),
+            "market_value": _money(total_market),
+            "equity": _money(equity),
+            "unrealized_pnl": _money(unrealized),
+            "total_pnl": _money(total_pnl),
+            "gross_exposure_pct": str(exposure_pct),
+            "positions": positions,
+            "fill_count": count,
+        }

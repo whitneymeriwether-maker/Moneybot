@@ -316,3 +316,138 @@ def test_history_audit_detects_nonmonotonic_fill_timestamps(tmp_path):
         )
     with pytest.raises(ValueError, match="fill history: timestamp"):
         ledger.audit_history()
+
+
+def test_marked_snapshot_empty_account_is_read_only(tmp_path):
+    ledger = PaperLedger(tmp_path / "paper.sqlite3")
+    before = ledger.snapshot()
+    marked = ledger.marked_snapshot({}, as_of=T0)
+    assert marked["cash"] == "1000.00"
+    assert marked["equity"] == "1000.00"
+    assert marked["market_value"] == "0.00"
+    assert marked["unrealized_pnl"] == "0.00"
+    assert marked["total_pnl"] == "0.00"
+    assert marked["gross_exposure_pct"] == "0.0000"
+    assert marked["positions"] == {}
+    assert ledger.snapshot() == before
+
+
+def test_marked_snapshot_values_fee_adjusted_basis_and_open_exposure(tmp_path):
+    ledger = PaperLedger(tmp_path / "paper.sqlite3")
+    fill(ledger)
+    as_of = T0 + timedelta(minutes=1)
+    before = ledger.snapshot()
+    marked = ledger.marked_snapshot(
+        {"SPY": {"price": "110.00", "timestamp": as_of}}, as_of=as_of
+    )
+    assert marked["cash"] == "799.00"
+    assert marked["market_value"] == "220.00"
+    assert marked["equity"] == "1019.00"
+    assert marked["realized_pnl"] == "0.00"
+    assert marked["unrealized_pnl"] == "19.00"
+    assert marked["total_pnl"] == "19.00"
+    assert marked["gross_exposure_pct"] == "21.5898"
+    assert marked["positions"]["SPY"] == {
+        "quantity": 2, "cost_basis": "201.00", "mark_price": "110.00",
+        "mark_timestamp_utc": as_of.isoformat(timespec="microseconds"),
+        "market_value": "220.00", "unrealized_pnl": "19.00",
+    }
+    assert ledger.snapshot() == before
+
+
+def test_marked_snapshot_reconciles_realized_and_unrealized_pnl(tmp_path):
+    ledger = PaperLedger(tmp_path / "paper.sqlite3")
+    fill(ledger)
+    fill(ledger, "sell", T0 + timedelta(minutes=1), side="SELL",
+         quantity=1, price="120.00", fee="0.50")
+    at = T0 + timedelta(minutes=2)
+    marked = ledger.marked_snapshot(
+        {"SPY": {"price": "110.00", "timestamp": at}}, as_of=at
+    )
+    assert marked["cash"] == "918.50"
+    assert marked["realized_pnl"] == "19.00"
+    assert marked["unrealized_pnl"] == "9.50"
+    assert marked["equity"] == "1028.50"
+    assert marked["total_pnl"] == "28.50"
+    assert marked["gross_exposure_pct"] == "10.6952"
+
+
+@pytest.mark.parametrize("marks", [
+    {},
+    {"QQQ": {"price": "100.00", "timestamp": T0}},
+    {"SPY": {"price": "100.00", "timestamp": T0},
+     "QQQ": {"price": "100.00", "timestamp": T0}},
+    {"SPY": {"price": "100.00"}},
+    {"SPY": {"price": "100.00", "timestamp": T0, "volume": 1}},
+    {"SPY": {"price": 100.0, "timestamp": T0}},
+    {"SPY": {"price": "0.00", "timestamp": T0}},
+    {"SPY": {"price": "NaN", "timestamp": T0}},
+    {"SPY": {"price": "100.001", "timestamp": T0}},
+    {"SPY": {"price": "100.00", "timestamp": datetime(2026, 10, 26, 14, 30)}},
+])
+def test_marked_snapshot_rejects_missing_extra_or_malformed_marks(tmp_path, marks):
+    ledger = PaperLedger(tmp_path / "paper.sqlite3")
+    fill(ledger)
+    before = ledger.snapshot()
+    with pytest.raises(ValueError):
+        ledger.marked_snapshot(marks, as_of=T0 + timedelta(minutes=1))
+    assert ledger.snapshot() == before
+
+
+@pytest.mark.parametrize("timestamp,as_of,max_age", [
+    (T0, T0 + timedelta(minutes=13), 720),
+    (T0 + timedelta(seconds=1), T0, 720),
+    (T0 - timedelta(seconds=1), T0, 720),
+    (T0, T0, -1),
+    (T0, T0, True),
+    (T0, T0, 86401),
+    (T0, datetime(2026, 10, 26, 14, 30), 720),
+])
+def test_marked_snapshot_rejects_stale_future_and_pre_fill_marks(
+    tmp_path, timestamp, as_of, max_age
+):
+    ledger = PaperLedger(tmp_path / "paper.sqlite3")
+    fill(ledger)
+    with pytest.raises(ValueError):
+        ledger.marked_snapshot(
+            {"SPY": {"price": "100.00", "timestamp": timestamp}},
+            as_of=as_of, max_age_seconds=max_age,
+        )
+
+
+def test_marked_snapshot_rejects_as_of_before_latest_other_fill(tmp_path):
+    ledger = PaperLedger(tmp_path / "paper.sqlite3")
+    fill(ledger)
+    fill(ledger, "e2", T0 + timedelta(minutes=1),
+         symbol="QQQ", price="10.00", fee="0.00")
+    with pytest.raises(ValueError, match="predates a recorded fill"):
+        ledger.marked_snapshot(
+            {"SPY": {"price": "100.00", "timestamp": T0},
+             "QQQ": {"price": "10.00", "timestamp": T0}},
+            as_of=T0,
+        )
+
+
+def test_marked_snapshot_normalizes_timezone_offsets(tmp_path):
+    ledger = PaperLedger(tmp_path / "paper.sqlite3")
+    fill(ledger)
+    at = T0 + timedelta(minutes=1)
+    eastern = at.astimezone(ZoneInfo("America/New_York"))
+    marked = ledger.marked_snapshot(
+        {"SPY": {"price": Decimal("100.00"), "timestamp": eastern}},
+        as_of=eastern,
+    )
+    assert marked["as_of_utc"] == at.isoformat(timespec="microseconds")
+    assert marked["positions"]["SPY"]["mark_timestamp_utc"] == marked["as_of_utc"]
+
+
+def test_marked_snapshot_rejects_corrupt_persisted_balances(tmp_path):
+    path = tmp_path / "paper.sqlite3"
+    ledger = PaperLedger(path)
+    fill(ledger)
+    with sqlite3.connect(path) as db:
+        db.execute("UPDATE paper_account SET cash_cents=cash_cents+1")
+    with pytest.raises(ValueError, match="accounting invariant"):
+        ledger.marked_snapshot(
+            {"SPY": {"price": "100.00", "timestamp": T0}}, as_of=T0
+        )
