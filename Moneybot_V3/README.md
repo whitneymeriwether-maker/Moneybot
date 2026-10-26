@@ -17,7 +17,8 @@
 
 - SEC ticker-to-CIK resolution now rejects malformed company identifiers and conflicting duplicate ticker entries instead of arbitrarily using the first match. Identical normalized CIK duplicates are accepted. This only validates directory consistency; it does not establish company identity or historical point-in-time correctness.
 
-- The local SQLite ledger now offers a read-only, timestamp-validated `marked_snapshot` for hypothetical equity, unrealized/total PnL, and gross exposure. It requires an exact, fresh, positive price for every open position, rejects marks preceding the position's latest fill, and prevents a snapshot timestamp from preceding any recorded fill. These marks are supplied by the caller and **not authenticated**; the result is a research valuation, not an execution-time risk check or broker balance.\n
+- The local SQLite ledger now offers a read-only, timestamp-validated `marked_snapshot` for hypothetical equity, unrealized/total PnL, and gross exposure. It requires an exact, fresh, positive price for every open position, rejects marks preceding the position's latest fill, and prevents a snapshot timestamp from preceding any recorded fill. These marks are supplied by the caller and **not authenticated**; the result is a research valuation, not an execution-time risk check or broker balance.
+
 ## Still required before autonomous paper operation
 1. Connect an AI model using strictly structured output and source-backed, timestamped evidence; don't trust unverified news or social media as facts.
 2. Ingest historical point-in-time OHLCV and permitted news; control look-ahead bias, survivorship bias, stock splits, market holidays, and source licensing.
