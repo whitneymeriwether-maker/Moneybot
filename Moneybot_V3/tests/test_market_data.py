@@ -378,7 +378,8 @@ def test_stale_daily_history_fails_closed(monkeypatch):
     for bar in bars:
         bar["t"] = (
             datetime.fromisoformat(bar["t"].replace("Z", "+00:00"))
-            - timedelta(days=30)
+            # Preserve weekdays so this test isolates the stale-data gate.
+            - timedelta(days=28)
         ).isoformat()
 
     monkeypatch.setattr(
