@@ -63,6 +63,21 @@ class PaperLedger:
         with closing(self._connect()) as db:
             try:
                 db.execute("BEGIN IMMEDIATE")
+                # Existing ledger files must not be silently repaired by
+                # CREATE TABLE or reseeded if their account row was deleted.
+                # A partial schema is evidence of corruption or an
+                # unsupported migration, not a fresh empty account.
+                existing_tables = {
+                    name for (name,) in db.execute(
+                        """SELECT name FROM sqlite_master
+                           WHERE type='table' AND name IN
+                           ('paper_account', 'paper_positions', 'paper_fills')"""
+                    )
+                }
+                if existing_tables and existing_tables != {
+                    "paper_account", "paper_positions", "paper_fills"
+                }:
+                    raise ValueError("Incomplete existing paper ledger schema")
                 db.execute(
                     """CREATE TABLE IF NOT EXISTS paper_account (
                         id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -93,6 +108,10 @@ class PaperLedger:
                     "SELECT starting_cash_cents FROM paper_account WHERE id=1"
                 ).fetchone()
                 if row is None:
+                    if existing_tables:
+                        raise ValueError(
+                            "Missing existing paper account row; refusing to reinitialize"
+                        )
                     db.execute(
                         """INSERT INTO paper_account
                         (id, starting_cash_cents, cash_cents, realized_pnl_cents)
@@ -101,6 +120,7 @@ class PaperLedger:
                     )
                 elif row[0] != initial:
                     raise ValueError("Existing paper account has different starting cash")
+                self._assert_consistent(db)
                 db.commit()
             except Exception:
                 db.rollback()
