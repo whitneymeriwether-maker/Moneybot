@@ -29,3 +29,37 @@ The validator does not guarantee loss limits when gaps, delayed bars, or simulat
 
 ## Historical symbol binding
 Downloaded Alpaca research CSVs now include a `symbol` column on every bar. The CSV loader rejects malformed or mixed ticker metadata even in exploratory files; the strict six-month SPY runner additionally requires every row to explicitly identify `SPY`. A renamed or mixed-symbol file cannot silently be scored as SPY. Legacy CSVs without symbol metadata remain usable only when the caller does not request an expected symbol. Previously downloaded unlabelled SPY CSVs must be downloaded again before running the strict SPY study. This binds labels, **not** data-provider authenticity or point-in-time provenance.
+
+
+## Offline persistent paper ledger prototype (SQLite, not deployed)
+
+The broker-disconnected `paper_ledger.PaperLedger` supports a durable local
+cash-only paper account, whole-share hypothetical BUY/SELL fills, exact-cent
+fees and average-cost accounting, and atomic, idempotent event IDs. A second
+worker/restart cannot apply the same fill twice; conflicting retries, overspending,
+short sales, and backdated events fail closed. The ledger does not contact Alpaca,
+Neon, a brokerage, or an AI provider. It cannot send orders or spend money.
+
+Example (local research only):
+
+```python
+from datetime import datetime, timezone
+from paper_ledger import PaperLedger
+
+ledger = PaperLedger("local_paper_research.sqlite3", starting_cash="1000.00")
+ledger.record_fill(
+    event_id="offline-example-1",
+    timestamp=datetime.now(timezone.utc),
+    symbol="SPY", side="BUY", quantity=1,
+    price="100.00", fee="0.00",
+)
+print(ledger.snapshot())
+```
+
+The caller supplies hypothetical fills; this component does **not** validate
+whether a market actually traded at the supplied price, authenticate fills,
+enforce the V3 strategy risk gates, mark open positions to market, handle
+corporate actions, or connect to the persistent Neon paper engine. It is an
+offline transaction/accounting foundation, **not an autonomous paper trader**.
+An end-to-end adapter will need execution-time risk rechecks, fill provenance,
+session handling, and replay/reconciliation tests before deployment.
