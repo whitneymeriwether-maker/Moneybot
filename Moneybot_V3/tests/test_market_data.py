@@ -421,3 +421,64 @@ def test_overflowed_daily_volume_average_is_unverified(monkeypatch):
 def test_stock_candidate_rejects_nonfinite_or_nonpositive_market_cap(invalid_cap):
     with pytest.raises(ValueError, match="finite positive market cap"):
         market_data.get_stock_candidate("TEST", market_cap=invalid_cap)
+
+
+def test_daily_bars_sorted_by_utc_instant_not_offset_text(monkeypatch):
+    # "10:00-04:00" is later than "13:59Z", despite text ordering.
+    bars = make_daily_bars(2)
+    bars[0]["t"] = "2026-04-01T10:00:00-04:00"
+    bars[1]["t"] = "2026-04-01T13:59:00Z"
+    monkeypatch.setattr(
+        market_data, "_get_json",
+        lambda url: {"bars": bars, "next_page_token": None},
+    )
+
+    result = market_data.get_recent_daily_bars("TEST")
+
+    assert result[0]["t"] == "2026-04-01T13:59:00Z"
+    assert result[1]["t"] == "2026-04-01T10:00:00-04:00"
+
+
+@pytest.mark.parametrize("invalid_timestamp", [None, "not-a-date", "2026-04-01T13:59:00"])
+def test_daily_bars_reject_invalid_timestamp_before_sorting(
+    monkeypatch, invalid_timestamp,
+):
+    bars = make_daily_bars(1)
+    bars[0]["t"] = invalid_timestamp
+    monkeypatch.setattr(
+        market_data, "_get_json",
+        lambda url: {"bars": bars, "next_page_token": None},
+    )
+
+    with pytest.raises(RuntimeError, match="Invalid daily bar"):
+        market_data.get_recent_daily_bars("TEST")
+
+
+def test_candidate_rejects_malformed_older_bar_outside_recent_twenty(monkeypatch):
+    bars = make_daily_bars(21)
+    bars[0]["v"] = -1  # Not part of bars[-20:].
+    monkeypatch.setattr(
+        market_data, "get_recent_daily_bars", lambda symbol: bars,
+    )
+    monkeypatch.setattr(
+        market_data, "get_latest_quote",
+        lambda symbol: pytest.fail("Do not quote after invalid history"),
+    )
+
+    with pytest.raises(RuntimeError, match="Invalid daily bar"):
+        market_data.get_stock_candidate("TEST", market_cap=1_000_000_000)
+
+
+def test_candidate_rejects_older_duplicate_date_outside_recent_twenty(monkeypatch):
+    bars = make_daily_bars(21)
+    bars[0]["t"] = bars[1]["t"]  # Hidden by previous bars[-20:] validation.
+    monkeypatch.setattr(
+        market_data, "get_recent_daily_bars", lambda symbol: bars,
+    )
+    monkeypatch.setattr(
+        market_data, "get_latest_quote",
+        lambda symbol: pytest.fail("Do not quote after duplicate history"),
+    )
+
+    with pytest.raises(RuntimeError, match="Invalid daily bar"):
+        market_data.get_stock_candidate("TEST", market_cap=1_000_000_000)
