@@ -1,10 +1,10 @@
 import pytest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from dataclasses import replace
 from v3_decision import Candidate, AIProposal, PaperAccount, RiskPolicy, validate_paper_entry, validate_overnight_hold
 from v3_evaluation import ClosedTrade, evaluate_closed_trades, compare_paper_strategies
 
-C = Candidate('AMD', datetime(2026, 10, 14, 14, 0, tzinfo=timezone.utc), 100, True, True, 2, True, 1, 60)
+C = Candidate('AMD', datetime.now(timezone.utc), 100, True, True, 2, True, 1, 60)
 P = AIProposal('BUY', 'Breakout with documented catalyst', 'Gap and reversal risk', ('sec:123',), .7)
 A = PaperAccount(1000, 1000, 0, 0)
 
@@ -316,3 +316,34 @@ def test_evaluator_rejects_nonfinite_closed_trade_drawdown():
     trades = [ClosedTrade('AMD', -1e100, 'a', 'b')]
     with pytest.raises(ValueError, match='Non-finite closed-trade drawdown'):
         evaluate_closed_trades(trades, 1e-300)
+
+
+
+def test_entry_rejects_old_timestamp_despite_fresh_reported_age():
+    stale = datetime.now(timezone.utc) - timedelta(minutes=13)
+    decision = validate_paper_entry(
+        replace(C, timestamp=stale, data_age_seconds=0), P, A
+    )
+    assert not decision.approved
+    assert decision.reason == 'Stale or future market timestamp'
+
+
+def test_entry_rejects_future_timestamp_beyond_clock_skew():
+    future = datetime.now(timezone.utc) + timedelta(seconds=30)
+    decision = validate_paper_entry(replace(C, timestamp=future), P, A)
+    assert not decision.approved
+    assert decision.reason == 'Stale or future market timestamp'
+
+
+def test_entry_accepts_equivalent_non_utc_timestamp():
+    east = timezone(timedelta(hours=5, minutes=30))
+    candidate = replace(C, timestamp=datetime.now(timezone.utc).astimezone(east))
+    assert validate_paper_entry(candidate, P, A).approved
+
+
+def test_entry_timestamp_freshness_respects_policy_age_limit():
+    observed = datetime.now(timezone.utc) - timedelta(minutes=14)
+    candidate = replace(C, timestamp=observed, data_age_seconds=60)
+    assert not validate_paper_entry(candidate, P, A).approved
+    extended = RiskPolicy(max_data_age_seconds=900)
+    assert validate_paper_entry(candidate, P, A, extended).approved

@@ -1,6 +1,6 @@
 """V3 research-only paper decision gate. No broker imports or network access."""
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from math import isfinite
 from typing import Literal
 
@@ -103,6 +103,14 @@ def validate_paper_entry(candidate: Candidate, proposal: AIProposal,
         return Decision(False, 'Invalid symbol')
     if type(candidate.data_age_seconds) is not int or not 0 <= candidate.data_age_seconds <= policy.max_data_age_seconds:
         return Decision(False, 'Stale or future market data')
+    # A self-reported age alone cannot prove freshness. Independently check
+    # the source timestamp against the current UTC clock; tolerate at most
+    # five seconds of future skew. This is a paper advisory check, not
+    # evidence of source authenticity or an execution-time guarantee.
+    now = datetime.now(timezone.utc)
+    actual_age = now - candidate.timestamp
+    if not timedelta(seconds=-5) <= actual_age <= timedelta(seconds=policy.max_data_age_seconds):
+        return Decision(False, 'Stale or future market timestamp')
     values = (candidate.price, candidate.atr, candidate.relative_volume, proposal.confidence,
               account.cash, account.equity, account.current_exposure,
               account.realized_pnl_today, account.starting_equity, account.peak_equity)
