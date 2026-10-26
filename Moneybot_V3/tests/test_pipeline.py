@@ -12,7 +12,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from backtesting.pipeline import run_backtest
+from backtesting.pipeline import run_backtest, validate_regular_session_gaps
 
 NY = ZoneInfo("America/New_York")
 
@@ -204,3 +204,56 @@ def test_pipeline_rejects_invalid_cash(tmp_path):
 
     with pytest.raises(ValueError):
         run_backtest(filename, starting_cash=0)
+
+
+def _remove_minute(filename, minute):
+    with open(filename, newline="", encoding="utf-8") as file:
+        reader = csv.DictReader(file)
+        fields = reader.fieldnames
+        rows = [row for row in reader if datetime.fromisoformat(row["timestamp"]).minute != minute]
+    with open(filename, "w", newline="", encoding="utf-8") as file:
+        writer = csv.DictWriter(file, fieldnames=fields)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def test_pipeline_rejects_missing_regular_session_minute(tmp_path):
+    filename = tmp_path / "prices.csv"
+    write_prices(filename)
+    _remove_minute(filename, 35)
+
+    with pytest.raises(ValueError, match="Missing regular-session minute bars"):
+        run_backtest(filename)
+
+
+def test_pipeline_rejects_gap_after_breakout_signal(tmp_path):
+    filename = tmp_path / "prices.csv"
+    write_prices(filename)
+    _remove_minute(filename, 46)
+
+    with pytest.raises(ValueError, match="Missing regular-session minute bars"):
+        run_backtest(filename)
+
+
+def test_pipeline_gap_tolerance_is_explicit_and_does_not_invent_bars(tmp_path):
+    filename = tmp_path / "prices.csv"
+    write_prices(filename)
+    _remove_minute(filename, 35)
+
+    report = run_backtest(filename, max_regular_gap_minutes=2)
+    assert report.trade_count == 0  # Opening range is still incomplete.
+    assert report.signals == []
+
+
+def test_regular_session_gap_check_ignores_overnight_and_weekends():
+    bars = [
+        SimpleNamespace(timestamp=datetime(2026, 10, 9, 15, 59, tzinfo=NY)),
+        SimpleNamespace(timestamp=datetime(2026, 10, 12, 9, 30, tzinfo=NY)),
+    ]
+    validate_regular_session_gaps(bars)
+
+
+@pytest.mark.parametrize("invalid", [0, -1, True, 1.5, None, "1"])
+def test_regular_session_gap_check_rejects_invalid_tolerance(invalid):
+    with pytest.raises(ValueError, match="Invalid maximum regular-session gap"):
+        validate_regular_session_gaps([], invalid)
