@@ -3,7 +3,7 @@
 
 import csv
 import sys
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from backtesting.pipeline import (
     run_backtest, validate_regular_session_gaps,
-    validate_regular_session_coverage,
+    validate_regular_session_coverage, validate_research_window,
 )
 
 NY = ZoneInfo("America/New_York")
@@ -328,3 +328,87 @@ def test_strict_session_requirement_rejects_invalid_option(tmp_path, invalid):
     write_prices(filename)
     with pytest.raises(ValueError, match="Invalid full regular-session requirement"):
         run_backtest(filename, require_full_regular_sessions=invalid)
+
+
+def test_research_window_accepts_expected_endpoint_session(tmp_path):
+    filename = tmp_path / "prices.csv"
+    write_prices(filename)
+    report = run_backtest(
+        filename,
+        expected_session_span=(date(2026, 10, 12), date(2026, 10, 12)),
+    )
+    assert report.trade_count == 1
+
+
+def test_research_window_rejects_truncated_date_span(tmp_path):
+    filename = tmp_path / "prices.csv"
+    write_prices(filename)
+    with pytest.raises(ValueError, match="expected session endpoints"):
+        run_backtest(
+            filename,
+            expected_session_span=(date(2026, 10, 12), date(2026, 10, 13)),
+        )
+
+
+def test_research_window_rejects_too_few_observed_sessions(tmp_path):
+    filename = tmp_path / "prices.csv"
+    write_prices(filename)
+    with pytest.raises(ValueError, match="Insufficient observed sessions"):
+        run_backtest(
+            filename,
+            expected_session_span=(date(2026, 10, 12), date(2026, 10, 12)),
+            minimum_observed_sessions=2,
+        )
+
+
+def test_research_window_counts_distinct_new_york_dates():
+    bars = [
+        SimpleNamespace(timestamp=datetime(2026, 10, 12, 13, 30, tzinfo=ZoneInfo("UTC"))),
+        SimpleNamespace(timestamp=datetime(2026, 10, 12, 14, 30, tzinfo=ZoneInfo("UTC"))),
+        SimpleNamespace(timestamp=datetime(2026, 10, 13, 13, 30, tzinfo=ZoneInfo("UTC"))),
+    ]
+    validate_research_window(
+        bars, date(2026, 10, 12), date(2026, 10, 13),
+        minimum_observed_sessions=2,
+    )
+    with pytest.raises(ValueError, match="Insufficient observed sessions"):
+        validate_research_window(
+            bars, date(2026, 10, 12), date(2026, 10, 13),
+            minimum_observed_sessions=3,
+        )
+
+
+def test_research_window_ignores_only_extended_hours_and_weekend():
+    bars = [
+        SimpleNamespace(timestamp=datetime(2026, 10, 12, 8, 0, tzinfo=NY)),
+        SimpleNamespace(timestamp=datetime(2026, 10, 17, 9, 30, tzinfo=NY)),
+    ]
+    with pytest.raises(ValueError, match="No regular-session bars"):
+        validate_research_window(
+            bars, date(2026, 10, 12), date(2026, 10, 12),
+        )
+
+
+@pytest.mark.parametrize("first,last", [
+    (datetime(2026, 10, 12), date(2026, 10, 12)),
+    (date(2026, 10, 12), "2026-10-12"),
+    (date(2026, 10, 13), date(2026, 10, 12)),
+])
+def test_research_window_rejects_invalid_session_dates(first, last):
+    with pytest.raises(ValueError, match="Invalid expected research session window"):
+        validate_research_window([], first, last)
+
+
+@pytest.mark.parametrize("invalid", [0, -1, True, 1.5, None, "120"])
+def test_research_window_rejects_invalid_minimum(invalid):
+    with pytest.raises(ValueError, match="Invalid minimum observed sessions"):
+        validate_research_window(
+            [], date(2026, 10, 12), date(2026, 10, 12), invalid,
+        )
+
+
+def test_pipeline_rejects_minimum_without_expected_span(tmp_path):
+    filename = tmp_path / "prices.csv"
+    write_prices(filename)
+    with pytest.raises(ValueError, match="requires a session span"):
+        run_backtest(filename, minimum_observed_sessions=120)

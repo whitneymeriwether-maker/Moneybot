@@ -5,7 +5,7 @@ Research only. Does not connect to a broker or place orders.
 """
 
 from dataclasses import dataclass
-from datetime import time
+from datetime import date, time
 from zoneinfo import ZoneInfo
 
 from backtesting.historical_data import load_price_bars
@@ -75,6 +75,46 @@ def validate_regular_session_coverage(bars):
             )
 
 
+
+def validate_research_window(
+    bars, first_session, last_session, minimum_observed_sessions=1,
+):
+    """Fail closed on truncated or mislabeled multi-session research files.
+
+    Session endpoints are explicitly supplied trading dates; this check
+    cannot identify missing interior dates without an exchange calendar.
+    """
+    if (
+        type(first_session) is not date
+        or type(last_session) is not date
+        or first_session > last_session
+    ):
+        raise ValueError("Invalid expected research session window")
+    if (
+        type(minimum_observed_sessions) is not int
+        or minimum_observed_sessions < 1
+    ):
+        raise ValueError("Invalid minimum observed sessions")
+
+    sessions = set()
+    for bar in bars:
+        local = bar.timestamp.astimezone(_NEW_YORK)
+        if local.weekday() < 5 and time(9, 30) <= local.time() < time(16, 0):
+            sessions.add(local.date())
+
+    if not sessions:
+        raise ValueError("No regular-session bars in research window")
+    if min(sessions) != first_session or max(sessions) != last_session:
+        raise ValueError(
+            "Historical research window does not match expected session endpoints"
+        )
+    if len(sessions) < minimum_observed_sessions:
+        raise ValueError(
+            "Insufficient observed sessions in historical research window: "
+            f"{len(sessions)} < {minimum_observed_sessions}"
+        )
+
+
 @dataclass(frozen=True)
 class BacktestReport:
     starting_cash: float
@@ -104,16 +144,36 @@ def run_backtest(
     slippage_pct=0.001,
     max_regular_gap_minutes=1,
     require_full_regular_sessions=False,
+    expected_session_span=None,
+    minimum_observed_sessions=1,
 ):
     """Load prices, validate requested session coverage, then simulate."""
 
     if type(require_full_regular_sessions) is not bool:
         raise ValueError("Invalid full regular-session requirement")
+    if (
+        type(minimum_observed_sessions) is not int
+        or minimum_observed_sessions < 1
+    ):
+        raise ValueError("Invalid minimum observed sessions")
+    if expected_session_span is None:
+        if minimum_observed_sessions != 1:
+            raise ValueError("Minimum observed sessions requires a session span")
+    elif (
+        type(expected_session_span) is not tuple
+        or len(expected_session_span) != 2
+    ):
+        raise ValueError("Invalid expected research session window")
 
     bars = load_price_bars(csv_filename)
     validate_regular_session_gaps(bars, max_regular_gap_minutes)
     if require_full_regular_sessions:
         validate_regular_session_coverage(bars)
+    if expected_session_span is not None:
+        validate_research_window(
+            bars, *expected_session_span,
+            minimum_observed_sessions=minimum_observed_sessions,
+        )
     signals = generate_breakout_signals(bars)
 
     trades = simulate_trades(
