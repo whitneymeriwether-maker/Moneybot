@@ -197,7 +197,13 @@ def get_recent_daily_bars(symbol, days=45):
     else:
         raise RuntimeError(f"Daily bars pagination limit reached for {symbol}")
 
-    return sorted(bars, key=lambda bar: bar["t"])
+    # ISO text ordering is not chronological when API pages use different
+    # explicit timezone offsets. Reject missing/naive timestamps and sort
+    # by actual UTC instants before selecting the most recent sessions.
+    try:
+        return sorted(bars, key=lambda bar: _parse_quote_timestamp(bar["t"]))
+    except (KeyError, TypeError, RuntimeError):
+        raise RuntimeError(f"Invalid daily bar for {symbol}") from None
 
 
 
@@ -269,8 +275,11 @@ def get_stock_candidate(symbol, market_cap):
             f"{len(bars)} available; 20 required"
         )
 
+    # Validate the complete downloaded history, not only the selected
+    # 20 bars. Older malformed/duplicate records can otherwise be hidden
+    # by slicing and silently alter which sessions are sampled.
+    _validate_daily_bars(bars, symbol)
     recent = bars[-20:]
-    _validate_daily_bars(recent, symbol)
 
     # A successful API response is not proof of current data.
     latest_bar = _parse_quote_timestamp(recent[-1]["t"])
