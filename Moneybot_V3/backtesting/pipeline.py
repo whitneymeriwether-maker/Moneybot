@@ -43,6 +43,23 @@ def validate_regular_session_gaps(bars, max_gap_minutes=1):
         previous_regular = bar
 
 
+def validate_traded_regular_minutes(bars):
+    """Reject zero-volume regular-session bars in strict research datasets.
+
+    Synthetic price-filled bars can conceal absent trade observations even
+    when all 390 expected timestamps are present. This is deliberately
+    opt-in: sparse-feed exploratory datasets may contain no-trade minutes.
+    """
+    for bar in bars:
+        local = bar.timestamp.astimezone(_NEW_YORK)
+        if local.weekday() < 5 and time(9, 30) <= local.time() < time(16, 0):
+            if bar.volume == 0:
+                raise ValueError(
+                    "Zero-volume regular-session minute bar: "
+                    f"{bar.timestamp.isoformat()}"
+                )
+
+
 def validate_regular_session_coverage(bars):
     """Require observed weekday sessions to span 9:30 through 15:59 NY time.
 
@@ -175,6 +192,7 @@ def run_backtest(
     slippage_pct=0.001,
     max_regular_gap_minutes=1,
     require_full_regular_sessions=False,
+    require_traded_regular_minutes=False,
     expected_session_span=None,
     minimum_observed_sessions=1,
     closed_sessions=None,
@@ -183,6 +201,8 @@ def run_backtest(
 
     if type(require_full_regular_sessions) is not bool:
         raise ValueError("Invalid full regular-session requirement")
+    if type(require_traded_regular_minutes) is not bool:
+        raise ValueError("Invalid traded regular-minute requirement")
     if (
         type(minimum_observed_sessions) is not int
         or minimum_observed_sessions < 1
@@ -203,6 +223,8 @@ def run_backtest(
     validate_regular_session_gaps(bars, max_regular_gap_minutes)
     if require_full_regular_sessions:
         validate_regular_session_coverage(bars)
+    if require_traded_regular_minutes:
+        validate_traded_regular_minutes(bars)
     if expected_session_span is not None:
         validate_research_window(
             bars, *expected_session_span,
