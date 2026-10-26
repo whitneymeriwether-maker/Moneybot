@@ -226,3 +226,75 @@ def test_download_normalizes_explicit_offset_to_utc(monkeypatch, tmp_path):
     assert output.read_text(encoding="utf-8").splitlines()[1].startswith(
         "2026-04-01T13:30:00+00:00,"
     )
+
+
+@pytest.mark.parametrize("timestamp", [
+    "2026-03-31T23:59:00Z",  # Before inclusive start.
+    "2026-10-01T00:00:00Z",  # Exclusive end.
+    "2026-10-01T00:01:00Z",  # After exclusive end.
+    "2026-03-31T19:59:00-04:00",  # Local offset cannot bypass UTC bound.
+])
+def test_download_rejects_out_of_window_bars_without_overwriting(
+    monkeypatch, tmp_path, timestamp,
+):
+    output_dir = tmp_path / "Moneybot_V3" / "data"
+    output_dir.mkdir(parents=True)
+    output = output_dir / "SPY_1min_2026_04_to_09.csv"
+    output.write_text("previous validated history", encoding="utf-8")
+    mock_download(
+        monkeypatch, tmp_path,
+        [{"bars": {"SPY": [sample_bar(timestamp)]},
+          "next_page_token": None}],
+    )
+
+    with pytest.raises(ValueError, match="outside requested UTC window"):
+        download_history("SPY")
+
+    assert output.read_text(encoding="utf-8") == "previous validated history"
+    assert sorted(path.name for path in output_dir.iterdir()) == [output.name]
+
+
+@pytest.mark.parametrize("timestamp", [
+    "2026-04-01T00:00:00Z",  # Inclusive start.
+    "2026-09-30T23:59:00Z",  # Last minute before exclusive end.
+    "2026-04-01T09:30:00-04:00",  # Equivalent UTC instant.
+])
+def test_download_accepts_bars_within_utc_window(
+    monkeypatch, tmp_path, timestamp,
+):
+    mock_download(
+        monkeypatch, tmp_path,
+        [{"bars": {"SPY": [sample_bar(timestamp)]},
+          "next_page_token": None}],
+    )
+    assert len(download_history("SPY").read_text().splitlines()) == 2
+
+
+def test_download_sorts_mixed_offsets_by_utc_instant(monkeypatch, tmp_path):
+    # Lexicographic ISO ordering would incorrectly put 10:00-04 before
+    # 13:59Z, although the latter is earlier in absolute time.
+    mock_download(
+        monkeypatch, tmp_path,
+        [{"bars": {"SPY": [
+            sample_bar("2026-04-01T10:00:00-04:00"),
+            sample_bar("2026-04-01T13:59:00Z"),
+        ]}, "next_page_token": None}],
+    )
+
+    rows = download_history("SPY").read_text().splitlines()
+    assert rows[1].startswith("2026-04-01T13:59:00+00:00,")
+    assert rows[2].startswith("2026-04-01T14:00:00+00:00,")
+
+
+def test_download_rejects_duplicate_instant_with_different_offsets(
+    monkeypatch, tmp_path,
+):
+    mock_download(
+        monkeypatch, tmp_path,
+        [{"bars": {"SPY": [
+            sample_bar("2026-04-01T13:30:00Z"),
+            sample_bar("2026-04-01T09:30:00-04:00"),
+        ]}, "next_page_token": None}],
+    )
+    with pytest.raises(ValueError, match="Timestamps must be increasing"):
+        download_history("SPY")
