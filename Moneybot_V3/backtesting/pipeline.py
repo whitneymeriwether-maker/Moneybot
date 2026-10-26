@@ -5,10 +5,42 @@ Research only. Does not connect to a broker or place orders.
 """
 
 from dataclasses import dataclass
+from datetime import time
+from zoneinfo import ZoneInfo
 
 from backtesting.historical_data import load_price_bars
 from backtesting.signals import generate_breakout_signals
 from backtesting.trade_simulator import simulate_trades
+
+
+_NEW_YORK = ZoneInfo("America/New_York")
+
+
+def validate_regular_session_gaps(bars, max_gap_minutes=1):
+    """Reject missing interior regular-session minutes before scoring results.
+
+    This is deliberately conservative for sparse IEX data. It does not
+    certify complete sessions, holidays, corporate actions, or provenance.
+    """
+    if type(max_gap_minutes) is not int or max_gap_minutes < 1:
+        raise ValueError("Invalid maximum regular-session gap")
+
+    previous_regular = None
+    for bar in bars:
+        local = bar.timestamp.astimezone(_NEW_YORK)
+        if local.weekday() >= 5 or not (time(9, 30) <= local.time() < time(16, 0)):
+            continue
+        if previous_regular is not None:
+            previous_local = previous_regular.timestamp.astimezone(_NEW_YORK)
+            if previous_local.date() == local.date():
+                gap_minutes = (bar.timestamp - previous_regular.timestamp).total_seconds() / 60
+                if gap_minutes > max_gap_minutes:
+                    raise ValueError(
+                        "Missing regular-session minute bars: "
+                        f"{previous_regular.timestamp.isoformat()} to "
+                        f"{bar.timestamp.isoformat()}"
+                    )
+        previous_regular = bar
 
 
 @dataclass(frozen=True)
@@ -38,10 +70,12 @@ def run_backtest(
     starting_cash=1000.0,
     risk_per_trade=0.015,
     slippage_pct=0.001,
+    max_regular_gap_minutes=1,
 ):
-    """Load prices, simulate trades, and calculate performance."""
+    """Load prices, reject interior regular-session gaps, then simulate."""
 
     bars = load_price_bars(csv_filename)
+    validate_regular_session_gaps(bars, max_regular_gap_minutes)
     signals = generate_breakout_signals(bars)
 
     trades = simulate_trades(
