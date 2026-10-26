@@ -243,3 +243,54 @@ def test_sec_shares_reject_conflict_at_latest_date_even_with_older_valid_fact(
         match="Conflicting SEC shares-outstanding data",
     ):
         sec_market_cap.get_reported_shares_outstanding("TEST")
+
+
+def test_sec_ticker_directory_rejects_conflicting_company_ids(monkeypatch):
+    monkeypatch.setattr(sec_market_cap, "_request_json", lambda url: {
+        "0": {"ticker": "TEST", "cik_str": 123456},
+        "1": {"ticker": "test", "cik_str": 999999},
+    })
+    with pytest.raises(
+        sec_market_cap.SECMarketCapError,
+        match="Conflicting SEC company identifiers",
+    ):
+        sec_market_cap.get_company_cik("TEST")
+
+
+def test_sec_ticker_directory_accepts_equivalent_duplicate_ids(monkeypatch):
+    monkeypatch.setattr(sec_market_cap, "_request_json", lambda url: {
+        "0": {"ticker": "TEST", "cik_str": 123456},
+        "1": {"ticker": "test", "cik_str": "0000123456"},
+        "2": {"ticker": "OTHER", "cik_str": "invalid"},
+    })
+    assert sec_market_cap.get_company_cik("TEST") == "0000123456"
+
+
+@pytest.mark.parametrize(
+    "bad_cik",
+    [None, 0, -1, True, 1.5, "abc", "123.0", "0000000000",
+     "12345678901", 10 ** 20, "１２３"],
+)
+def test_sec_ticker_directory_rejects_invalid_matching_cik(
+    monkeypatch, bad_cik,
+):
+    monkeypatch.setattr(sec_market_cap, "_request_json", lambda url: {
+        "0": {"ticker": "TEST", "cik_str": bad_cik},
+    })
+    with pytest.raises(
+        sec_market_cap.SECMarketCapError,
+        match="Invalid SEC company identifier",
+    ):
+        sec_market_cap.get_company_cik("TEST")
+
+
+def test_sec_ticker_directory_rejects_invalid_later_duplicate(monkeypatch):
+    monkeypatch.setattr(sec_market_cap, "_request_json", lambda url: {
+        "0": {"ticker": "TEST", "cik_str": 123456},
+        "1": {"ticker": "TEST", "cik_str": None},
+    })
+    with pytest.raises(
+        sec_market_cap.SECMarketCapError,
+        match="Invalid SEC company identifier",
+    ):
+        sec_market_cap.get_company_cik("TEST")

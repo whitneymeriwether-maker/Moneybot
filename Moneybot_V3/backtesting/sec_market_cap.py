@@ -70,8 +70,25 @@ def _request_json(url):
         ) from None
 
 
+def _normalize_cik(value):
+    """Accept only positive, at-most-ten-digit SEC company identifiers."""
+    if type(value) is int:
+        if not 0 < value <= 9_999_999_999:
+            return None
+        return f"{value:010d}"
+    if (
+        type(value) is str
+        and 1 <= len(value) <= 10
+        and value.isascii()
+        and value.isdecimal()
+        and int(value) > 0
+    ):
+        return value.zfill(10)
+    return None
+
+
 def get_company_cik(symbol):
-    """Look up a US public company's SEC identifier."""
+    """Look up a unique, well-formed US public-company SEC identifier."""
 
     symbol = symbol.strip().upper()
 
@@ -85,16 +102,34 @@ def get_company_cik(symbol):
             "Unexpected SEC ticker directory"
         )
 
+    # SEC's directory is normally unique by ticker, but a malformed
+    # response or duplicate symbol must not arbitrarily select a CIK.
+    # Reject even an invalid later duplicate rather than trusting the
+    # first matching record.
+    matching_ciks = set()
     for company in companies.values():
-        if (
+        if not (
             isinstance(company, dict)
-            and str(company.get("ticker", "")).upper() == symbol
+            and isinstance(company.get("ticker"), str)
+            and company["ticker"].upper() == symbol
         ):
-            return str(company["cik_str"]).zfill(10)
+            continue
+        cik = _normalize_cik(company.get("cik_str"))
+        if cik is None:
+            raise SECMarketCapError(
+                f"Invalid SEC company identifier for {symbol}"
+            )
+        matching_ciks.add(cik)
 
-    raise SECMarketCapError(
-        f"No SEC company identifier for {symbol}"
-    )
+    if not matching_ciks:
+        raise SECMarketCapError(
+            f"No SEC company identifier for {symbol}"
+        )
+    if len(matching_ciks) != 1:
+        raise SECMarketCapError(
+            f"Conflicting SEC company identifiers for {symbol}"
+        )
+    return matching_ciks.pop()
 
 
 def get_reported_shares_outstanding(symbol):

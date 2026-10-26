@@ -14,6 +14,8 @@
 
 - FMP market-cap screening now validates every matching symbol record and refuses conflicting or malformed duplicates, rather than silently trusting the first record. Identical duplicates are permitted. A provider response without an as-of timestamp is still **current research data only**, not point-in-time historical evidence.\n- SEC share-count fallback now excludes filings dated before their reported share observation and refuses conflicting share counts for the same latest observation/filing dates. Such ambiguous facts cannot support even a provisional market-cap estimate; the scanner should report DATA UNVERIFIED instead. These checks do not prove the SEC facts or price are point-in-time appropriate for historical backtests.
 
+- SEC ticker-to-CIK resolution now rejects malformed company identifiers and conflicting duplicate ticker entries instead of arbitrarily using the first match. Identical normalized CIK duplicates are accepted. This only validates directory consistency; it does not establish company identity or historical point-in-time correctness.
+
 ## Still required before autonomous paper operation
 1. Connect an AI model using strictly structured output and source-backed, timestamped evidence; don't trust unverified news or social media as facts.
 2. Ingest historical point-in-time OHLCV and permitted news; control look-ahead bias, survivorship bias, stock splits, market holidays, and source licensing.
