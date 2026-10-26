@@ -451,3 +451,24 @@ def test_marked_snapshot_rejects_corrupt_persisted_balances(tmp_path):
         ledger.marked_snapshot(
             {"SPY": {"price": "100.00", "timestamp": T0}}, as_of=T0
         )
+
+
+@pytest.mark.parametrize("sql", [
+    "UPDATE paper_positions SET symbol='INVALID SYMBOL' WHERE symbol='SPY'",
+    "UPDATE paper_positions SET symbol='spy' WHERE symbol='SPY'",
+    """UPDATE paper_positions SET cost_basis_cents=0 WHERE symbol='SPY';
+    UPDATE paper_account SET realized_pnl_cents=-20100 WHERE id=1""",
+])
+def test_invalid_persisted_position_fails_closed_even_if_balances_reconcile(tmp_path, sql):
+    path = tmp_path / "paper.sqlite3"
+    ledger = PaperLedger(path)
+    fill(ledger)
+    before_count = ledger.snapshot()["fill_count"]
+    with sqlite3.connect(path) as db:
+        db.executescript(sql)
+    with pytest.raises(ValueError, match="Corrupt paper position"):
+        ledger.snapshot()
+    with pytest.raises(ValueError, match="Corrupt paper position"):
+        fill(ledger, event_id="e2", timestamp=T0 + timedelta(minutes=1))
+    with sqlite3.connect(path) as db:
+        assert db.execute("SELECT COUNT(*) FROM paper_fills").fetchone()[0] == before_count
