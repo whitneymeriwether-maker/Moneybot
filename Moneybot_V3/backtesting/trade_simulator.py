@@ -47,6 +47,8 @@ def simulate_trades(
     """Simulate cash-funded long trades with same-day exits.
 
     Cap gross notional and entry size relative to observed minute volume.
+    Size for assumed adverse entry and stop-exit slippage; gaps can still
+    exceed the intended risk budget.
 
     Exit fills remain simplified; this is not an execution-quality model.
     Stop new entries after the day's realized losses reach a percentage of
@@ -276,9 +278,23 @@ def simulate_trades(
 
                 risk_budget = cash * risk_per_trade
 
+                # Budget for both the adverse entry fill (already in entry)
+                # and exit slippage at the planned stop. Dividing only by
+                # stop_distance understates risk when slippage is nonzero.
+                # A gap through the stop can still exceed this estimate.
+                estimated_stop_fill = (
+                    entry - stop_distance
+                ) * (1 - slippage_pct)
+                stop_loss_per_share = entry - estimated_stop_fill
+                if (
+                    not isfinite(stop_loss_per_share)
+                    or stop_loss_per_share <= 0
+                ):
+                    raise ValueError("Non-finite simulated trade arithmetic")
+
                 # Each ratio must be finite before int() conversion:
                 # tiny positive prices/stops can overflow otherwise.
-                risk_shares = risk_budget / stop_distance
+                risk_shares = risk_budget / stop_loss_per_share
                 affordable_shares = cash / entry
                 exposure_shares = cash * max_exposure / entry
                 volume_shares = bar.volume * max_participation

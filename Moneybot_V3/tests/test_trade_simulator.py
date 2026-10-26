@@ -837,3 +837,56 @@ def test_portfolio_drawdown_pause_uses_prior_closed_trade_peak():
     assert trades[0].quantity == 10
     assert trades[1].quantity == 11
     assert sum((t.exit_price - t.entry_price) * t.quantity for t in trades) == 29
+
+def test_risk_sizing_includes_stop_exit_slippage():
+    """Stop-risk share sizing must account for both entry and exit slippage."""
+    bars = [
+        make_bar(0, 10, 10, 9.5, 10),
+        make_bar(1, 10, 10.2, 9.9, 10),
+        make_bar(2, 9.2, 9.4, 9.0, 9.1),
+    ]
+    signal = make_signal(bars[0].timestamp)
+    signal.opening_range_high = 10.0
+    signal.opening_range_low = 9.0
+
+    without_slippage = simulate_trades(
+        bars, [signal], slippage_pct=0, max_exposure=1.0,
+    )
+    with_slippage = simulate_trades(
+        bars, [signal], slippage_pct=0.01, max_exposure=1.0,
+    )
+
+    assert len(without_slippage) == len(with_slippage) == 1
+    assert without_slippage[0].quantity == 15
+    # Entry 10.10, stop 9.10, stop fill 9.009: $1.091 risk/share.
+    # $15 risk budget therefore allows 13 shares, not 15.
+    assert with_slippage[0].quantity == 13
+    assert with_slippage[0].exit_reason == "stop"
+    assert with_slippage[0].exit_price == pytest.approx(9.009)
+    stop_loss = (
+        with_slippage[0].entry_price - with_slippage[0].exit_price
+    ) * with_slippage[0].quantity
+    assert 0 < stop_loss <= 1000 * 0.015
+
+
+def test_gap_through_stop_can_exceed_nominal_risk_budget():
+    """The sizing model must not be mistaken for a guaranteed loss cap."""
+    bars = [
+        make_bar(0, 10, 10, 9.5, 10),
+        make_bar(1, 10, 10.2, 9.9, 10),
+        make_bar(2, 7, 7.5, 6.9, 7),
+    ]
+    signal = make_signal(bars[0].timestamp)
+    signal.opening_range_high = 10.0
+    signal.opening_range_low = 9.0
+    trades = simulate_trades(
+        bars, [signal], slippage_pct=0.01, max_exposure=1.0,
+    )
+    assert len(trades) == 1
+    assert trades[0].quantity == 13
+    assert trades[0].exit_reason == "stop"
+    assert trades[0].exit_price == pytest.approx(6.93)
+    assert (
+        (trades[0].entry_price - trades[0].exit_price)
+        * trades[0].quantity
+    ) > 1000 * 0.015
