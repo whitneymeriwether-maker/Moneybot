@@ -143,7 +143,21 @@ def download_history(symbol=None):
             f"Alpaca returned no historical bars for {symbol}"
         )
 
-    bars.sort(key=lambda bar: bar["t"])
+    # Validate the provider's requested UTC window before writing anything.
+    # Sorting ISO timestamp strings is unsafe when pages contain different
+    # explicit UTC offsets; order by normalized instants instead.
+    start_utc = datetime.fromisoformat(START.replace("Z", "+00:00"))
+    end_utc = datetime.fromisoformat(END.replace("Z", "+00:00"))
+    normalized_bars = []
+    for bar in bars:
+        timestamp = datetime.fromisoformat(bar["t"].replace("Z", "+00:00"))
+        if timestamp.tzinfo is None or timestamp.utcoffset() is None:
+            raise ValueError("Historical bar timestamp must include timezone")
+        timestamp = timestamp.astimezone(timezone.utc)
+        if not start_utc <= timestamp < end_utc:
+            raise ValueError("Historical bar outside requested UTC window")
+        normalized_bars.append((timestamp, bar))
+    normalized_bars.sort(key=lambda item: item[0])
 
     # Validate the full dataset before replacing a previously good CSV.
     # A malformed bar must not corrupt the research history.
@@ -164,16 +178,7 @@ def download_history(symbol=None):
                 "timestamp", "open", "high", "low", "close", "volume",
             ])
 
-            for bar in bars:
-                timestamp = datetime.fromisoformat(
-                    bar["t"].replace("Z", "+00:00")
-                )
-                # Never infer a missing timezone from the CI runner's
-                # local clock. Alpaca bars must carry an explicit offset.
-                if timestamp.tzinfo is None or timestamp.utcoffset() is None:
-                    raise ValueError("Historical bar timestamp must include timezone")
-                timestamp = timestamp.astimezone(timezone.utc)
-
+            for timestamp, bar in normalized_bars:
                 writer.writerow([
                     timestamp.isoformat(),
                     bar["o"],
