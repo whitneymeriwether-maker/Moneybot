@@ -135,12 +135,13 @@ class PaperLedger:
         ):
             raise ValueError("Corrupt paper account balances")
         total_basis = 0
-        for quantity, basis in db.execute(
-            "SELECT quantity, cost_basis_cents FROM paper_positions"
+        for symbol, quantity, basis in db.execute(
+            "SELECT symbol, quantity, cost_basis_cents FROM paper_positions"
         ):
             if (
-                type(quantity) is not int or not 0 < quantity <= MAX_SHARES
-                or type(basis) is not int or not 0 <= basis <= MAX_CENTS
+                type(symbol) is not str or not _SYMBOL.fullmatch(symbol)
+                or type(quantity) is not int or not 0 < quantity <= MAX_SHARES
+                or type(basis) is not int or not 0 < basis <= MAX_CENTS
             ):
                 raise ValueError("Corrupt paper position")
             total_basis += basis
