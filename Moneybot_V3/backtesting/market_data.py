@@ -210,8 +210,9 @@ def get_recent_daily_bars(symbol, days=45):
 def _validate_daily_bars(bars, symbol):
     """Fail closed on malformed OHLCV data before screening a stock.
 
-    One IEX daily bar per UTC date is expected. An invalid bar must
-    never contribute to the volume average or closing price.
+    One traded IEX daily bar per weekday UTC date is expected. Weekend
+    records and zero-volume synthetic bars cannot establish observed
+    trading prices, even when their OHLC fields look plausible.
     """
 
     observed_dates = set()
@@ -232,11 +233,12 @@ def _validate_daily_bars(bars, symbol):
                 open_price, high, low, close, volume
             ))
             or low <= 0
-            or volume < 0
+            or volume <= 0  # A zero-volume bar cannot verify a trade price.
             or not volume.is_integer()  # Share counts cannot be fractional.
             or not low <= min(open_price, close)
             or not max(open_price, close) <= high
             or timestamp > now + timedelta(minutes=5)
+            or timestamp.date().weekday() >= 5
             or timestamp.date() in observed_dates
         ):
             raise RuntimeError(f"Invalid daily bar for {symbol}")
