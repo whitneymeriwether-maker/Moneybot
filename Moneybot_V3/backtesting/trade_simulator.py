@@ -46,7 +46,9 @@ def simulate_trades(
 ):
     """Simulate cash-funded long trades with same-day exits.
 
-    Cap gross notional and entry size relative to observed minute volume.
+    Cap gross notional and size entries using completed signal-minute volume.
+    Verify the next minute can support the planned full fill without
+    resizing the order based on future volume.
     Size for assumed adverse entry and stop-exit slippage; gaps can still
     exceed the intended risk budget.
 
@@ -297,7 +299,9 @@ def simulate_trades(
                 risk_shares = risk_budget / stop_loss_per_share
                 affordable_shares = cash / entry
                 exposure_shares = cash * max_exposure / entry
-                volume_shares = bar.volume * max_participation
+                # Only the completed signal minute's volume is known
+                # when the next-minute market-open entry is planned.
+                volume_shares = previous_bar.volume * max_participation
                 if not all(isfinite(value) for value in (
                     risk_shares, affordable_shares,
                     exposure_shares, volume_shares,
@@ -316,6 +320,14 @@ def simulate_trades(
                     exposure_quantity,
                     volume_quantity,
                 )
+
+                # The entry minute's final volume is not available at
+                # sizing time. Use it only as a conservative post-hoc
+                # full-fill feasibility veto, never to resize a trade.
+                if quantity > bar.volume * max_participation:
+                    pending = None
+                    previous_bar = bar
+                    continue
 
                 if quantity > 0:
                     purchase_cost = entry * quantity

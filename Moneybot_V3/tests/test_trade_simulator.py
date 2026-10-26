@@ -498,14 +498,14 @@ def test_data_end_uses_last_traded_bar_not_zero_volume_bar():
 
 
 
-def test_entry_participation_caps_shares_on_thin_minute():
-    """Do not assume a fill larger than 10% of observed minute volume."""
+def test_entry_participation_caps_shares_using_completed_signal_minute():
+    """Size using the known signal minute, not the future entry minute."""
     bars = [
         make_bar(0, 100, 101, 99, 100),
         make_bar(1, 101, 101.5, 100.5, 101),
         make_bar(2, 102, 106, 101, 105),
     ]
-    bars[1].volume = 15
+    bars[0].volume = 15
 
     trades = simulate_trades(
         bars, [make_signal(bars[0].timestamp)], slippage_pct=0
@@ -521,7 +521,7 @@ def test_entry_skipped_if_participation_allows_no_whole_share():
         make_bar(1, 101, 101.5, 100.5, 101),
         make_bar(2, 102, 106, 101, 105),
     ]
-    bars[1].volume = 9
+    bars[0].volume = 9
 
     assert simulate_trades(
         bars, [make_signal(bars[0].timestamp)], slippage_pct=0
@@ -534,7 +534,7 @@ def test_participation_limit_can_be_explicitly_tightened():
         make_bar(1, 101, 101.5, 100.5, 101),
         make_bar(2, 102, 106, 101, 105),
     ]
-    bars[1].volume = 100
+    bars[0].volume = 100
 
     trades = simulate_trades(
         bars, [make_signal(bars[0].timestamp)],
@@ -542,6 +542,37 @@ def test_participation_limit_can_be_explicitly_tightened():
     )
     assert len(trades) == 1
     assert trades[0].quantity == 1
+
+
+def test_future_entry_volume_cannot_inflate_planned_position_size():
+    bars = [
+        make_bar(0, 100, 101, 99, 100),
+        make_bar(1, 101, 101.5, 100.5, 101),
+        make_bar(2, 102, 106, 101, 105),
+    ]
+    bars[0].volume = 20  # Known when signal completes: max 2 shares.
+    bars[1].volume = 1000
+    first = simulate_trades(
+        bars, [make_signal(bars[0].timestamp)], slippage_pct=0,
+    )
+    bars[1].volume = 100_000
+    second = simulate_trades(
+        bars, [make_signal(bars[0].timestamp)], slippage_pct=0,
+    )
+    assert len(first) == len(second) == 1
+    assert first[0].quantity == second[0].quantity == 2
+
+
+def test_insufficient_future_entry_volume_vetoes_not_resizes_fill():
+    bars = [
+        make_bar(0, 100, 101, 99, 100),
+        make_bar(1, 101, 101.5, 100.5, 101),
+        make_bar(2, 102, 106, 101, 105),
+    ]
+    bars[1].volume = 15  # Planned 4 shares; only 1 could fill at 10%.
+    assert simulate_trades(
+        bars, [make_signal(bars[0].timestamp)], slippage_pct=0,
+    ) == []
 
 
 @pytest.mark.parametrize("invalid", [
