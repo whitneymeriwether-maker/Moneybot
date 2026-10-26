@@ -107,3 +107,55 @@ def test_rejects_unrepresentably_large_historical_volume(tmp_path):
     )
     with pytest.raises(ValueError, match="Invalid historical volume"):
         load_price_bars(filename)
+
+
+def test_rejects_duplicate_header_that_overrides_volume(tmp_path):
+    filename = tmp_path / "duplicate.csv"
+    filename.write_text(
+        "timestamp,open,high,low,close,volume,volume\n"
+        "2026-01-05T09:30:00-05:00,100,105,99,103,0,10000\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="Duplicate historical CSV columns"):
+        load_price_bars(filename)
+
+
+def test_rejects_extra_cell_that_dictreader_would_ignore(tmp_path):
+    filename = write_csv(
+        tmp_path,
+        "2026-01-05T09:30:00-05:00,100,105,99,103,10000,unverified\n",
+    )
+    with pytest.raises(ValueError, match="Malformed historical CSV row"):
+        load_price_bars(filename)
+
+
+def test_rejects_missing_cell_that_dictreader_fills_with_none(tmp_path):
+    filename = write_csv(
+        tmp_path,
+        "2026-01-05T09:30:00-05:00,100,105,99,103\n",
+    )
+    with pytest.raises(ValueError, match="Malformed historical CSV row"):
+        load_price_bars(filename)
+
+
+def test_rejects_unnamed_header_column(tmp_path):
+    filename = tmp_path / "unnamed.csv"
+    filename.write_text(
+        "timestamp,open,high,low,close,volume,\n"
+        "2026-01-05T09:30:00-05:00,100,105,99,103,10000,ignored\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="Unnamed historical CSV column"):
+        load_price_bars(filename)
+
+
+def test_allows_named_extra_metadata_column_with_complete_rows(tmp_path):
+    filename = tmp_path / "metadata.csv"
+    filename.write_text(
+        "timestamp,open,high,low,close,volume,source\n"
+        "2026-01-05T09:30:00-05:00,100,105,99,103,10000,iex\n",
+        encoding="utf-8",
+    )
+    bars = load_price_bars(filename)
+    assert len(bars) == 1
+    assert bars[0].volume == 10000

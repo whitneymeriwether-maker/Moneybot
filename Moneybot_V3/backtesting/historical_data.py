@@ -31,8 +31,19 @@ def load_price_bars(filename):
         }
         if not reader.fieldnames or not required.issubset(reader.fieldnames):
             raise ValueError("Missing required CSV columns")
+        # DictReader silently overwrites duplicate header names. A
+        # duplicated OHLCV column could therefore change prices or volume
+        # without any indication that the source file was malformed.
+        if len(reader.fieldnames) != len(set(reader.fieldnames)):
+            raise ValueError("Duplicate historical CSV columns")
+        if any(not name for name in reader.fieldnames):
+            raise ValueError("Unnamed historical CSV column")
 
         for row in reader:
+            # DictReader stores surplus cells under None and fills absent
+            # cells with None. Never silently ignore truncated/overlong bars.
+            if None in row or any(value is None for value in row.values()):
+                raise ValueError("Malformed historical CSV row")
             timestamp = datetime.fromisoformat(row["timestamp"])
             opening = float(row["open"])
             high = float(row["high"])
