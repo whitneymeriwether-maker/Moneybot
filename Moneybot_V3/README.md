@@ -76,3 +76,18 @@ These checks detect many accidental database edits or accounting defects,
 but they **do not** independently authenticate historical fills, prevent
 coordinated database tampering, mark positions to market, or enforce the
 execution-time V3 risk policy. The ledger remains research-only.
+
+
+## Explicit full-history paper-ledger audit
+
+Call `ledger.audit_history()` to independently replay the SQLite paper fill
+records in insertion order and reconcile the resulting cash, positions, and
+realized PnL against stored account state. This detects modified or missing
+fill records and coordinated balance changes that can evade the lightweight
+accounting invariant. The method validates fill structure, chronological
+ordering, no-overspend/no-short constraints, and exact-cent average-cost
+accounting. It is a read-only, O(number of fills) verification operation,
+intended before research reporting or data migration; it is **not** run on
+every transaction. The audit cannot detect coordinated alteration of both
+the entire history and account state, authenticate market prints, or prove
+paper execution. This remains a broker-disconnected research component.

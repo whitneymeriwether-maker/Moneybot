@@ -252,3 +252,67 @@ def test_multiple_positions_preserve_accounting_invariant(tmp_path):
     realized = Decimal(snapshot["realized_pnl"])
     assert cash + basis - realized == Decimal(snapshot["starting_cash"])
     assert snapshot["fill_count"] == 3
+
+
+def test_history_audit_replays_partial_fills_and_same_timestamp(tmp_path):
+    path = tmp_path / "paper.sqlite3"
+    ledger = PaperLedger(path)
+    assert ledger.audit_history() == {
+        "audited_fills": 0, "cash": "1000.00", "realized_pnl": "0.00"
+    }
+    fill(ledger, event_id="z-buy", quantity=3, price="10.00", fee="0.01")
+    # An alphabetically earlier sell ID must not reorder same-time fills.
+    fill(ledger, event_id="a-sell", side="SELL", quantity=1,
+         price="12.00", fee="0.02")
+    fill(ledger, event_id="other", symbol="QQQ", quantity=2,
+         price="20.00", fee="0.00")
+    assert PaperLedger(path).audit_history() == {
+        "audited_fills": 3, "cash": "941.97", "realized_pnl": "1.98"
+    }
+
+
+def test_history_audit_catches_coordinated_balance_corruption(tmp_path):
+    path = tmp_path / "paper.sqlite3"
+    ledger = PaperLedger(path)
+    fill(ledger)
+    with sqlite3.connect(path) as db:
+        # Basic cash + basis - realized reconciliation still passes.
+        db.execute("""UPDATE paper_account SET
+                      cash_cents=cash_cents+1,
+                      realized_pnl_cents=realized_pnl_cents+1""")
+    assert ledger.snapshot()["cash"] == "799.01"
+    with pytest.raises(ValueError, match="fill history: state mismatch"):
+        ledger.audit_history()
+
+
+@pytest.mark.parametrize("sql", [
+    "UPDATE paper_fills SET price_cents=price_cents+1 WHERE event_id='e1'",
+    "UPDATE paper_fills SET timestamp_utc='not-a-timestamp' WHERE event_id='e1'",
+    "UPDATE paper_fills SET symbol='INVALID SYMBOL' WHERE event_id='e1'",
+    "DELETE FROM paper_fills WHERE event_id='e1'",
+])
+def test_history_audit_detects_changed_or_missing_fill_records(tmp_path, sql):
+    path = tmp_path / "paper.sqlite3"
+    ledger = PaperLedger(path)
+    fill(ledger)
+    with sqlite3.connect(path) as db:
+        db.execute(sql)
+    # Account-level invariant alone cannot verify fill provenance.
+    assert ledger.snapshot()["cash"] == "799.00"
+    with pytest.raises(ValueError, match="Corrupt paper fill history"):
+        ledger.audit_history()
+
+
+def test_history_audit_detects_nonmonotonic_fill_timestamps(tmp_path):
+    path = tmp_path / "paper.sqlite3"
+    ledger = PaperLedger(path)
+    fill(ledger)
+    fill(ledger, event_id="e2", timestamp=T0 + timedelta(minutes=1),
+         symbol="QQQ", quantity=1, fee="0.00")
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "UPDATE paper_fills SET timestamp_utc=? WHERE event_id='e2'",
+            ((T0 - timedelta(minutes=1)).isoformat(timespec="microseconds"),)
+        )
+    with pytest.raises(ValueError, match="fill history: timestamp"):
+        ledger.audit_history()

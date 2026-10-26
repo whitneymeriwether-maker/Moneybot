@@ -323,3 +323,114 @@ class PaperLedger:
             "positions": positions,
             "fill_count": count,
         }
+
+    def audit_history(self):
+        """Explicitly replay all hypothetical fills and reconcile final state.
+
+        This independent O(number of fills) check detects changes to fill
+        records and coordinated balance edits that the basic accounting
+        invariant cannot detect. Run before trusting research reports or
+        migrating the ledger; do not call on every fill in a large account.
+        It is not cryptographic authentication or proof of market execution.
+        """
+        with closing(self._connect()) as db:
+            try:
+                db.execute("BEGIN")
+                self._assert_consistent(db)
+                start, stored_cash, stored_realized = db.execute(
+                    """SELECT starting_cash_cents, cash_cents, realized_pnl_cents
+                       FROM paper_account WHERE id=1"""
+                ).fetchone()
+                cash, realized = start, 0
+                positions = {}
+                previous_timestamp = None
+                count = 0
+                # ROWID preserves insertion order when several fills share a
+                # timestamp; sorting by event ID could invert a buy and sell.
+                rows = db.execute(
+                    """SELECT event_id, timestamp_utc, symbol, side, quantity,
+                              price_cents, fee_cents
+                       FROM paper_fills ORDER BY rowid"""
+                )
+                for event_id, stamp, symbol, side, quantity, price, fee in rows:
+                    if type(event_id) is not str or not _EVENT_ID.fullmatch(event_id):
+                        raise ValueError("Corrupt paper fill history: event ID")
+                    if type(stamp) is not str:
+                        raise ValueError("Corrupt paper fill history: timestamp")
+                    try:
+                        parsed = datetime.fromisoformat(stamp)
+                        canonical = parsed.astimezone(timezone.utc).isoformat(
+                            timespec="microseconds"
+                        ) if parsed.tzinfo is not None else None
+                    except (TypeError, ValueError, OverflowError):
+                        canonical = None
+                    if stamp != canonical or (
+                        previous_timestamp is not None and stamp < previous_timestamp
+                    ):
+                        raise ValueError("Corrupt paper fill history: timestamp")
+                    previous_timestamp = stamp
+                    if type(symbol) is not str or not _SYMBOL.fullmatch(symbol):
+                        raise ValueError("Corrupt paper fill history: symbol")
+                    if side not in ("BUY", "SELL") or type(side) is not str:
+                        raise ValueError("Corrupt paper fill history: side")
+                    if type(quantity) is not int or not 0 < quantity <= MAX_SHARES:
+                        raise ValueError("Corrupt paper fill history: quantity")
+                    if (
+                        type(price) is not int or not 0 < price <= MAX_CENTS
+                        or type(fee) is not int or not 0 <= fee <= MAX_CENTS
+                    ):
+                        raise ValueError("Corrupt paper fill history: money")
+                    gross = price * quantity
+                    if gross > MAX_CENTS or gross + fee > MAX_CENTS:
+                        raise ValueError("Corrupt paper fill history: notional")
+
+                    held, basis = positions.get(symbol, (0, 0))
+                    if side == "BUY":
+                        debit = gross + fee
+                        if debit > cash:
+                            raise ValueError("Corrupt paper fill history: overspend")
+                        new_quantity, new_basis = held + quantity, basis + debit
+                        if new_quantity > MAX_SHARES or new_basis > MAX_CENTS:
+                            raise ValueError("Corrupt paper fill history: position bounds")
+                        cash -= debit
+                        positions[symbol] = (new_quantity, new_basis)
+                    else:
+                        if quantity > held:
+                            raise ValueError("Corrupt paper fill history: unowned sale")
+                        proceeds = gross - fee
+                        if proceeds < 0 or cash + proceeds > MAX_CENTS:
+                            raise ValueError("Corrupt paper fill history: sale proceeds")
+                        released = (
+                            basis if quantity == held else
+                            (2 * basis * quantity + held) // (2 * held)
+                        )
+                        cash += proceeds
+                        realized += proceeds - released
+                        if abs(realized) > MAX_CENTS:
+                            raise ValueError("Corrupt paper fill history: realized PnL")
+                        if quantity == held:
+                            del positions[symbol]
+                        else:
+                            positions[symbol] = (held - quantity, basis - released)
+                    count += 1
+
+                stored_positions = {
+                    symbol: (quantity, basis)
+                    for symbol, quantity, basis in db.execute(
+                        "SELECT symbol, quantity, cost_basis_cents FROM paper_positions"
+                    )
+                }
+                if (
+                    cash != stored_cash or realized != stored_realized
+                    or positions != stored_positions
+                ):
+                    raise ValueError("Corrupt paper fill history: state mismatch")
+                db.commit()
+            except Exception:
+                db.rollback()
+                raise
+        return {
+            "audited_fills": count,
+            "cash": _money(cash),
+            "realized_pnl": _money(realized),
+        }
