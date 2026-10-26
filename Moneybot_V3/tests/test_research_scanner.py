@@ -533,6 +533,34 @@ def test_sec_fallback_rejects_bad_history_outside_recent_twenty(
         research_scanner._estimate_using_sec("TEST")
 
 
+@pytest.mark.parametrize("problem", ["zero_volume", "weekend"])
+def test_sec_fallback_rejects_untraded_daily_prices(monkeypatch, problem):
+    bars = make_sec_fallback_bars()
+    if problem == "zero_volume":
+        bars[-1]["v"] = 0
+    else:
+        latest_date = datetime.fromisoformat(
+            bars[-1]["t"].replace("Z", "+00:00")
+        ).date()
+        saturday = latest_date + timedelta(
+            days=(5 - latest_date.weekday()) % 7
+        )
+        bars[-1]["t"] = f"{saturday.isoformat()}T04:00:00Z"
+
+    monkeypatch.setattr(
+        research_scanner, "get_recent_daily_bars", lambda symbol: bars,
+    )
+    monkeypatch.setattr(
+        research_scanner, "estimate_market_cap",
+        lambda symbol, price: pytest.fail(
+            "Untraded daily bar must not support SEC market-cap estimate"
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="Invalid daily bar"):
+        research_scanner._estimate_using_sec("TEST")
+
+
 def test_sec_fallback_failure_classifies_as_unverified(monkeypatch):
     fake_fmp_failure(monkeypatch)
     bars = make_sec_fallback_bars(count=21)
