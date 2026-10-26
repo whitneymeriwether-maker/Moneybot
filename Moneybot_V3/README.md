@@ -20,7 +20,9 @@
 
 - The local SQLite ledger now offers a read-only, timestamp-validated `marked_snapshot` for hypothetical equity, unrealized/total PnL, and gross exposure. It requires an exact, fresh, positive price for every open position, rejects marks preceding the position's latest fill, and prevents a snapshot timestamp from preceding any recorded fill. These marks are supplied by the caller and **not authenticated**; the result is a research valuation, not an execution-time risk check or broker balance.
 
-- SQLite paper-ledger initialization now refuses to recreate a missing account row, rejects partially missing ledger schemas, and verifies persisted cash/basis/PnL consistency on reopen. These checks detect some corruption but cannot authenticate a coordinated rewrite of stored fills and balances.\n\n## Still required before autonomous paper operation
+- SQLite paper-ledger initialization now refuses to recreate a missing account row, rejects partially missing ledger schemas, and verifies persisted cash/basis/PnL consistency on reopen. These checks detect some corruption but cannot authenticate a coordinated rewrite of stored fills and balances.
+
+## Still required before autonomous paper operation
 1. Connect an AI model using strictly structured output and source-backed, timestamped evidence; don't trust unverified news or social media as facts.
 2. Ingest historical point-in-time OHLCV and permitted news; control look-ahead bias, survivorship bias, stock splits, market holidays, and source licensing.
 3. Integrate with the persistent Neon paper engine, using atomic account locks and idempotent fills; gate checks must be repeated at execution time.
