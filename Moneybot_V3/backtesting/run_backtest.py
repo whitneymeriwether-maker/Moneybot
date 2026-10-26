@@ -52,6 +52,7 @@ def main():
         risk_per_trade=0.015,
         slippage_pct=0.001,
         require_full_regular_sessions=True,
+        require_traded_regular_minutes=True,
         expected_session_span=(date(2026, 4, 1), date(2026, 9, 30)),
         minimum_observed_sessions=120,
         closed_sessions=NYSE_2026_APR_SEP_CLOSED_SESSIONS,
