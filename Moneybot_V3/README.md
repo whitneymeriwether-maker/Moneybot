@@ -26,3 +26,6 @@
 6. Add alerts, spending controls for AI API usage, and safeguards against prompt injection in retrieved source text.
 
 The validator does not guarantee loss limits when gaps, delayed bars, or simulation assumptions occur. It has no broker code or live order path.
+
+## Historical symbol binding
+Downloaded Alpaca research CSVs now include a `symbol` column on every bar. The CSV loader rejects malformed or mixed ticker metadata even in exploratory files; the strict six-month SPY runner additionally requires every row to explicitly identify `SPY`. A renamed or mixed-symbol file cannot silently be scored as SPY. Legacy CSVs without symbol metadata remain usable only when the caller does not request an expected symbol. Previously downloaded unlabelled SPY CSVs must be downloaded again before running the strict SPY study. This binds labels, **not** data-provider authenticity or point-in-time provenance.

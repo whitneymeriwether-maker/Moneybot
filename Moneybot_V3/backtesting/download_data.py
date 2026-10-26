@@ -175,7 +175,7 @@ def download_history(symbol=None):
             temporary = Path(file.name)
             writer = csv.writer(file)
             writer.writerow([
-                "timestamp", "open", "high", "low", "close", "volume",
+                "timestamp", "open", "high", "low", "close", "volume", "symbol",
             ])
 
             for timestamp, bar in normalized_bars:
@@ -186,9 +186,10 @@ def download_history(symbol=None):
                     bar["l"],
                     bar["c"],
                     bar["v"],
+                    symbol,
                 ])
 
-        load_price_bars(temporary)
+        load_price_bars(temporary, expected_symbol=symbol)
         temporary.replace(output)
     finally:
         if temporary is not None:

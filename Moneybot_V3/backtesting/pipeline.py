@@ -196,6 +196,7 @@ def run_backtest(
     expected_session_span=None,
     minimum_observed_sessions=1,
     closed_sessions=None,
+    expected_symbol=None,
 ):
     """Load prices, validate requested session coverage, then simulate."""
 
@@ -219,7 +220,7 @@ def run_backtest(
     ):
         raise ValueError("Invalid expected research session window")
 
-    bars = load_price_bars(csv_filename)
+    bars = load_price_bars(csv_filename, expected_symbol=expected_symbol)
     validate_regular_session_gaps(bars, max_regular_gap_minutes)
     if require_full_regular_sessions:
         validate_regular_session_coverage(bars)

@@ -56,6 +56,7 @@ def main():
         expected_session_span=(date(2026, 4, 1), date(2026, 9, 30)),
         minimum_observed_sessions=120,
         closed_sessions=NYSE_2026_APR_SEP_CLOSED_SESSIONS,
+        expected_symbol="SPY",
     )
 
     print("OVERALL PERFORMANCE")
