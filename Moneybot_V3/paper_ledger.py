@@ -111,6 +111,44 @@ class PaperLedger:
         db.execute("PRAGMA busy_timeout=10000")
         return db
 
+    @staticmethod
+    def _assert_consistent(db):
+        """Fail closed if persisted cash, positions, and PnL do not reconcile.
+
+        For average-cost cash accounting, cash + remaining acquisition
+        basis - realized PnL must always equal initial cash. This detects
+        many accidental/manual state edits, but is not a cryptographic
+        audit of the fill history or protection from coordinated tampering.
+        Must run inside the caller's SQLite transaction.
+        """
+        row = db.execute(
+            """SELECT starting_cash_cents, cash_cents, realized_pnl_cents
+               FROM paper_account WHERE id=1"""
+        ).fetchone()
+        if row is None:
+            raise ValueError("Corrupt paper account: missing account row")
+        start, cash, realized = row
+        if (
+            type(start) is not int or not 0 < start <= MAX_CENTS
+            or type(cash) is not int or not 0 <= cash <= MAX_CENTS
+            or type(realized) is not int or abs(realized) > MAX_CENTS
+        ):
+            raise ValueError("Corrupt paper account balances")
+        total_basis = 0
+        for quantity, basis in db.execute(
+            "SELECT quantity, cost_basis_cents FROM paper_positions"
+        ):
+            if (
+                type(quantity) is not int or not 0 < quantity <= MAX_SHARES
+                or type(basis) is not int or not 0 <= basis <= MAX_CENTS
+            ):
+                raise ValueError("Corrupt paper position")
+            total_basis += basis
+            if total_basis > MAX_CENTS:
+                raise ValueError("Corrupt paper position basis")
+        if cash + total_basis - realized != start:
+            raise ValueError("Corrupt paper account accounting invariant")
+
     def record_fill(
         self, *, event_id, timestamp, symbol, side, quantity, price,
         fee="0.00",
@@ -154,6 +192,7 @@ class PaperLedger:
                 # SQLite writer lock serializes independent workers before
                 # checking the event ID or the available paper cash.
                 db.execute("BEGIN IMMEDIATE")
+                self._assert_consistent(db)
                 existing = db.execute(
                     """SELECT timestamp_utc, symbol, side, quantity,
                               price_cents, fee_cents
@@ -242,6 +281,7 @@ class PaperLedger:
                        VALUES (?, ?, ?, ?, ?, ?, ?)""",
                     (event_id, *payload),
                 )
+                self._assert_consistent(db)
                 db.commit()
                 return True
             except Exception:
@@ -253,6 +293,7 @@ class PaperLedger:
         with closing(self._connect()) as db:
             try:
                 db.execute("BEGIN")
+                self._assert_consistent(db)
                 start, cash, realized = db.execute(
                     """SELECT starting_cash_cents, cash_cents,
                               realized_pnl_cents

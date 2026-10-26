@@ -63,3 +63,16 @@ corporate actions, or connect to the persistent Neon paper engine. It is an
 offline transaction/accounting foundation, **not an autonomous paper trader**.
 An end-to-end adapter will need execution-time risk rechecks, fill provenance,
 session handling, and replay/reconciliation tests before deployment.
+
+
+## Persistent paper-account consistency checks
+
+Before acknowledging a fill (including an idempotent retry), after applying
+a new fill, and when reading an account snapshot, the offline SQLite ledger
+checks that cash plus remaining position cost basis minus realized PnL equals
+the original paper cash. It also rejects invalid or out-of-range stored
+balances and positions. A mismatch fails closed without applying a new fill.
+These checks detect many accidental database edits or accounting defects,
+but they **do not** independently authenticate historical fills, prevent
+coordinated database tampering, mark positions to market, or enforce the
+execution-time V3 risk policy. The ledger remains research-only.

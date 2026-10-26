@@ -1,6 +1,7 @@
 """Offline persistence and idempotency regression tests for V3 paper ledger."""
 
 import sys
+import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -212,3 +213,42 @@ def test_file_path_and_starting_cash_must_be_valid(tmp_path):
         PaperLedger(tmp_path / "paper.sqlite3", starting_cash=0.0)
     with pytest.raises(ValueError):
         PaperLedger(tmp_path / "paper.sqlite3", starting_cash="-10.00")
+
+
+@pytest.mark.parametrize("table, column, delta", [
+    ("paper_account", "cash_cents", 1),
+    ("paper_positions", "cost_basis_cents", 1),
+    ("paper_account", "realized_pnl_cents", 1),
+])
+def test_corrupted_persisted_account_fails_closed(tmp_path, table, column, delta):
+    path = tmp_path / "paper.sqlite3"
+    ledger = PaperLedger(path)
+    fill(ledger)
+    fill(ledger, "e2", T0 + timedelta(minutes=1),
+         side="SELL", quantity=1, price="110.00", fee="0.00")
+    with sqlite3.connect(path) as db:
+        db.execute(f"UPDATE {table} SET {column} = {column} + ?", (delta,))
+    with pytest.raises(ValueError, match="accounting invariant"):
+        ledger.snapshot()
+    with pytest.raises(ValueError, match="accounting invariant"):
+        fill(ledger, "e3", T0 + timedelta(minutes=2), quantity=1)
+    # Even a byte-for-byte retry cannot acknowledge a corrupted ledger.
+    with pytest.raises(ValueError, match="accounting invariant"):
+        fill(ledger)
+    with sqlite3.connect(path) as db:
+        assert db.execute("SELECT COUNT(*) FROM paper_fills").fetchone()[0] == 2
+
+
+def test_multiple_positions_preserve_accounting_invariant(tmp_path):
+    ledger = PaperLedger(tmp_path / "paper.sqlite3")
+    fill(ledger, quantity=2, price="100.00", fee="1.00")
+    fill(ledger, "e2", T0 + timedelta(minutes=1),
+         symbol="QQQ", quantity=3, price="50.00", fee="0.25")
+    fill(ledger, "e3", T0 + timedelta(minutes=2),
+         side="SELL", quantity=1, price="110.00", fee="0.50")
+    snapshot = ledger.snapshot()
+    cash = Decimal(snapshot["cash"])
+    basis = sum(Decimal(pos["cost_basis"]) for pos in snapshot["positions"].values())
+    realized = Decimal(snapshot["realized_pnl"])
+    assert cash + basis - realized == Decimal(snapshot["starting_cash"])
+    assert snapshot["fill_count"] == 3
