@@ -294,6 +294,7 @@ def test_insufficient_daily_history(monkeypatch):
     "invalid_fields",
     [
         {"v": -1},
+        {"v": 0},  # No observed trade supports a daily closing price.
         {"v": float("nan")},
         {"v": True},
         {"v": 1.5},  # API share volume cannot be fractional.
@@ -326,6 +327,28 @@ def test_malformed_daily_bar_fails_closed(monkeypatch, invalid_fields):
         market_data.get_stock_candidate(
             "TEST", market_cap=1_000_000_000
         )
+
+
+def test_weekend_daily_bar_is_not_verified_as_stock_history():
+    bars = make_daily_bars()
+    latest_date = datetime.fromisoformat(
+        bars[-1]["t"].replace("Z", "+00:00")
+    ).date()
+    next_saturday = latest_date + timedelta(
+        days=(5 - latest_date.weekday()) % 7
+    )
+    bars[-1]["t"] = f"{next_saturday.isoformat()}T04:00:00Z"
+
+    with pytest.raises(RuntimeError, match="Invalid daily bar"):
+        market_data._validate_daily_bars(bars, "TEST")
+
+
+def test_older_zero_volume_daily_bar_cannot_hide_outside_recent_window():
+    bars = make_daily_bars(21)
+    bars[0]["v"] = 0
+
+    with pytest.raises(RuntimeError, match="Invalid daily bar"):
+        market_data._validate_daily_bars(bars, "TEST")
 
 
 def test_duplicate_daily_bar_date_fails_closed(monkeypatch):
