@@ -182,3 +182,64 @@ def test_overflowing_sec_market_cap_estimate_fails_closed(monkeypatch):
     with pytest.raises(sec_market_cap.SECMarketCapError,
                        match="Non-finite SEC market-cap estimate"):
         sec_market_cap.estimate_market_cap("TEST", 1e308)
+
+
+def test_sec_shares_ignore_filing_before_observation(monkeypatch):
+    # A filing date before its purported shares observation is impossible.
+    valid = make_observation(shares=75_000_000, days_ago=60)
+    impossible = make_observation(shares=150_000_000, days_ago=5)
+    impossible["filed"] = (date.today() - timedelta(days=10)).isoformat()
+    configure_fake_sec(monkeypatch, [valid, impossible])
+
+    result = sec_market_cap.get_reported_shares_outstanding("TEST")
+
+    assert result["shares_outstanding"] == 75_000_000
+    assert result["observation_date"] == valid["end"]
+
+
+def test_sec_shares_fail_closed_if_all_filings_predate_observations(monkeypatch):
+    impossible = make_observation(days_ago=5)
+    impossible["filed"] = (date.today() - timedelta(days=10)).isoformat()
+    configure_fake_sec(monkeypatch, [impossible])
+
+    with pytest.raises(
+        sec_market_cap.SECMarketCapError,
+        match="No recent SEC shares-outstanding data",
+    ):
+        sec_market_cap.get_reported_shares_outstanding("TEST")
+
+
+def test_sec_shares_reject_conflicting_same_date_facts(monkeypatch):
+    first = make_observation(shares=100_000_000)
+    conflicting = make_observation(shares=120_000_000)
+    configure_fake_sec(monkeypatch, [first, conflicting])
+
+    with pytest.raises(
+        sec_market_cap.SECMarketCapError,
+        match="Conflicting SEC shares-outstanding data",
+    ):
+        sec_market_cap.get_reported_shares_outstanding("TEST")
+
+
+def test_sec_shares_accept_identical_duplicate_facts(monkeypatch):
+    observation = make_observation(shares=100_000_000)
+    configure_fake_sec(monkeypatch, [observation, dict(observation)])
+
+    result = sec_market_cap.get_reported_shares_outstanding("TEST")
+
+    assert result["shares_outstanding"] == 100_000_000
+
+
+def test_sec_shares_reject_conflict_at_latest_date_even_with_older_valid_fact(
+    monkeypatch,
+):
+    older = make_observation(shares=80_000_000, days_ago=60)
+    recent_a = make_observation(shares=100_000_000, days_ago=20)
+    recent_b = make_observation(shares=120_000_000, days_ago=20)
+    configure_fake_sec(monkeypatch, [older, recent_a, recent_b])
+
+    with pytest.raises(
+        sec_market_cap.SECMarketCapError,
+        match="Conflicting SEC shares-outstanding data",
+    ):
+        sec_market_cap.get_reported_shares_outstanding("TEST")

@@ -139,7 +139,10 @@ def get_reported_shares_outstanding(symbol):
             not _valid_positive_number(shares)
             or not earliest <= observation_date <= today
             or filed_date > today
+            or filed_date < observation_date
         ):
+            # An SEC filing cannot predate the observation it reports.
+            # Treat impossible chronology as unverified, not as evidence.
             continue
 
         candidates.append(
@@ -155,6 +158,18 @@ def get_reported_shares_outstanding(symbol):
         candidates,
         key=lambda item: (item[0], item[1]),
     )
+
+    # Company facts may contain multiple records for the same as-of and
+    # filing dates. Conflicting share counts are ambiguous: choosing the
+    # first API record could invent a market-cap estimate.
+    matching_values = {
+        value for end, filed, value in candidates
+        if end == observation_date and filed == filed_date
+    }
+    if len(matching_values) != 1:
+        raise SECMarketCapError(
+            f"Conflicting SEC shares-outstanding data for {symbol}"
+        )
 
     return {
         "symbol": symbol.upper(),
