@@ -43,6 +43,38 @@ def validate_regular_session_gaps(bars, max_gap_minutes=1):
         previous_regular = bar
 
 
+def validate_regular_session_coverage(bars):
+    """Require observed weekday sessions to span 9:30 through 15:59 NY time.
+
+    This boundary check does not detect entirely absent sessions, exchange
+    holidays, early closes, or synthetic zero-volume bars. Pair it with
+    the regular-session interior gap check for full-day research data.
+    """
+    sessions = {}
+    for bar in bars:
+        local = bar.timestamp.astimezone(_NEW_YORK)
+        clock = local.time()
+        if local.weekday() >= 5 or not (time(9, 30) <= clock < time(16, 0)):
+            continue
+
+        day = local.date()
+        if day not in sessions:
+            sessions[day] = [clock, clock]
+        else:
+            sessions[day][0] = min(sessions[day][0], clock)
+            sessions[day][1] = max(sessions[day][1], clock)
+
+    if not sessions:
+        raise ValueError("No regular-session minute bars to validate")
+
+    for day, (first, last) in sessions.items():
+        if first != time(9, 30) or last != time(15, 59):
+            raise ValueError(
+                f"Incomplete regular session on {day}: "
+                f"first {first.isoformat()}, last {last.isoformat()}"
+            )
+
+
 @dataclass(frozen=True)
 class BacktestReport:
     starting_cash: float
@@ -71,11 +103,17 @@ def run_backtest(
     risk_per_trade=0.015,
     slippage_pct=0.001,
     max_regular_gap_minutes=1,
+    require_full_regular_sessions=False,
 ):
-    """Load prices, reject interior regular-session gaps, then simulate."""
+    """Load prices, validate requested session coverage, then simulate."""
+
+    if type(require_full_regular_sessions) is not bool:
+        raise ValueError("Invalid full regular-session requirement")
 
     bars = load_price_bars(csv_filename)
     validate_regular_session_gaps(bars, max_regular_gap_minutes)
+    if require_full_regular_sessions:
+        validate_regular_session_coverage(bars)
     signals = generate_breakout_signals(bars)
 
     trades = simulate_trades(

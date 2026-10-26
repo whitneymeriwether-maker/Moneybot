@@ -12,7 +12,10 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from backtesting.pipeline import run_backtest, validate_regular_session_gaps
+from backtesting.pipeline import (
+    run_backtest, validate_regular_session_gaps,
+    validate_regular_session_coverage,
+)
 
 NY = ZoneInfo("America/New_York")
 
@@ -257,3 +260,71 @@ def test_regular_session_gap_check_ignores_overnight_and_weekends():
 def test_regular_session_gap_check_rejects_invalid_tolerance(invalid):
     with pytest.raises(ValueError, match="Invalid maximum regular-session gap"):
         validate_regular_session_gaps([], invalid)
+
+
+def test_strict_session_coverage_rejects_truncated_close(tmp_path):
+    filename = tmp_path / "prices.csv"
+    write_prices(filename)
+    with pytest.raises(ValueError, match="Incomplete regular session"):
+        run_backtest(filename, require_full_regular_sessions=True)
+
+
+def test_strict_session_coverage_rejects_truncated_open():
+    bars = [
+        SimpleNamespace(timestamp=datetime(2026, 10, 12, 9, 31, tzinfo=NY)),
+        SimpleNamespace(timestamp=datetime(2026, 10, 12, 15, 59, tzinfo=NY)),
+    ]
+    with pytest.raises(ValueError, match="Incomplete regular session"):
+        validate_regular_session_coverage(bars)
+
+
+def test_strict_session_coverage_ignores_extended_hours_and_weekends():
+    bars = [
+        SimpleNamespace(timestamp=datetime(2026, 10, 12, 8, 0, tzinfo=NY)),
+        SimpleNamespace(timestamp=datetime(2026, 10, 12, 9, 30, tzinfo=NY)),
+        SimpleNamespace(timestamp=datetime(2026, 10, 12, 15, 59, tzinfo=NY)),
+        SimpleNamespace(timestamp=datetime(2026, 10, 12, 17, 0, tzinfo=NY)),
+        SimpleNamespace(timestamp=datetime(2026, 10, 17, 9, 30, tzinfo=NY)),
+    ]
+    validate_regular_session_coverage(bars)
+
+
+def test_strict_session_coverage_rejects_no_regular_bars():
+    bars = [
+        SimpleNamespace(timestamp=datetime(2026, 10, 17, 9, 30, tzinfo=NY))
+    ]
+    with pytest.raises(ValueError, match="No regular-session minute bars"):
+        validate_regular_session_coverage(bars)
+
+
+def test_strict_session_coverage_accepts_complete_minute_history(tmp_path):
+    filename = tmp_path / "prices.csv"
+    write_prices(filename)
+    with filename.open(newline="", encoding="utf-8") as file:
+        reader = csv.DictReader(file)
+        fields = reader.fieldnames
+        rows = list(reader)
+    start = datetime(2026, 10, 12, 9, 30, tzinfo=NY)
+    for minute in range(18, 390):
+        rows.append({
+            "timestamp": (start + timedelta(minutes=minute)).isoformat(),
+            "open": 100, "high": 101, "low": 99,
+            "close": 100, "volume": 1000,
+        })
+    with filename.open("w", newline="", encoding="utf-8") as file:
+        writer = csv.DictWriter(file, fieldnames=fields)
+        writer.writeheader()
+        writer.writerows(rows)
+
+    report = run_backtest(
+        filename, slippage_pct=0, require_full_regular_sessions=True
+    )
+    assert report.trade_count == 1
+
+
+@pytest.mark.parametrize("invalid", [None, 0, 1, "true", [], float("nan")])
+def test_strict_session_requirement_rejects_invalid_option(tmp_path, invalid):
+    filename = tmp_path / "prices.csv"
+    write_prices(filename)
+    with pytest.raises(ValueError, match="Invalid full regular-session requirement"):
+        run_backtest(filename, require_full_regular_sessions=invalid)

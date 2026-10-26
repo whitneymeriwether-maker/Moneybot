@@ -38,6 +38,7 @@ def main():
         starting_cash=1000.0,
         risk_per_trade=0.015,
         slippage_pct=0.001,
+        require_full_regular_sessions=True,
     )
 
     print("OVERALL PERFORMANCE")
