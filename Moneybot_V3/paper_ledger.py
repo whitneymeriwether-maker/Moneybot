@@ -54,7 +54,7 @@ class PaperLedger:
     """
 
     def __init__(self, db_path, starting_cash="1000.00"):
-        if type(db_path) not in (str, Path) or not str(db_path).strip():
+        if not isinstance(db_path, (str, Path)) or not str(db_path).strip():
             raise ValueError("A persistent SQLite file path is required")
         self.db_path = str(db_path)
         if self.db_path == ":memory:":
