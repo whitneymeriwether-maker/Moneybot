@@ -42,6 +42,7 @@ def simulate_trades(
     max_exposure=0.5,
     max_participation=0.10,
     daily_loss_limit=0.03,
+    max_drawdown_pause=0.10,
 ):
     """Simulate cash-funded long trades with same-day exits.
 
@@ -50,6 +51,9 @@ def simulate_trades(
     Exit fills remain simplified; this is not an execution-quality model.
     Stop new entries after the day's realized losses reach a percentage of
     initial paper capital. This cannot prevent gap losses on open positions.
+    Also pause new entries when closed-trade equity falls 10% from its
+    historical peak (configurable). This pause persists across sessions.
+    Neither limit tracks unrealized intratrade drawdown.
     """
 
     if not _finite_number(starting_cash) or starting_cash <= 0:
@@ -72,6 +76,10 @@ def simulate_trades(
     if (not _finite_number(daily_loss_limit)
             or not 0 < daily_loss_limit <= 1):
         raise ValueError("Invalid daily loss limit")
+
+    if (not _finite_number(max_drawdown_pause)
+            or not 0 < max_drawdown_pause <= 1):
+        raise ValueError("Invalid maximum drawdown pause")
 
     bars = list(bars)
     # Reject malformed or nonchronological direct simulator inputs.
@@ -143,6 +151,7 @@ def simulate_trades(
 
     completed = []
     cash = starting_cash
+    peak_equity = starting_cash  # Closed-trade equity, not intratrade marks.
     realized_pnl_today = 0.0
     position = None
     pending = None
@@ -152,7 +161,7 @@ def simulate_trades(
     last_regular_bar = None
 
     def close_position(bar, price, reason):
-        nonlocal position, cash, realized_pnl_today
+        nonlocal position, cash, realized_pnl_today, peak_equity
 
         exit_price = price * (1 - slippage_pct)
         quantity = position["quantity"]
@@ -168,6 +177,7 @@ def simulate_trades(
             raise ValueError("Non-finite simulated trade arithmetic")
         cash += proceeds
         realized_pnl_today += realized_pnl
+        peak_equity = max(peak_equity, cash)
 
         completed.append(
             SimulatedTrade(
@@ -239,7 +249,10 @@ def simulate_trades(
             ):
                 # Recheck the circuit breaker at fill time, not only when
                 # the signal is observed. Realized PnL includes slippage.
-                if realized_pnl_today <= -starting_cash * daily_loss_limit:
+                if (
+                    realized_pnl_today <= -starting_cash * daily_loss_limit
+                    or cash <= peak_equity * (1 - max_drawdown_pause)
+                ):
                     pending = None
                     previous_bar = bar
                     continue

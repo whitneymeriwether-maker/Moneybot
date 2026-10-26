@@ -735,7 +735,7 @@ def test_daily_loss_circuit_breaker_resets_on_new_session():
     ]
     trades = simulate_trades(
         bars, signals, slippage_pct=0, risk_per_trade=0.10,
-        max_exposure=1.0,
+        max_exposure=1.0, max_drawdown_pause=0.50,
     )
     assert len(trades) == 2
     assert trades[0].exit_reason == "stop"
@@ -754,3 +754,86 @@ def test_daily_loss_limit_can_be_tightened_for_paper_research():
         bars, signals, slippage_pct=0, risk_per_trade=0.10,
         max_exposure=1.0, daily_loss_limit=0.01,
     )) == 1
+
+
+@pytest.mark.parametrize("invalid", [
+    0, -0.01, 1.01, True, float("nan"), float("inf"), "0.10",
+])
+def test_invalid_max_drawdown_pause_fails_closed(invalid):
+    with pytest.raises(ValueError, match="Invalid maximum drawdown pause"):
+        simulate_trades([], [], max_drawdown_pause=invalid)
+
+
+def test_portfolio_drawdown_pause_persists_across_new_york_sessions():
+    first_day = _daily_stop_bars()
+    second_day = [
+        make_bar(0, 100, 101, 99, 100, day=13),
+        make_bar(1, 100, 101, 99, 100, day=13),
+        make_bar(2, 100, 101, 99, 100, day=13),
+    ]
+    signals = [
+        _daily_stop_signal(first_day[0].timestamp),
+        _daily_stop_signal(second_day[0].timestamp),
+    ]
+    trades = simulate_trades(
+        first_day + second_day, signals,
+        slippage_pct=0, risk_per_trade=0.10, max_exposure=1.0,
+    )
+    # First gap stop loses $110 from $1,000 (11% drawdown).
+    # The daily realized-loss stop resets, but portfolio pause does not.
+    assert len(trades) == 1
+    assert trades[0].exit_reason == "stop"
+    assert trades[0].quantity == 10
+
+
+def test_portfolio_drawdown_pause_can_be_widened_for_research():
+    first_day = _daily_stop_bars()
+    second_day = [
+        make_bar(0, 100, 101, 99, 100, day=13),
+        make_bar(1, 100, 101, 99, 100, day=13),
+        make_bar(2, 100, 101, 99, 100, day=13),
+    ]
+    trades = simulate_trades(
+        first_day + second_day,
+        [
+            _daily_stop_signal(first_day[0].timestamp),
+            _daily_stop_signal(second_day[0].timestamp),
+        ],
+        slippage_pct=0, risk_per_trade=0.10, max_exposure=1.0,
+        max_drawdown_pause=0.20,
+    )
+    assert len(trades) == 2
+    assert trades[1].entry_time == second_day[1].timestamp
+
+
+def test_portfolio_drawdown_pause_uses_prior_closed_trade_peak():
+    winning_day = [
+        make_bar(0, 100, 101, 99, 100, day=12),
+        make_bar(1, 100, 101, 99, 100, day=12),
+        make_bar(2, 115, 115, 114, 115, day=12),
+    ]
+    losing_day = [
+        make_bar(0, 100, 101, 99, 100, day=13),
+        make_bar(1, 100, 101, 99, 100, day=13),
+        make_bar(2, 89, 90, 88, 89, day=13),
+    ]
+    attempted_day = [
+        make_bar(0, 100, 101, 99, 100, day=14),
+        make_bar(1, 100, 101, 99, 100, day=14),
+        make_bar(2, 100, 101, 99, 100, day=14),
+    ]
+    trades = simulate_trades(
+        winning_day + losing_day + attempted_day,
+        [
+            _daily_stop_signal(winning_day[0].timestamp),
+            _daily_stop_signal(losing_day[0].timestamp),
+            _daily_stop_signal(attempted_day[0].timestamp),
+        ],
+        slippage_pct=0, risk_per_trade=0.10, max_exposure=1.0,
+    )
+    # $1,000 -> $1,150 -> $1,029: 10.52% below peak,
+    # although still above the initial capital.
+    assert len(trades) == 2
+    assert trades[0].quantity == 10
+    assert trades[1].quantity == 11
+    assert sum((t.exit_price - t.entry_price) * t.quantity for t in trades) == 29
