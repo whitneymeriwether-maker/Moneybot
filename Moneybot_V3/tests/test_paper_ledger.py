@@ -41,6 +41,49 @@ def test_initial_balance_is_durable_and_cannot_be_reinitialized(tmp_path):
     assert PaperLedger(path).snapshot() == first.snapshot()
 
 
+
+@pytest.mark.parametrize("with_fill", [False, True])
+def test_reopen_refuses_deleted_account_row_without_reseeding(tmp_path, with_fill):
+    path = tmp_path / "paper.sqlite3"
+    ledger = PaperLedger(path)
+    if with_fill:
+        fill(ledger)
+    with sqlite3.connect(path) as db:
+        db.execute("DELETE FROM paper_account WHERE id=1")
+    with pytest.raises(ValueError, match="Missing existing paper account row"):
+        PaperLedger(path)
+    # A failed initialization must not silently restore the deleted row.
+    with sqlite3.connect(path) as db:
+        assert db.execute("SELECT COUNT(*) FROM paper_account").fetchone()[0] == 0
+
+
+def test_reopen_rejects_partial_existing_schema(tmp_path):
+    path = tmp_path / "paper.sqlite3"
+    with sqlite3.connect(path) as db:
+        db.execute("CREATE TABLE paper_fills (event_id TEXT PRIMARY KEY)")
+        db.execute("INSERT INTO paper_fills VALUES ('old-event')")
+    with pytest.raises(ValueError, match="Incomplete existing paper ledger schema"):
+        PaperLedger(path)
+    with sqlite3.connect(path) as db:
+        assert db.execute(
+            "SELECT name FROM sqlite_master WHERE name='paper_account'"
+        ).fetchone() is None
+        assert db.execute("SELECT COUNT(*) FROM paper_fills").fetchone()[0] == 1
+
+
+def test_reopen_rejects_corrupt_account_without_mutating_it(tmp_path):
+    path = tmp_path / "paper.sqlite3"
+    ledger = PaperLedger(path)
+    fill(ledger)
+    with sqlite3.connect(path) as db:
+        db.execute("UPDATE paper_account SET cash_cents=cash_cents+1")
+    with pytest.raises(ValueError, match="accounting invariant"):
+        PaperLedger(path)
+    with sqlite3.connect(path) as db:
+        assert db.execute("SELECT cash_cents FROM paper_account").fetchone()[0] == 79901
+        assert db.execute("SELECT COUNT(*) FROM paper_fills").fetchone()[0] == 1
+
+
 def test_buy_sell_partial_basis_fees_and_restart(tmp_path):
     path = tmp_path / "paper.sqlite3"
     ledger = PaperLedger(path)
