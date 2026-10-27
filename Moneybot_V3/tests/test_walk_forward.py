@@ -253,3 +253,49 @@ def test_evaluator_revalidates_claimed_training_tape(corruption):
         evaluate_fixed_baseline_folds(
             (replace(fold, train_bars=tuple(bars)),)
         )
+
+
+def test_evaluator_rejects_reversed_nonoverlapping_test_windows():
+    folds = build_research_folds(
+        make_bars(8), train_sessions=3, embargo_sessions=1, test_sessions=2
+    )
+    # Reordering otherwise valid, disjoint folds must not look chronological.
+    with pytest.raises(ValueError, match="chronological"):
+        evaluate_fixed_baseline_folds((
+            replace(folds[1], number=1),
+            replace(folds[0], number=2),
+        ))
+
+
+@pytest.mark.parametrize("bad_number", [0, -1, True, 1.0, "1"])
+def test_evaluator_rejects_invalid_fold_identifiers(bad_number):
+    fold, = build_research_folds(
+        make_bars(6), train_sessions=3, embargo_sessions=1, test_sessions=2
+    )
+    with pytest.raises(ValueError, match="numbers"):
+        evaluate_fixed_baseline_folds((replace(fold, number=bad_number),))
+
+
+def test_evaluator_rejects_reused_fold_identifier():
+    folds = build_research_folds(
+        make_bars(8), train_sessions=3, embargo_sessions=1, test_sessions=2
+    )
+    with pytest.raises(ValueError, match="numbers"):
+        evaluate_fixed_baseline_folds((
+            folds[0], replace(folds[1], number=folds[0].number),
+        ))
+
+
+@pytest.mark.parametrize("field,bad_dates", [
+    ("test_dates", ([date(2026, 10, 16)],)),
+    ("test_dates", ([],)),
+    ("train_dates", [date(2026, 10, 12)]),
+    ("embargo_dates", ([date(2026, 10, 15)],)),
+    ("test_dates", (datetime(2026, 10, 16),)),
+])
+def test_evaluator_rejects_malformed_date_containers_cleanly(field, bad_dates):
+    fold, = build_research_folds(
+        make_bars(6), train_sessions=3, embargo_sessions=1, test_sessions=2
+    )
+    with pytest.raises(ValueError, match="session dates"):
+        evaluate_fixed_baseline_folds((replace(fold, **{field: bad_dates}),))

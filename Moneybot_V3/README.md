@@ -111,7 +111,7 @@ cannot be detected. Early-close sessions are deliberately unsupported.
 
 `evaluate_fixed_baseline_folds` runs the unchanged opening-range simulator
 **only on each fold's test bars**. Because folds are public data objects, the
-baseline evaluator independently revalidates **both training and test** minute tapes for chronology, all 390
+baseline evaluator also requires increasing fold identifiers and chronological, disjoint test windows, and independently revalidates **both training and test** minute tapes for chronology, all 390
 minute slots per session, positive traded volume, finite consistent OHLC,
 and strict train/embargo/test date ordering before reporting results. This
 rejects malformed or manually forged training/test tapes; it does not authenticate

@@ -198,18 +198,13 @@ def evaluate_fixed_baseline_folds(
         raise ValueError("Invalid starting cash")
     results = []
     seen_test_dates = set()
+    previous_number = 0
+    previous_test_end = None
     for fold in folds:
-        if not isinstance(fold, ResearchFold) or not fold.test_dates:
+        if not isinstance(fold, ResearchFold):
             raise ValueError("Invalid research fold")
-        if (
-            set(fold.test_dates) & (
-                set(fold.train_dates) | set(fold.embargo_dates) | seen_test_dates
-            )
-        ):
-            raise ValueError("Overlapping research fold test dates")
-        # Public folds can be constructed without using the strict splitter.
-        # Verify chronological separation and the complete underlying test
-        # tape before it can be presented as out-of-sample performance.
+        # Validate public date containers BEFORE set operations, so malformed
+        # hand-built folds fail closed with ValueError rather than TypeError.
         for dates in (fold.train_dates, fold.embargo_dates, fold.test_dates):
             if (
                 type(dates) is not tuple
@@ -217,6 +212,21 @@ def evaluate_fixed_baseline_folds(
                 or tuple(sorted(set(dates))) != dates
             ):
                 raise ValueError("Invalid research fold session dates")
+        if not fold.test_dates:
+            raise ValueError("Invalid research fold")
+        if type(fold.number) is not int or fold.number <= previous_number:
+            raise ValueError("Research fold numbers must increase")
+        if (
+            set(fold.test_dates) & (
+                set(fold.train_dates) | set(fold.embargo_dates) | seen_test_dates
+            )
+        ):
+            raise ValueError("Overlapping research fold test dates")
+        if previous_test_end is not None and fold.test_dates[0] <= previous_test_end:
+            raise ValueError("Research fold test windows must be chronological")
+        # Public folds can be constructed without using the strict splitter.
+        # Verify chronological separation and both complete underlying tapes
+        # before results can be presented as out-of-sample performance.
         if (
             not fold.train_dates
             or fold.train_dates[-1] >= fold.test_dates[0]
@@ -232,6 +242,8 @@ def evaluate_fixed_baseline_folds(
         _validate_fold_session_bars(fold.train_bars, fold.train_dates, "train")
         _validate_fold_session_bars(fold.test_bars, fold.test_dates, "test")
         seen_test_dates.update(fold.test_dates)
+        previous_number = fold.number
+        previous_test_end = fold.test_dates[-1]
         signals = generate_breakout_signals(fold.test_bars)
         trades = simulate_trades(
             fold.test_bars, signals, starting_cash=starting_cash,
