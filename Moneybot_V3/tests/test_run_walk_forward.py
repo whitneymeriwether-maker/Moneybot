@@ -133,3 +133,45 @@ def test_cli_rejects_malformed_closure_list(tmp_path, bad_closures):
             "--train-sessions", "3", "--test-sessions", "2",
         ])
     assert exc.value.code == 2
+
+
+def test_runner_accepts_explicit_pinned_csv_digest(tmp_path):
+    filename = make_csv(tmp_path)
+    digest = hashlib.sha256(filename.read_bytes()).hexdigest()
+    report = run(filename, expected_sha256=digest)
+    assert report["source_sha256"] == digest
+    assert report["expected_source_sha256"] == digest
+    assert run(filename)["expected_source_sha256"] is None
+
+
+def test_runner_rejects_unexpected_pinned_csv_bytes(tmp_path):
+    filename = make_csv(tmp_path)
+    with pytest.raises(ValueError, match="does not match expected digest"):
+        run(filename, expected_sha256="0" * 64)
+
+
+@pytest.mark.parametrize("invalid_digest", [
+    "", "0" * 63, "g" * 64, "A" * 64, 123, True,
+])
+def test_runner_rejects_malformed_expected_digest(tmp_path, invalid_digest):
+    filename = make_csv(tmp_path)
+    with pytest.raises(ValueError, match="Expected SHA-256"):
+        run(filename, expected_sha256=invalid_digest)
+
+
+def test_cli_can_pin_local_input_digest(tmp_path, capsys):
+    filename = make_csv(tmp_path)
+    digest = hashlib.sha256(filename.read_bytes()).hexdigest()
+    arguments = [
+        "--csv", str(filename), "--symbol", "SPY",
+        "--first-session", "2026-10-12",
+        "--last-session", "2026-10-19",
+        "--closed-sessions", "none",
+        "--train-sessions", "3", "--test-sessions", "2",
+        "--expected-sha256", digest,
+    ]
+    main(arguments)
+    assert json.loads(capsys.readouterr().out)["expected_source_sha256"] == digest
+    with pytest.raises(SystemExit) as exc:
+        main(arguments[:-1] + ["0" * 64])
+    assert exc.value.code == 2

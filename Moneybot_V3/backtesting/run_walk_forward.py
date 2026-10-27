@@ -10,6 +10,7 @@ from dataclasses import asdict
 from datetime import date
 from hashlib import sha256
 import json
+import re
 from pathlib import Path
 import sys
 
@@ -25,6 +26,7 @@ def run_walk_forward_research(
     csv_filename, *, expected_symbol, expected_session_span, closed_sessions,
     train_sessions, test_sessions, embargo_sessions=1, step_sessions=None,
     starting_cash=1000.0, risk_per_trade=0.015, slippage_pct=0.001,
+    expected_sha256=None,
 ):
     """Return a JSON-compatible, independently restarted fold report.
 
@@ -42,10 +44,17 @@ def run_walk_forward_research(
         or any(type(day) is not date for day in expected_session_span)
     ):
         raise ValueError("Explicit research session span is required")
+    if expected_sha256 is not None and (
+        type(expected_sha256) is not str
+        or re.fullmatch(r"[0-9a-f]{64}", expected_sha256) is None
+    ):
+        raise ValueError("Expected SHA-256 must be 64 lowercase hex characters")
     path = Path(csv_filename)
     # Hash the local input before and after loading. This detects ordinary
     # concurrent edits, not adversarial file replacement or feed forgery.
     digest_before = sha256(path.read_bytes()).hexdigest()
+    if expected_sha256 is not None and digest_before != expected_sha256:
+        raise ValueError("Historical CSV SHA-256 does not match expected digest")
     bars = load_price_bars(path, expected_symbol=expected_symbol)
     digest_after = sha256(path.read_bytes()).hexdigest()
     if digest_before != digest_after:
@@ -71,6 +80,7 @@ def run_walk_forward_research(
         "strategy": "unchanged_opening_range_baseline",
         "data_authenticated": False,
         "source_sha256": digest_before,
+        "expected_source_sha256": expected_sha256,
         "symbol": expected_symbol,
         "first_session": expected_session_span[0].isoformat(),
         "last_session": expected_session_span[1].isoformat(),
@@ -113,6 +123,10 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--csv", required=True, type=Path)
     parser.add_argument("--symbol", required=True)
+    parser.add_argument(
+        "--expected-sha256",
+        help="Optional pinned lowercase SHA-256 of the local CSV bytes",
+    )
     parser.add_argument("--first-session", required=True, type=_parse_day)
     parser.add_argument("--last-session", required=True, type=_parse_day)
     parser.add_argument(
@@ -150,6 +164,7 @@ def main(argv=None):
             starting_cash=args.starting_cash,
             risk_per_trade=args.risk_per_trade,
             slippage_pct=args.slippage_pct,
+            expected_sha256=args.expected_sha256,
         )
     except (ValueError, OSError, argparse.ArgumentTypeError) as exc:
         parser.error(str(exc))

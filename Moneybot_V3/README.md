@@ -154,6 +154,12 @@ python -m backtesting.run_walk_forward \
 
 The command prints machine-readable JSON containing input SHA-256, exact
 configuration, per-fold results, and descriptive independent-fold summary.
+For a repeatable study, optionally pass `--expected-sha256` followed by the
+64-character lowercase hex digest of the reviewed CSV. The runner then fails
+closed if the local bytes do not match that pinned digest, before parsing or
+scoring. The JSON report records both the observed digest and the optional
+expected digest. This prevents accidental dataset substitution but cannot
+prove the data came from an exchange or was available at the claimed time.
 The hash supports reproducibility checks **only**; it does not authenticate
 the feed or prove point-in-time data provenance. Supply `--closed-sessions none`
 only for a reviewed span with no weekday closures. Missing whole sessions,
