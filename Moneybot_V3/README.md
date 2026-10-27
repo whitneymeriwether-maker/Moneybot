@@ -208,3 +208,23 @@ market impact, partial fills, or execution queue position. They do not
 authenticate the CSV or prove an investable edge. Stress comparisons are
 descriptive, not confidence intervals, independently verified market
 execution, or permission to trade real funds.
+
+
+## Fixed per-share commission sensitivity (offline only)
+
+The simulator and walk-forward runner accept a hypothetical nonnegative
+`commission_per_share` (CLI: `--commission-per-share 0.01`, meaning **$0.01
+per share on each side**). Entry affordability and the position's planned-stop
+risk include both entry and anticipated exit commission. Recorded hypothetical
+cash, realized daily loss and closed-trade drawdown account for fees; fold
+`net_pnl` and `return_pct` subtract both entry and exit fees. The JSON
+report records the chosen dollar amount, which is also held constant across
+all adverse-slippage stress scenarios. The default of zero preserves the
+prior no-commission baseline for reproducibility.
+
+This is a deliberately simplified fixed-per-share fee model, not a claim
+about a broker's actual fee schedule or exchange rebates. It does not
+model bid-ask spread dynamics, regulatory minimums, variable fees, market
+impact, queue priority, partial fills, or financing. A modeled stop or
+end-of-day exit still assumes sufficient liquidity. It does not authenticate
+historical prices or demonstrate positive out-of-sample performance.
