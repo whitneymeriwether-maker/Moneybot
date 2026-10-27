@@ -41,11 +41,11 @@ def simulate_trades(
     starting_cash=1000.0,
     risk_per_trade=0.015,
     slippage_pct=0.001,
-    commission_per_share=0.0,
     max_exposure=0.5,
     max_participation=0.10,
     daily_loss_limit=0.03,
     max_drawdown_pause=0.10,
+    commission_per_share=0.0,
 ):
     """Simulate cash-funded long trades with same-day exits.
 
