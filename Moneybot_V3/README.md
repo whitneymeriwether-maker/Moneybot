@@ -181,3 +181,30 @@ sessions that cannot form a complete fold. The report's overall
 **not** the out-of-sample performance window. The coverage fraction
 measures which dates were scored; it does not certify data authenticity,
 statistical significance, model quality, or trading profitability.
+
+
+## Predeclared adverse-slippage walk-forward stress (offline)
+
+The local walk-forward runner accepts an optional
+`--stress-slippage-pcts 0.002,0.005` flag. These fractions represent
+**0.2% and 0.5% adverse slippage per fill**, respectively, versus the
+default baseline of 0.1% per fill. Supply at most five strictly increasing
+finite fractions, each greater than the selected `--slippage-pct` and
+less than 1. This is a *predeclared cost sensitivity check*, not a strategy
+optimizer. The runner rejects duplicate, cheaper, unsorted, and invalid
+scenarios rather than selecting whichever assumption looks most profitable.
+
+The JSON report's `slippage_stress` array contains independent per-fold
+results and descriptive summaries for each assumption. All scenarios use
+the same validated historical tape, fold boundaries, strategy, starting
+capital, and risk-per-trade setting. Slippage affects share sizing, entry
+eligibility, and hypothetical exits, so the number of trades can change
+between scenarios; returns need not change monotonically. An empty array
+means no stress scenarios were requested. The primary `folds` and
+`summary` remain the original baseline.
+
+These tests **do not** model commissions, spread dynamics, borrow costs,
+market impact, partial fills, or execution queue position. They do not
+authenticate the CSV or prove an investable edge. Stress comparisons are
+descriptive, not confidence intervals, independently verified market
+execution, or permission to trade real funds.
