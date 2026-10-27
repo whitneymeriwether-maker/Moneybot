@@ -61,7 +61,7 @@ def simulate_trades(
     This is NOT a historical quote-based spread or executable fill model.
     Charge a fixed hypothetical commission per share on both entry and exit;
     include it in affordability, planned-stop risk, and realized paper PnL.
-    Exit fills remain simplified; this is not an execution-quality model.
+    Full exits require observed minute volume under the same participation\n    ceiling; insufficient liquidity invalidates the research simulation.\n    This does not model order-book depth, partial fills, or executable quotes.
     Stop new entries after the day's realized losses reach a percentage of
     initial paper capital. This cannot prevent gap losses on open positions.
     Also pause new entries when closed-trade equity falls 10% from its
@@ -184,8 +184,15 @@ def simulate_trades(
     def close_position(bar, price, reason):
         nonlocal position, cash, realized_pnl_today, peak_equity
 
-        exit_price = price * (1 - slippage_pct - spread_pct / 2)
         quantity = position["quantity"]
+        # A complete exit cannot be claimed when the observed minute cannot
+        # support it under the declared participation ceiling. Do not invent
+        # partial fills or silently defer a stop; invalidate this simulation.
+        # This check also covers forced session-end/data-end liquidations.
+        if quantity > bar.volume * max_participation:
+            raise ValueError("Insufficient observed exit liquidity for full paper fill")
+
+        exit_price = price * (1 - slippage_pct - spread_pct / 2)
 
         # Reject arithmetic overflow rather than recording a fictitious
         # profitable fill or contaminating subsequent paper-account state.
