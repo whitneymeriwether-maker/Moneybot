@@ -128,7 +128,7 @@ def run_walk_forward_research(
             risk_per_trade=risk_per_trade,
             slippage_pct=adverse_slippage,
             commission_per_share=commission_per_share,
-        spread_pct=spread_pct,
+            spread_pct=spread_pct,
         )
         adverse_summary = summarize_fixed_baseline_folds(
             adverse_results, starting_cash=starting_cash
