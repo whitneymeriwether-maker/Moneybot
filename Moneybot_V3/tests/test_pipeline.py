@@ -151,18 +151,24 @@ def test_diagnostics_with_mixed_trades(tmp_path, monkeypatch):
             exit_price=110,
             quantity=1,
             exit_reason="target",
+            entry_fee=0.0,
+            exit_fee=0.0,
         ),
         SimpleNamespace(
             entry_price=100,
             exit_price=95,
             quantity=1,
             exit_reason="stop",
+            entry_fee=0.0,
+            exit_fee=0.0,
         ),
         SimpleNamespace(
             entry_price=100,
             exit_price=97,
             quantity=1,
             exit_reason="end_of_day",
+            entry_fee=0.0,
+            exit_fee=0.0,
         ),
     ]
 
@@ -412,3 +418,64 @@ def test_pipeline_rejects_minimum_without_expected_span(tmp_path):
     write_prices(filename)
     with pytest.raises(ValueError, match="requires a session span"):
         run_backtest(filename, minimum_observed_sessions=120)
+
+
+
+def test_pipeline_net_returns_include_commissions_and_spread(tmp_path):
+    """A cost-bearing simulation must reconcile with its own fill accounting."""
+    filename = tmp_path / "prices.csv"
+    write_prices(filename)
+
+    gross = run_backtest(filename, slippage_pct=0)
+    costly = run_backtest(
+        filename, slippage_pct=0,
+        commission_per_share=0.25, spread_pct=0.002,
+    )
+    assert gross.trade_count == costly.trade_count == 1
+    expected_net = sum(
+        (trade.exit_price - trade.entry_price) * trade.quantity
+        - trade.entry_fee - trade.exit_fee
+        for trade in costly.trades
+    )
+    assert costly.net_profit == pytest.approx(expected_net)
+    assert costly.net_profit < gross.net_profit
+    assert costly.ending_cash == pytest.approx(costly.starting_cash + expected_net)
+    assert costly.return_pct == pytest.approx(100 * expected_net / costly.starting_cash)
+    assert costly.average_win == pytest.approx(expected_net)
+
+
+def test_pipeline_fees_can_turn_gross_winner_into_net_loser(tmp_path, monkeypatch):
+    """Win rate and drawdown must use net PnL, not raw price changes."""
+    filename = tmp_path / "prices.csv"
+    write_prices(filename)
+    trade = SimpleNamespace(
+        entry_price=100.0, exit_price=100.50, quantity=1,
+        entry_fee=0.50, exit_fee=0.50, exit_reason="target",
+    )
+    monkeypatch.setattr(
+        "backtesting.pipeline.simulate_trades",
+        lambda *args, **kwargs: [trade],
+    )
+    report = run_backtest(filename, slippage_pct=0)
+    assert report.net_profit == pytest.approx(-0.50)
+    assert report.ending_cash == pytest.approx(999.50)
+    assert report.winning_trades == 0
+    assert report.losing_trades == 1
+    assert report.win_rate_pct == 0
+    assert report.average_loss == pytest.approx(-0.50)
+    assert report.maximum_drawdown_pct == pytest.approx(0.05)
+
+
+@pytest.mark.parametrize("option,value", [
+    ("commission_per_share", -0.01),
+    ("commission_per_share", True),
+    ("spread_pct", 1.0),
+    ("spread_pct", "0.001"),
+    ("max_participation", 0),
+    ("max_participation", True),
+])
+def test_pipeline_rejects_invalid_cost_and_liquidity_options(tmp_path, option, value):
+    filename = tmp_path / "prices.csv"
+    write_prices(filename)
+    with pytest.raises(ValueError):
+        run_backtest(filename, **{option: value})

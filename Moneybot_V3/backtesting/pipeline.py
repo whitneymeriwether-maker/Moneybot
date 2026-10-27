@@ -197,8 +197,11 @@ def run_backtest(
     minimum_observed_sessions=1,
     closed_sessions=None,
     expected_symbol=None,
+    commission_per_share=0.0,
+    spread_pct=0.0,
+    max_participation=0.10,
 ):
-    """Load prices, validate requested session coverage, then simulate."""
+    """Load prices, validate session coverage, and report net-of-cost paper PnL."""
 
     if type(require_full_regular_sessions) is not bool:
         raise ValueError("Invalid full regular-session requirement")
@@ -240,10 +243,17 @@ def run_backtest(
         starting_cash=starting_cash,
         risk_per_trade=risk_per_trade,
         slippage_pct=slippage_pct,
+        commission_per_share=commission_per_share,
+        spread_pct=spread_pct,
+        max_participation=max_participation,
     )
 
+    # The simulator debits entry and exit fees from its cash balance. Mirror
+    # that exact per-trade accounting in ALL report metrics, including win
+    # rate and drawdown, instead of reporting gross price-only returns.
     profits = [
         (trade.exit_price - trade.entry_price) * trade.quantity
+        - trade.entry_fee - trade.exit_fee
         for trade in trades
     ]
 

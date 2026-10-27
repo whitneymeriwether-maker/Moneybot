@@ -314,3 +314,16 @@ intraday time in the API query; timestamps more than five minutes in the
 future are also rejected. This is a response-consistency check, **not**
 independent market-data authentication, proof of complete exchange sessions,
 or a consolidated-volume guarantee.
+
+## Net-of-cost pipeline accounting
+
+The offline `backtesting.pipeline.run_backtest` accepts optional
+`commission_per_share`, `spread_pct`, and `max_participation` settings,
+which are passed to the same historical paper simulator used by the
+walk-forward evaluator. Reported net profit, ending cash, win/loss counts,
+profit factor, and closed-trade drawdown now deduct **both entry and exit
+commissions** rather than treating gross price changes as realized PnL.
+The default commission and spread remain zero, so callers must explicitly
+supply reviewed hypothetical costs; these are not observed executable quotes.
+Volume participation is only a conservative bar-volume proxy, not proof of
+fillability, partial fills, market impact, or live trading readiness.
