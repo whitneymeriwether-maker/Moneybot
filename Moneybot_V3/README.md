@@ -136,3 +136,28 @@ compound fold returns, or interpret a positive mean as proof of an edge.**
 The summary is descriptive, not a portfolio equity curve, confidence interval,
 AI comparison, or verified market-data result. Source provenance, real costs,
 and shadow paper trials remain outstanding.
+
+
+## Offline reproducible walk-forward runner
+
+Run the fixed, untrained opening-range baseline against a **local** CSV with
+explicit symbol binding, a reviewed weekday closure calendar, and complete
+390-minute traded sessions. For example, from `Moneybot_V3`:
+
+```bash
+python -m backtesting.run_walk_forward \
+  --csv data/SPY_1min_2026_04_to_09.csv \
+  --symbol SPY --first-session 2026-04-01 --last-session 2026-09-30 \
+  --closed-sessions 2026-04-03,2026-05-25,2026-06-19,2026-07-03,2026-09-07 \
+  --train-sessions 40 --embargo-sessions 1 --test-sessions 10
+```
+
+The command prints machine-readable JSON containing input SHA-256, exact
+configuration, per-fold results, and descriptive independent-fold summary.
+The hash supports reproducibility checks **only**; it does not authenticate
+the feed or prove point-in-time data provenance. Supply `--closed-sessions none`
+only for a reviewed span with no weekday closures. Missing whole sessions,
+invalid OHLCV, wrong symbols, and unsupported early closes fail closed. The
+runner does not fetch data, fit a model, send orders, connect to a brokerage,
+or write results to a service. It excludes commissions and some execution
+costs. No profitable edge or operational readiness is implied.
