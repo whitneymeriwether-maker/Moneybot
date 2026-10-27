@@ -229,7 +229,8 @@ This is a deliberately simplified fixed-per-share fee model, not a claim
 about a broker's actual fee schedule or exchange rebates. It does not
 model bid-ask spread dynamics, regulatory minimums, variable fees, market
 impact, queue priority, partial fills, or financing. A modeled stop or
-end-of-day exit still assumes sufficient liquidity. It does not authenticate
+end-of-day exit requires observed minute volume sufficient for the full
+hypothetical exit at the configured participation cap. It does not authenticate
 historical prices or demonstrate positive out-of-sample performance.
 
 ## Assumed bid-ask spread sensitivity (offline only)
@@ -253,3 +254,17 @@ may represent trades rather than midpoints, and actual spreads change with
 liquidity and time. The constant-spread sensitivity check cannot establish
 executable fills, reliable market impact, or profitable trading. No broker
 connection or live order path is introduced.
+
+## Fail-closed paper exit participation check
+
+The offline historical simulator now applies `max_participation` to **exits**
+as well as entries. If a planned full stop, target, end-of-day, session-end,
+or data-end exit would exceed the observed exit minute's traded volume times
+that limit, the simulation raises an error instead of recording an
+unfillable profitable (or loss-limiting) paper exit. This is intentionally
+conservative: it invalidates the scenario rather than guessing partial
+fills, deferred stops, or subsequent prices. A valid volume ratio is **not**
+evidence of actual executable liquidity, queue priority, bid/ask depth, or
+real-world stop execution. It can also reject studies that would otherwise
+produce results; do not selectively discard rejected scenarios when
+reporting performance. No real orders or brokerage connection are involved.
