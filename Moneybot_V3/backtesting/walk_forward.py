@@ -184,7 +184,7 @@ def _validate_fold_session_bars(bars, dates, role):
 
 def evaluate_fixed_baseline_folds(
     folds, *, starting_cash=1000.0, risk_per_trade=0.015,
-    slippage_pct=0.001, commission_per_share=0.0,
+    slippage_pct=0.001, commission_per_share=0.0, spread_pct=0.0,
 ):
     """Evaluate the unchanged opening-range baseline on test sessions only.
 
@@ -249,6 +249,7 @@ def evaluate_fixed_baseline_folds(
             fold.test_bars, signals, starting_cash=starting_cash,
             risk_per_trade=risk_per_trade, slippage_pct=slippage_pct,
             commission_per_share=commission_per_share,
+            spread_pct=spread_pct,
         )
         net_pnl = sum(
             (trade.exit_price - trade.entry_price) * trade.quantity
