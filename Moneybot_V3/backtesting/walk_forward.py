@@ -184,7 +184,7 @@ def _validate_fold_session_bars(bars, dates, role):
 
 def evaluate_fixed_baseline_folds(
     folds, *, starting_cash=1000.0, risk_per_trade=0.015,
-    slippage_pct=0.001,
+    slippage_pct=0.001, commission_per_share=0.0,
 ):
     """Evaluate the unchanged opening-range baseline on test sessions only.
 
@@ -248,9 +248,11 @@ def evaluate_fixed_baseline_folds(
         trades = simulate_trades(
             fold.test_bars, signals, starting_cash=starting_cash,
             risk_per_trade=risk_per_trade, slippage_pct=slippage_pct,
+            commission_per_share=commission_per_share,
         )
         net_pnl = sum(
             (trade.exit_price - trade.entry_price) * trade.quantity
+            - trade.entry_fee - trade.exit_fee
             for trade in trades
         )
         if not isfinite(net_pnl) or not isfinite(starting_cash + net_pnl):
