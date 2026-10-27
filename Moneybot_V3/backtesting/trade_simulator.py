@@ -46,6 +46,7 @@ def simulate_trades(
     daily_loss_limit=0.03,
     max_drawdown_pause=0.10,
     commission_per_share=0.0,
+    spread_pct=0.0,
 ):
     """Simulate cash-funded long trades with same-day exits.
 
@@ -55,6 +56,9 @@ def simulate_trades(
     Size for assumed adverse entry and stop-exit slippage; gaps can still
     exceed the intended risk budget.
 
+    Treat OHLC as a hypothetical midpoint and charge half of a fixed
+    assumed full bid-ask spread on each side, in addition to slippage.
+    This is NOT a historical quote-based spread or executable fill model.
     Charge a fixed hypothetical commission per share on both entry and exit;
     include it in affordability, planned-stop risk, and realized paper PnL.
     Exit fills remain simplified; this is not an execution-quality model.
@@ -76,6 +80,11 @@ def simulate_trades(
 
     if not _finite_number(commission_per_share) or commission_per_share < 0:
         raise ValueError("Invalid commission per share")
+
+    if not _finite_number(spread_pct) or not 0 <= spread_pct < 1:
+        raise ValueError("Invalid assumed spread")
+    if slippage_pct + spread_pct / 2 >= 1:
+        raise ValueError("Combined slippage and spread must be below 100%")
 
     if (not _finite_number(max_exposure)
             or not 0 < max_exposure <= 1):
@@ -175,7 +184,7 @@ def simulate_trades(
     def close_position(bar, price, reason):
         nonlocal position, cash, realized_pnl_today, peak_equity
 
-        exit_price = price * (1 - slippage_pct)
+        exit_price = price * (1 - slippage_pct - spread_pct / 2)
         quantity = position["quantity"]
 
         # Reject arithmetic overflow rather than recording a fictitious
@@ -274,7 +283,7 @@ def simulate_trades(
                     previous_bar = bar
                     continue
 
-                entry = bar.open * (1 + slippage_pct)
+                entry = bar.open * (1 + slippage_pct + spread_pct / 2)
                 if not isfinite(entry):
                     raise ValueError("Non-finite simulated trade arithmetic")
 
@@ -299,7 +308,7 @@ def simulate_trades(
                 # A gap through the stop can still exceed this estimate.
                 estimated_stop_fill = (
                     entry - stop_distance
-                ) * (1 - slippage_pct)
+                ) * (1 - slippage_pct - spread_pct / 2)
                 stop_loss_per_share = entry - estimated_stop_fill + 2 * commission_per_share
                 if (
                     not isfinite(stop_loss_per_share)
