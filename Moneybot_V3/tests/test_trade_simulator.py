@@ -921,3 +921,62 @@ def test_gap_through_stop_can_exceed_nominal_risk_budget():
         (trades[0].entry_price - trades[0].exit_price)
         * trades[0].quantity
     ) > 1000 * 0.015
+
+
+def test_per_share_commission_charged_both_sides_and_reported():
+    bars = [
+        make_bar(0, 100, 101, 99, 100),
+        make_bar(1, 101, 101.5, 100.5, 101),
+        make_bar(2, 102, 106, 101, 105),
+    ]
+    trades = simulate_trades(
+        bars, [make_signal(bars[0].timestamp)],
+        slippage_pct=0, commission_per_share=0.25,
+    )
+    assert len(trades) == 1
+    assert trades[0].quantity == 4
+    assert trades[0].entry_fee == 1.0
+    assert trades[0].exit_fee == 1.0
+    assert ((trades[0].exit_price - trades[0].entry_price) *
+            trades[0].quantity - trades[0].entry_fee - trades[0].exit_fee) == 14
+
+
+def test_commission_reduces_affordability_and_can_block_trade():
+    bars = [
+        make_bar(0, 100, 101, 99, 100),
+        make_bar(1, 100, 101, 99.5, 100),
+    ]
+    signal = make_signal(bars[0].timestamp)
+    assert len(simulate_trades(
+        bars, [signal], starting_cash=100, max_exposure=1,
+        risk_per_trade=0.5, slippage_pct=0,
+    )) == 1
+    assert simulate_trades(
+        bars, [signal], starting_cash=100, max_exposure=1,
+        risk_per_trade=0.5, slippage_pct=0,
+        commission_per_share=0.01,
+    ) == []
+
+
+def test_commission_increases_planned_stop_risk_and_reduces_shares():
+    bars = [
+        make_bar(0, 100, 101, 99, 100),
+        make_bar(1, 100, 101, 99.5, 100),
+    ]
+    signal = make_signal(bars[0].timestamp)
+    baseline = simulate_trades(
+        bars, [signal], starting_cash=1000, max_exposure=1,
+        slippage_pct=0,
+    )
+    costly = simulate_trades(
+        bars, [signal], starting_cash=1000, max_exposure=1,
+        slippage_pct=0, commission_per_share=1,
+    )
+    assert baseline[0].quantity == 7
+    assert costly[0].quantity == 3
+
+
+@pytest.mark.parametrize("invalid", [-1, True, None, "0.01", float("nan"), float("inf"), 10 ** 400])
+def test_invalid_commission_fails_closed(invalid):
+    with pytest.raises(ValueError, match="Invalid commission per share"):
+        simulate_trades([], [], commission_per_share=invalid)
