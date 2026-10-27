@@ -120,9 +120,22 @@ def download_history(symbol=None):
         symbol_bars = payload.get("bars")
         if not isinstance(symbol_bars, dict):
             raise RuntimeError(f"Invalid historical response for {symbol}")
+        # A single-symbol request must never silently accept a response
+        # containing bars for another ticker. Some providers include
+        # optional per-bar symbol metadata; bind that to the request too.
+        if any(key != symbol for key in symbol_bars):
+            raise RuntimeError(f"Unexpected historical symbol for {symbol}")
         page_bars = symbol_bars.get(symbol, [])
         if not isinstance(page_bars, list):
             raise RuntimeError(f"Invalid historical response for {symbol}")
+        for bar in page_bars:
+            if not isinstance(bar, dict):
+                raise RuntimeError(f"Invalid historical bar for {symbol}")
+            if any(
+                field in bar and bar[field] != symbol
+                for field in ("S", "symbol")
+            ):
+                raise RuntimeError(f"Unexpected historical symbol for {symbol}")
         bars.extend(page_bars)
 
         next_page_token = payload.get("next_page_token")
