@@ -168,3 +168,53 @@ def test_evaluator_rejects_forged_out_of_sample_bars(corruption):
     forged = replace(fold, test_bars=bad_bars)
     with pytest.raises(ValueError, match="test bars do not match test dates"):
         evaluate_fixed_baseline_folds((forged,))
+
+
+@pytest.mark.parametrize("corruption", [
+    "duplicate_minute", "missing_minute", "bad_price",
+    "bad_ohlc", "zero_volume", "fractional_volume", "off_minute",
+])
+def test_evaluator_revalidates_manually_supplied_test_tape(corruption):
+    fold, = build_research_folds(
+        make_bars(6), train_sessions=3, embargo_sessions=1, test_sessions=2
+    )
+    bars = list(fold.test_bars)
+    if corruption == "duplicate_minute":
+        bars[10] = bars[9]
+    elif corruption == "missing_minute":
+        bars[10] = bars[11]
+    else:
+        values = vars(bars[10]).copy()
+        if corruption == "bad_price":
+            values["close"] = float("nan")
+        elif corruption == "bad_ohlc":
+            values["low"] = 102.0
+        elif corruption == "zero_volume":
+            values["volume"] = 0
+        elif corruption == "fractional_volume":
+            values["volume"] = 100.5
+        elif corruption == "off_minute":
+            values["timestamp"] += timedelta(seconds=30)
+        bars[10] = SimpleNamespace(**values)
+    with pytest.raises(ValueError):
+        evaluate_fixed_baseline_folds((replace(fold, test_bars=tuple(bars)),))
+
+
+@pytest.mark.parametrize("corruption", [
+    "training_after_test", "embargo_after_test",
+    "duplicate_training_date", "weekend_test_date",
+])
+def test_evaluator_rejects_forged_fold_chronology(corruption):
+    fold, = build_research_folds(
+        make_bars(6), train_sessions=3, embargo_sessions=1, test_sessions=2
+    )
+    if corruption == "training_after_test":
+        fold = replace(fold, train_dates=fold.train_dates + (date(2026, 11, 2),))
+    elif corruption == "embargo_after_test":
+        fold = replace(fold, embargo_dates=(date(2026, 11, 2),))
+    elif corruption == "duplicate_training_date":
+        fold = replace(fold, train_dates=fold.train_dates + (fold.train_dates[-1],))
+    elif corruption == "weekend_test_date":
+        fold = replace(fold, test_dates=(date(2026, 10, 17), fold.test_dates[-1]))
+    with pytest.raises(ValueError):
+        evaluate_fixed_baseline_folds((fold,))
