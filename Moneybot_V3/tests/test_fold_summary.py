@@ -91,7 +91,7 @@ def test_summary_rejects_malformed_fold_results(mutation):
 def test_summary_rejects_reversed_or_overlapping_windows():
     results = examples()
     with pytest.raises(ValueError, match="chronological"):
-        summarize_fixed_baseline_folds((results[1], results[0]))
+        summarize_fixed_baseline_folds((replace(results[1], number=1), replace(results[0], number=2)))
     with pytest.raises(ValueError, match="chronological"):
         summarize_fixed_baseline_folds((results[0], replace(results[1], first_test_date=results[0].last_test_date)))
     with pytest.raises(ValueError, match="numbers"):
