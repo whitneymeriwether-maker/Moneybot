@@ -31,6 +31,8 @@ class SimulatedTrade:
     exit_price: float
     quantity: int
     exit_reason: str
+    entry_fee: float = 0.0
+    exit_fee: float = 0.0
 
 
 def simulate_trades(
@@ -39,6 +41,7 @@ def simulate_trades(
     starting_cash=1000.0,
     risk_per_trade=0.015,
     slippage_pct=0.001,
+    commission_per_share=0.0,
     max_exposure=0.5,
     max_participation=0.10,
     daily_loss_limit=0.03,
@@ -52,6 +55,8 @@ def simulate_trades(
     Size for assumed adverse entry and stop-exit slippage; gaps can still
     exceed the intended risk budget.
 
+    Charge a fixed hypothetical commission per share on both entry and exit;
+    include it in affordability, planned-stop risk, and realized paper PnL.
     Exit fills remain simplified; this is not an execution-quality model.
     Stop new entries after the day's realized losses reach a percentage of
     initial paper capital. This cannot prevent gap losses on open positions.
@@ -68,6 +73,9 @@ def simulate_trades(
 
     if not _finite_number(slippage_pct) or not 0 <= slippage_pct < 1:
         raise ValueError("Invalid slippage")
+
+    if not _finite_number(commission_per_share) or commission_per_share < 0:
+        raise ValueError("Invalid commission per share")
 
     if (not _finite_number(max_exposure)
             or not 0 < max_exposure <= 1):
@@ -172,13 +180,16 @@ def simulate_trades(
 
         # Reject arithmetic overflow rather than recording a fictitious
         # profitable fill or contaminating subsequent paper-account state.
-        proceeds = exit_price * quantity
-        realized_pnl = (exit_price - position["entry"]) * quantity
+        exit_fee = commission_per_share * quantity
+        proceeds = exit_price * quantity - exit_fee
+        realized_pnl = (exit_price - position["entry"]) * quantity - position["entry_fee"] - exit_fee
         if not all(isfinite(value) for value in (
-            proceeds, realized_pnl, cash + proceeds,
+            exit_fee, proceeds, realized_pnl, cash + proceeds,
             realized_pnl_today + realized_pnl,
         )):
             raise ValueError("Non-finite simulated trade arithmetic")
+        if proceeds < 0:
+            raise ValueError("Simulated commission exceeds exit proceeds")
         cash += proceeds
         realized_pnl_today += realized_pnl
         peak_equity = max(peak_equity, cash)
@@ -191,6 +202,8 @@ def simulate_trades(
                 exit_price=exit_price,
                 quantity=quantity,
                 exit_reason=reason,
+                entry_fee=position["entry_fee"],
+                exit_fee=exit_fee,
             )
         )
 
@@ -287,7 +300,7 @@ def simulate_trades(
                 estimated_stop_fill = (
                     entry - stop_distance
                 ) * (1 - slippage_pct)
-                stop_loss_per_share = entry - estimated_stop_fill
+                stop_loss_per_share = entry - estimated_stop_fill + 2 * commission_per_share
                 if (
                     not isfinite(stop_loss_per_share)
                     or stop_loss_per_share <= 0
@@ -297,8 +310,8 @@ def simulate_trades(
                 # Each ratio must be finite before int() conversion:
                 # tiny positive prices/stops can overflow otherwise.
                 risk_shares = risk_budget / stop_loss_per_share
-                affordable_shares = cash / entry
-                exposure_shares = cash * max_exposure / entry
+                affordable_shares = cash / (entry + commission_per_share)
+                exposure_shares = cash * max_exposure / (entry + commission_per_share)
                 # Only the completed signal minute's volume is known
                 # when the next-minute market-open entry is planned.
                 volume_shares = previous_bar.volume * max_participation
@@ -330,8 +343,9 @@ def simulate_trades(
                     continue
 
                 if quantity > 0:
-                    purchase_cost = entry * quantity
-                    if not isfinite(purchase_cost):
+                    entry_fee = commission_per_share * quantity
+                    purchase_cost = entry * quantity + entry_fee
+                    if not isfinite(purchase_cost) or not isfinite(entry_fee):
                         raise ValueError("Non-finite simulated trade arithmetic")
 
                     # Validate derived stop/target before reserving cash.
@@ -355,6 +369,7 @@ def simulate_trades(
                         "entry_time": bar.timestamp,
                         "entry": entry,
                         "quantity": quantity,
+                        "entry_fee": entry_fee,
                         "stop": stop,
                         "target": target,
                     }
