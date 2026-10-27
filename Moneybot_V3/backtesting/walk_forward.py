@@ -105,7 +105,7 @@ def build_research_folds(
             raise ValueError("Research folds require regular weekday minutes only")
         prices = tuple(getattr(bar, key, None) for key in ("open", "high", "low", "close"))
         if any(
-            type(price) not in (int, float) or not isfinite(price) or price <= 0
+            type(price) not in (int, float) or not _finite_real(price) or price <= 0
             for price in prices
         ):
             raise ValueError("Invalid research OHLC price")
@@ -113,7 +113,7 @@ def build_research_folds(
         if high < max(opening, low, close) or low > min(opening, high, close):
             raise ValueError("Inconsistent research OHLC bar")
         volume = getattr(bar, "volume", None)
-        if type(volume) is not int or volume <= 0:
+        if type(volume) is not int or volume <= 0 or not _finite_real(volume):
             raise ValueError("Research folds require traded minute volumes")
         sessions.setdefault(local.date(), []).append(bar)
 
@@ -179,7 +179,7 @@ def _validate_fold_session_bars(bars, dates, role):
         )
         if any(
             type(price) not in (int, float)
-            or not isfinite(price) or price <= 0
+            or not _finite_real(price) or price <= 0
             for price in prices
         ):
             raise ValueError(f"Invalid research fold {role} price")
@@ -187,7 +187,7 @@ def _validate_fold_session_bars(bars, dates, role):
         if high < max(opening, low, close) or low > min(opening, high, close):
             raise ValueError(f"Inconsistent research fold {role} OHLC bar")
         volume = getattr(bar, "volume", None)
-        if type(volume) is not int or volume <= 0:
+        if type(volume) is not int or volume <= 0 or not _finite_real(volume):
             raise ValueError(f"Invalid research fold {role} volume")
 
 
@@ -206,7 +206,7 @@ def evaluate_fixed_baseline_folds(
         raise ValueError("Invalid maximum participation")
     if type(folds) not in (tuple, list) or not folds:
         raise ValueError("At least one research fold is required")
-    if type(starting_cash) not in (int, float) or not isfinite(starting_cash) or starting_cash <= 0:
+    if not _finite_real(starting_cash) or starting_cash <= 0:
         raise ValueError("Invalid starting cash")
     results = []
     seen_test_dates = set()
