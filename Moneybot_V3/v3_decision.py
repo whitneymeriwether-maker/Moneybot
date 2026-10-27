@@ -2,9 +2,11 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from math import isfinite
+import re
 from typing import Literal
 
 Action = Literal['BUY', 'WAIT', 'REJECT']
+_SYMBOL = re.compile(r'[A-Z][A-Z0-9.-]{0,9}')
 
 @dataclass(frozen=True)
 class RiskPolicy:
@@ -79,7 +81,7 @@ def _valid_policy(policy):
         and type(policy.max_holding_sessions) is int
         and policy.max_holding_sessions >= 1
         and type(policy.max_data_age_seconds) is int
-        and policy.max_data_age_seconds >= 0
+        and 0 <= policy.max_data_age_seconds <= 86400
     )
 
 
@@ -99,7 +101,7 @@ def validate_paper_entry(candidate: Candidate, proposal: AIProposal,
         return Decision(False, 'Invalid paper decision input')
     if not isinstance(candidate.timestamp, datetime) or candidate.timestamp.tzinfo is None or candidate.timestamp.utcoffset() is None:
         return Decision(False, 'Timezone-aware timestamp required')
-    if not isinstance(candidate.symbol, str) or not candidate.symbol or not candidate.symbol.isascii() or not candidate.symbol.replace('.', '').isalpha():
+    if type(candidate.symbol) is not str or not _SYMBOL.fullmatch(candidate.symbol):
         return Decision(False, 'Invalid symbol')
     if type(candidate.data_age_seconds) is not int or not 0 <= candidate.data_age_seconds <= policy.max_data_age_seconds:
         return Decision(False, 'Stale or future market data')
