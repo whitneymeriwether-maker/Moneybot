@@ -110,8 +110,13 @@ weekdays; without a verified exchange calendar, an absent entire session
 cannot be detected. Early-close sessions are deliberately unsupported.
 
 `evaluate_fixed_baseline_folds` runs the unchanged opening-range simulator
-**only on each fold's test bars**. Every fold starts with independent
-hypothetical capital; fold returns are not a continuous compounded portfolio
+**only on each fold's test bars**. Because folds are public data objects, the
+baseline evaluator independently revalidates test-minute chronology, all 390
+minute slots per session, positive traded volume, finite consistent OHLC,
+and strict train/embargo/test date ordering before reporting results. This
+rejects malformed or manually forged test tapes; it does not authenticate
+prices, provider provenance, corporate actions, or exchange calendars.
+Every fold starts with independent hypothetical capital; fold returns are not a continuous compounded portfolio
 or evidence of strategy profitability. The training and embargo portions are
 not used to tune a model. This is infrastructure for future reproducible
 walk-forward comparisons, **not** completed point-in-time validation, AI
