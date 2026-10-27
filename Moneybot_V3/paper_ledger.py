@@ -59,6 +59,11 @@ class PaperLedger:
         self.db_path = str(db_path)
         if self.db_path == ":memory:":
             raise ValueError("In-memory databases are not persistent")
+        # sqlite3.connect() creates a missing file. Capture whether a file
+        # existed *before* connecting: an empty or unrelated pre-existing DB
+        # must not silently become a new $1,000 paper account after ledger
+        # data was lost or the path was accidentally reused.
+        existed_before_connect = Path(self.db_path).exists()
         initial = _cents(starting_cash)
         with closing(self._connect()) as db:
             try:
@@ -78,6 +83,11 @@ class PaperLedger:
                     "paper_account", "paper_positions", "paper_fills"
                 }:
                     raise ValueError("Incomplete existing paper ledger schema")
+                if existed_before_connect and not existing_tables:
+                    raise ValueError(
+                        "Existing SQLite file has no paper ledger schema; "
+                        "refusing to initialize a potentially lost account"
+                    )
                 db.execute(
                     """CREATE TABLE IF NOT EXISTS paper_account (
                         id INTEGER PRIMARY KEY CHECK (id = 1),
