@@ -128,7 +128,7 @@ def simulate_trades(
         )
         if any(
             type(price) not in (int, float)
-            or not isfinite(price)
+            or not _finite_number(price)
             or price <= 0
             for price in prices
         ):
@@ -160,8 +160,8 @@ def simulate_trades(
         if (
             type(high) not in (int, float)
             or type(low) not in (int, float)
-            or not isfinite(high)
-            or not isfinite(low)
+            or not _finite_number(high)
+            or not _finite_number(low)
             or low <= 0
             or high <= low
         ):
