@@ -9,6 +9,7 @@ import argparse
 from dataclasses import asdict
 from datetime import date
 from hashlib import sha256
+from math import isfinite
 import json
 import re
 from pathlib import Path
@@ -27,7 +28,7 @@ def run_walk_forward_research(
     csv_filename, *, expected_symbol, expected_session_span, closed_sessions,
     train_sessions, test_sessions, embargo_sessions=1, step_sessions=None,
     starting_cash=1000.0, risk_per_trade=0.015, slippage_pct=0.001,
-    expected_sha256=None,
+    expected_sha256=None, stress_slippage_pcts=(),
 ):
     """Return a JSON-compatible, independently restarted fold report.
 
@@ -50,6 +51,28 @@ def run_walk_forward_research(
         or re.fullmatch(r"[0-9a-f]{64}", expected_sha256) is None
     ):
         raise ValueError("Expected SHA-256 must be 64 lowercase hex characters")
+    if (
+        type(slippage_pct) not in (int, float)
+        or not isfinite(slippage_pct)
+        or not 0 <= slippage_pct < 1
+    ):
+        raise ValueError("Invalid baseline slippage")
+    # Predeclare adverse scenarios. No retrospective selection of a
+    # best-performing assumption, and no scenarios cheaper than baseline.
+    if type(stress_slippage_pcts) is not tuple or len(stress_slippage_pcts) > 5:
+        raise ValueError("Stress slippage must be a tuple of at most five values")
+    previous_slippage = slippage_pct
+    for stress_slippage in stress_slippage_pcts:
+        if (
+            type(stress_slippage) not in (int, float)
+            or not isfinite(stress_slippage)
+            or not previous_slippage < stress_slippage < 1
+        ):
+            raise ValueError(
+                "Stress slippage must be finite, strictly increasing, "
+                "and greater than baseline"
+            )
+        previous_slippage = stress_slippage
     path = Path(csv_filename)
     # Hash the local input before and after loading. This detects ordinary
     # concurrent edits, not adversarial file replacement or feed forgery.
@@ -76,6 +99,29 @@ def run_walk_forward_research(
         slippage_pct=slippage_pct,
     )
     summary = summarize_fixed_baseline_folds(results, starting_cash=starting_cash)
+    stress_reports = []
+    for adverse_slippage in stress_slippage_pcts:
+        adverse_results = evaluate_fixed_baseline_folds(
+            folds,
+            starting_cash=starting_cash,
+            risk_per_trade=risk_per_trade,
+            slippage_pct=adverse_slippage,
+        )
+        adverse_summary = summarize_fixed_baseline_folds(
+            adverse_results, starting_cash=starting_cash
+        )
+        stress_reports.append({
+            "slippage_pct": adverse_slippage,
+            "folds": [
+                {
+                    **asdict(result),
+                    "first_test_date": result.first_test_date.isoformat(),
+                    "last_test_date": result.last_test_date.isoformat(),
+                }
+                for result in adverse_results
+            ],
+            "summary": asdict(adverse_summary),
+        })
     # A successful fold run need not score every input session. Initial
     # training/embargo dates, step gaps, and a trailing incomplete window
     # are intentionally not out-of-sample observations. Report them rather
@@ -121,12 +167,15 @@ def run_walk_forward_research(
             for result in results
         ],
         "summary": asdict(summary),
+        "slippage_stress": stress_reports,
         "limitations": (
             "Descriptive independent fold returns only; not a continuous "
             "portfolio, authenticated data, trained AI, or evidence of an edge. "
             "Unscored training, embargo, step-gap, and tail sessions are "
             "listed in evaluation_coverage. Commissions and other execution "
-            "costs are not fully modeled."
+            "costs are not fully modeled. Adverse slippage scenarios rerun "
+            "position sizing and fills independently, so trade counts can "
+            "change; they are not a confidence interval or an edge claim."
         ),
     }
 
@@ -162,6 +211,10 @@ def main(argv=None):
     parser.add_argument("--starting-cash", type=float, default=1000.0)
     parser.add_argument("--risk-per-trade", type=float, default=0.015)
     parser.add_argument("--slippage-pct", type=float, default=0.001)
+    parser.add_argument(
+        "--stress-slippage-pcts",
+        help="Optional increasing adverse slippage fractions, e.g. 0.002,0.005 (max five)",
+    )
     args = parser.parse_args(argv)
     try:
         if args.closed_sessions == "none":
@@ -174,6 +227,16 @@ def main(argv=None):
             closures = tuple(
                 _parse_day(item) for item in args.closed_sessions.split(",")
             )
+        if args.stress_slippage_pcts is None:
+            stresses = ()
+        else:
+            values = args.stress_slippage_pcts.split(",")
+            if any(not value.strip() for value in values):
+                raise ValueError("Invalid stress slippage list")
+            try:
+                stresses = tuple(float(value) for value in values)
+            except ValueError:
+                raise ValueError("Invalid stress slippage list") from None
         report = run_walk_forward_research(
             args.csv,
             expected_symbol=args.symbol,
@@ -187,6 +250,7 @@ def main(argv=None):
             risk_per_trade=args.risk_per_trade,
             slippage_pct=args.slippage_pct,
             expected_sha256=args.expected_sha256,
+            stress_slippage_pcts=stresses,
         )
     except (ValueError, OSError, argparse.ArgumentTypeError) as exc:
         parser.error(str(exc))
