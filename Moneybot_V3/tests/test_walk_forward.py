@@ -158,3 +158,13 @@ def test_calendar_requires_explicit_span():
             make_bars(6), train_sessions=3, test_sessions=2,
             closed_sessions=(),
         )
+
+@pytest.mark.parametrize("corruption", ["empty", "training_bars"])
+def test_evaluator_rejects_forged_out_of_sample_bars(corruption):
+    fold, = build_research_folds(
+        make_bars(6), train_sessions=3, embargo_sessions=1, test_sessions=2
+    )
+    bad_bars = () if corruption == "empty" else fold.train_bars[:780]
+    forged = replace(fold, test_bars=bad_bars)
+    with pytest.raises(ValueError, match="test bars do not match test dates"):
+        evaluate_fixed_baseline_folds((forged,))

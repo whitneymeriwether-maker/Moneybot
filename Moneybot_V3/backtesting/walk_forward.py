@@ -167,6 +167,24 @@ def evaluate_fixed_baseline_folds(
             )
         ):
             raise ValueError("Overlapping research fold test dates")
+        # ResearchFold is a public dataclass: reject hand-built or modified
+        # folds whose purported test bars actually come from training days.
+        # Without this check an evaluator could report in-sample performance
+        # as out-of-sample even though the splitter itself is correct.
+        test_bar_dates = []
+        for bar in fold.test_bars:
+            stamp = getattr(bar, "timestamp", None)
+            if (
+                not isinstance(stamp, datetime)
+                or stamp.tzinfo is None or stamp.utcoffset() is None
+            ):
+                raise ValueError("Invalid research fold test timestamp")
+            test_bar_dates.append(stamp.astimezone(_NEW_YORK).date())
+        if (
+            len(test_bar_dates) != 390 * len(fold.test_dates)
+            or tuple(dict.fromkeys(test_bar_dates)) != fold.test_dates
+        ):
+            raise ValueError("Research fold test bars do not match test dates")
         seen_test_dates.update(fold.test_dates)
         signals = generate_breakout_signals(fold.test_bars)
         trades = simulate_trades(
