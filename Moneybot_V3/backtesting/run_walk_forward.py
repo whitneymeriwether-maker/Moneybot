@@ -24,6 +24,15 @@ from backtesting.walk_forward import (
 )
 
 
+def _finite_real(value):
+    if type(value) not in (int, float):
+        return False
+    try:
+        return isfinite(value)
+    except OverflowError:
+        return False
+
+
 def run_walk_forward_research(
     csv_filename, *, expected_symbol, expected_session_span, closed_sessions,
     train_sessions, test_sessions, embargo_sessions=1, step_sessions=None,
@@ -59,8 +68,7 @@ def run_walk_forward_research(
     ):
         raise ValueError("Invalid baseline slippage")
     if (
-        type(commission_per_share) not in (int, float)
-        or not isfinite(commission_per_share)
+        not _finite_real(commission_per_share)
         or commission_per_share < 0
     ):
         raise ValueError("Invalid commission per share")
