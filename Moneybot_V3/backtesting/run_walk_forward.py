@@ -13,6 +13,7 @@ import json
 import re
 from pathlib import Path
 import sys
+from zoneinfo import ZoneInfo
 
 from backtesting.fold_summary import summarize_fixed_baseline_folds
 from backtesting.historical_data import load_price_bars
@@ -75,6 +76,16 @@ def run_walk_forward_research(
         slippage_pct=slippage_pct,
     )
     summary = summarize_fixed_baseline_folds(results, starting_cash=starting_cash)
+    # A successful fold run need not score every input session. Initial
+    # training/embargo dates, step gaps, and a trailing incomplete window
+    # are intentionally not out-of-sample observations. Report them rather
+    # than letting the requested CSV span imply full test coverage.
+    observed_dates = sorted({
+        bar.timestamp.astimezone(ZoneInfo("America/New_York")).date()
+        for bar in bars
+    })
+    tested_dates = {day for fold in folds for day in fold.test_dates}
+    untested_dates = [day for day in observed_dates if day not in tested_dates]
     return {
         "research_only": True,
         "strategy": "unchanged_opening_range_baseline",
@@ -92,6 +103,15 @@ def run_walk_forward_research(
         "starting_cash": starting_cash,
         "risk_per_trade": risk_per_trade,
         "slippage_pct": slippage_pct,
+        "evaluation_coverage": {
+            "observed_session_count": len(observed_dates),
+            "tested_session_count": len(tested_dates),
+            "untested_session_count": len(untested_dates),
+            "tested_session_fraction": len(tested_dates) / len(observed_dates),
+            "first_test_session": min(tested_dates).isoformat(),
+            "last_test_session": max(tested_dates).isoformat(),
+            "untested_session_dates": [day.isoformat() for day in untested_dates],
+        },
         "folds": [
             {
                 **asdict(result),
@@ -104,7 +124,9 @@ def run_walk_forward_research(
         "limitations": (
             "Descriptive independent fold returns only; not a continuous "
             "portfolio, authenticated data, trained AI, or evidence of an edge. "
-            "Commissions and other execution costs are not fully modeled."
+            "Unscored training, embargo, step-gap, and tail sessions are "
+            "listed in evaluation_coverage. Commissions and other execution "
+            "costs are not fully modeled."
         ),
     }
 
