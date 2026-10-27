@@ -347,3 +347,31 @@ def test_entry_timestamp_freshness_respects_policy_age_limit():
     assert not validate_paper_entry(candidate, P, A).approved
     extended = RiskPolicy(max_data_age_seconds=900)
     assert validate_paper_entry(candidate, P, A, extended).approved
+
+
+@pytest.mark.parametrize('symbol', ['A1', 'BRK.B', 'RDS-A', 'SOFI'])
+def test_entry_symbol_matches_research_and_paper_ledger_grammar(symbol):
+    assert validate_paper_entry(replace(C, symbol=symbol), P, A).approved
+
+
+@pytest.mark.parametrize('symbol', ['amd', 'A B', 'A/B', 'A_B', 'ABCDEFGHIJK', ' SPY', 'SPY '])
+def test_entry_rejects_symbols_paper_ledger_cannot_record(symbol):
+    decision = validate_paper_entry(replace(C, symbol=symbol), P, A)
+    assert not decision.approved
+    assert decision.reason == 'Invalid symbol'
+
+
+@pytest.mark.parametrize('age_limit', [86401, 10 ** 400])
+def test_market_data_age_policy_fails_closed_on_unbounded_duration(age_limit):
+    policy = RiskPolicy(max_data_age_seconds=age_limit)
+    assert validate_paper_entry(C, P, A, policy).reason == 'Invalid risk policy'
+    assert validate_overnight_hold(
+        1, 100, replace(A, current_exposure=100),
+        'Verified catalyst', ('sec:123',), policy,
+    ).reason == 'Invalid risk policy'
+
+
+def test_market_data_age_policy_accepts_bounded_24h_limit():
+    assert validate_paper_entry(
+        C, P, A, RiskPolicy(max_data_age_seconds=86400)
+    ).approved
