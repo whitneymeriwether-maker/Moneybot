@@ -121,3 +121,18 @@ or evidence of strategy profitability. The training and embargo portions are
 not used to tune a model. This is infrastructure for future reproducible
 walk-forward comparisons, **not** completed point-in-time validation, AI
 integration, or autonomous paper trading. No network or brokerage access.
+
+## Independent fold summaries (offline)
+
+`backtesting.fold_summary.summarize_fixed_baseline_folds` reports the mean,
+median, worst, and best **per-fold** out-of-sample return, plus counts of
+signals, trades, positive folds, and zero-return folds. It requires disjoint,
+chronological test windows, increasing fold identifiers, finite results, and
+cash/PnL/return reconciliation against a common explicit starting balance.
+Pass `starting_cash` when the evaluator used anything other than $1,000.
+
+Each fold restarts with fresh hypothetical capital. **Do not add the fold PnLs,
+compound fold returns, or interpret a positive mean as proof of an edge.**
+The summary is descriptive, not a portfolio equity curve, confidence interval,
+AI comparison, or verified market-data result. Source provenance, real costs,
+and shadow paper trials remain outstanding.
