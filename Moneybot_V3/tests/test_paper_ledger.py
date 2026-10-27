@@ -57,6 +57,29 @@ def test_reopen_refuses_deleted_account_row_without_reseeding(tmp_path, with_fil
         assert db.execute("SELECT COUNT(*) FROM paper_account").fetchone()[0] == 0
 
 
+@pytest.mark.parametrize("existing_kind", ["empty", "unrelated"])
+def test_existing_database_without_ledger_schema_is_not_reseeded(
+    tmp_path, existing_kind
+):
+    path = tmp_path / "paper.sqlite3"
+    if existing_kind == "empty":
+        path.touch()
+    else:
+        with sqlite3.connect(path) as db:
+            db.execute("CREATE TABLE unrelated (value TEXT NOT NULL)")
+            db.execute("INSERT INTO unrelated VALUES ('preserve')")
+    with pytest.raises(ValueError, match="Existing SQLite file has no paper ledger schema"):
+        PaperLedger(path)
+    with sqlite3.connect(path) as db:
+        assert db.execute(
+            "SELECT name FROM sqlite_master WHERE name='paper_account'"
+        ).fetchone() is None
+        if existing_kind == "unrelated":
+            assert db.execute("SELECT value FROM unrelated").fetchone() == (
+                "preserve",
+            )
+
+
 def test_reopen_rejects_partial_existing_schema(tmp_path):
     path = tmp_path / "paper.sqlite3"
     with sqlite3.connect(path) as db:
