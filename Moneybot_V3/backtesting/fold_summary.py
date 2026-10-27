@@ -11,6 +11,15 @@ from statistics import mean, median
 from backtesting.walk_forward import FixedBaselineFoldResult
 
 
+def _finite_number(value):
+    if type(value) not in (int, float):
+        return False
+    try:
+        return isfinite(value)
+    except (OverflowError, ValueError):
+        return False
+
+
 @dataclass(frozen=True)
 class FixedBaselineSummary:
     fold_count: int
@@ -36,8 +45,7 @@ def summarize_fixed_baseline_folds(results, *, starting_cash=1000.0):
     if type(results) not in (tuple, list) or not results:
         raise ValueError("At least one completed baseline fold is required")
     if (
-        type(starting_cash) not in (int, float)
-        or not isfinite(starting_cash) or starting_cash <= 0
+        not _finite_number(starting_cash) or starting_cash <= 0
     ):
         raise ValueError("Invalid research starting cash")
 
@@ -65,14 +73,14 @@ def summarize_fixed_baseline_folds(results, *, starting_cash=1000.0):
         ):
             raise ValueError("Invalid baseline signal/trade counts")
         values = (result.net_pnl, result.return_pct, result.ending_cash)
-        if any(type(v) not in (int, float) or not isfinite(v) for v in values):
+        if not all(_finite_number(v) for v in values):
             raise ValueError("Non-finite baseline fold result")
         if result.ending_cash < 0:
             raise ValueError("Negative baseline ending cash")
         expected_cash = starting_cash + result.net_pnl
         expected_return = 100 * result.net_pnl / starting_cash
         if (
-            not isfinite(expected_cash) or not isfinite(expected_return)
+            not _finite_number(expected_cash) or not _finite_number(expected_return)
             or not isclose(result.ending_cash, expected_cash, rel_tol=1e-9, abs_tol=1e-8)
             or not isclose(result.return_pct, expected_return, rel_tol=1e-9, abs_tol=1e-8)
         ):
@@ -83,14 +91,22 @@ def summarize_fixed_baseline_folds(results, *, starting_cash=1000.0):
         signals += result.signal_count
         trades += result.trade_count
 
+    try:
+        mean_return = mean(returns)
+        median_return = median(returns)
+    except (OverflowError, ValueError) as exc:
+        raise ValueError("Non-finite aggregate fold return") from exc
+    if not _finite_number(mean_return) or not _finite_number(median_return):
+        raise ValueError("Non-finite aggregate fold return")
+
     return FixedBaselineSummary(
         fold_count=len(returns),
         signal_count=signals,
         trade_count=trades,
         positive_fold_count=sum(r > 0 for r in returns),
         zero_fold_count=sum(r == 0 for r in returns),
-        mean_fold_return_pct=mean(returns),
-        median_fold_return_pct=median(returns),
+        mean_fold_return_pct=mean_return,
+        median_fold_return_pct=median_return,
         worst_fold_return_pct=min(returns),
         best_fold_return_pct=max(returns),
     )
