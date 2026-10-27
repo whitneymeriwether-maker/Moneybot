@@ -980,3 +980,54 @@ def test_commission_increases_planned_stop_risk_and_reduces_shares():
 def test_invalid_commission_fails_closed(invalid):
     with pytest.raises(ValueError, match="Invalid commission per share"):
         simulate_trades([], [], commission_per_share=invalid)
+
+
+def test_assumed_full_spread_charges_both_paper_sides_and_risk_sizing():
+    """Midpoint bars are not free bid/ask fills; spread costs both sides."""
+    bars = [
+        make_bar(0, 100, 101, 99, 100),
+        make_bar(1, 100, 101, 99.5, 100),
+        make_bar(2, 100, 101, 99.5, 100),
+    ]
+    signal = make_signal(bars[0].timestamp)
+    free = simulate_trades(
+        bars, [signal], slippage_pct=0, max_exposure=1,
+    )
+    costly = simulate_trades(
+        bars, [signal], slippage_pct=0, max_exposure=1,
+        spread_pct=0.02,
+    )
+    assert len(free) == len(costly) == 1
+    assert free[0].quantity == 7
+    assert costly[0].quantity == 5
+    assert costly[0].entry_price == pytest.approx(101)
+    assert costly[0].exit_price == pytest.approx(99)
+    assert costly[0].exit_reason == "data_end"
+    assert costly[0].entry_fee == costly[0].exit_fee == 0
+
+
+def test_assumed_spread_and_slippage_add_on_both_fill_sides():
+    bars = [
+        make_bar(0, 100, 101, 99, 100),
+        make_bar(1, 100, 101, 99.5, 100),
+    ]
+    trade, = simulate_trades(
+        bars, [make_signal(bars[0].timestamp)],
+        slippage_pct=0.01, spread_pct=0.02,
+    )
+    assert trade.entry_price == pytest.approx(102)
+    assert trade.exit_price == pytest.approx(98)
+
+
+@pytest.mark.parametrize("invalid", [
+    -0.01, 1, True, None, "0.01", float("nan"),
+    float("inf"), 10 ** 400,
+])
+def test_invalid_assumed_spread_fails_closed(invalid):
+    with pytest.raises(ValueError, match="Invalid assumed spread"):
+        simulate_trades([], [], spread_pct=invalid)
+
+
+def test_combined_spread_and_slippage_cannot_create_negative_exit_prices():
+    with pytest.raises(ValueError, match="Combined slippage and spread"):
+        simulate_trades([], [], slippage_pct=0.9, spread_pct=0.4)
