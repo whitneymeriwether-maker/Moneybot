@@ -1,0 +1,160 @@
+"""Strict offline chronological fold and fixed-baseline regression tests."""
+
+import sys
+from dataclasses import replace
+from datetime import date, datetime, time, timedelta
+from pathlib import Path
+from types import SimpleNamespace
+from zoneinfo import ZoneInfo
+
+import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from backtesting.walk_forward import (
+    build_research_folds, evaluate_fixed_baseline_folds,
+)
+
+NY = ZoneInfo("America/New_York")
+
+
+def make_bars(session_count=10):
+    bars = []
+    day = date(2026, 10, 12)
+    for _ in range(session_count):
+        while day.weekday() >= 5:
+            day += timedelta(days=1)
+        start = datetime.combine(day, time(9, 30), tzinfo=NY)
+        for minute in range(390):
+            bars.append(SimpleNamespace(
+                timestamp=start + timedelta(minutes=minute),
+                open=100.0, high=101.0, low=99.0, close=100.0,
+                volume=1000,
+            ))
+        day += timedelta(days=1)
+    return bars
+
+
+def test_folds_are_chronological_embargoed_and_test_disjoint():
+    bars = make_bars()
+    folds = build_research_folds(
+        bars, train_sessions=3, embargo_sessions=1, test_sessions=2
+    )
+    assert len(folds) == 3
+    assert [len(f.test_bars) for f in folds] == [780, 780, 780]
+    assert [len(f.train_bars) for f in folds] == [1170] * 3
+    all_test_dates = []
+    for fold in folds:
+        assert max(fold.train_dates) < min(fold.embargo_dates)
+        assert max(fold.embargo_dates) < min(fold.test_dates)
+        assert {b.timestamp.date() for b in fold.test_bars} == set(fold.test_dates)
+        assert {b.timestamp.date() for b in fold.train_bars} == set(fold.train_dates)
+        all_test_dates.extend(fold.test_dates)
+    assert len(all_test_dates) == len(set(all_test_dates))
+
+
+def test_fixed_baseline_scores_only_test_bars(monkeypatch):
+    bars = make_bars(6)
+    fold = build_research_folds(
+        bars, train_sessions=3, embargo_sessions=1, test_sessions=2
+    )[0]
+    seen = []
+
+    def capture(test_bars):
+        seen.extend(b.timestamp.date() for b in test_bars)
+        return []
+
+    monkeypatch.setattr("backtesting.walk_forward.generate_breakout_signals", capture)
+    results = evaluate_fixed_baseline_folds((fold,))
+    assert set(seen) == set(fold.test_dates)
+    assert not set(seen) & set(fold.train_dates + fold.embargo_dates)
+    assert results[0].trade_count == 0
+    assert results[0].ending_cash == 1000.0
+
+
+def test_fixed_baseline_constant_prices_do_not_create_fake_profit():
+    folds = build_research_folds(
+        make_bars(6), train_sessions=3, embargo_sessions=1, test_sessions=2
+    )
+    result, = evaluate_fixed_baseline_folds(folds)
+    assert result.signal_count == 0
+    assert result.net_pnl == 0
+    assert result.return_pct == 0
+
+
+@pytest.mark.parametrize("options", [
+    {"train_sessions": 0, "test_sessions": 2},
+    {"train_sessions": True, "test_sessions": 2},
+    {"train_sessions": 2, "test_sessions": 0},
+    {"train_sessions": 2, "test_sessions": 2, "embargo_sessions": -1},
+    {"train_sessions": 2, "test_sessions": 2, "embargo_sessions": True},
+    {"train_sessions": 2, "test_sessions": 2, "step_sessions": 1},
+    {"train_sessions": 2, "test_sessions": 2, "step_sessions": 2.0},
+])
+def test_invalid_fold_configuration_fails_closed(options):
+    with pytest.raises(ValueError):
+        build_research_folds(make_bars(6), **options)
+
+
+@pytest.mark.parametrize("mutation", [
+    "missing_interior", "truncated_close", "zero_volume",
+    "bad_ohlc", "duplicate", "reverse",
+])
+def test_invalid_or_sparse_market_bars_fail_closed(mutation):
+    bars = make_bars(6)
+    if mutation == "missing_interior":
+        del bars[10]
+    elif mutation == "truncated_close":
+        del bars[389]
+    elif mutation == "zero_volume":
+        bars[10].volume = 0
+    elif mutation == "bad_ohlc":
+        bars[10].low = 102
+    elif mutation == "duplicate":
+        bars.insert(10, bars[9])
+    elif mutation == "reverse":
+        bars[9], bars[10] = bars[10], bars[9]
+    with pytest.raises(ValueError):
+        build_research_folds(
+            bars, train_sessions=3, embargo_sessions=1, test_sessions=2
+        )
+
+
+def test_missing_entire_session_requires_explicit_calendar_to_detect():
+    bars = make_bars(7)
+    first = bars[0].timestamp.date()
+    last = bars[-1].timestamp.date()
+    # Remove a complete weekday session. Completeness checks alone cannot
+    # distinguish the gap from a scheduled closure.
+    missing = date(2026, 10, 14)
+    bars = [b for b in bars if b.timestamp.date() != missing]
+    assert build_research_folds(
+        bars, train_sessions=3, embargo_sessions=1, test_sessions=2
+    )
+    with pytest.raises(ValueError, match="calendar mismatch"):
+        build_research_folds(
+            bars, train_sessions=3, embargo_sessions=1, test_sessions=2,
+            expected_session_span=(first, last), closed_sessions=(),
+        )
+
+
+def test_overlapping_test_windows_rejected_even_if_supplied_manually():
+    folds = build_research_folds(
+        make_bars(8), train_sessions=3, embargo_sessions=1, test_sessions=2
+    )
+    with pytest.raises(ValueError, match="Overlapping"):
+        evaluate_fixed_baseline_folds((folds[0], replace(folds[1], test_dates=folds[0].test_dates)))
+
+
+def test_insufficient_sessions_does_not_return_empty_success():
+    with pytest.raises(ValueError, match="Insufficient sessions"):
+        build_research_folds(
+            make_bars(3), train_sessions=2, embargo_sessions=1, test_sessions=2
+        )
+
+
+def test_calendar_requires_explicit_span():
+    with pytest.raises(ValueError, match="requires"):
+        build_research_folds(
+            make_bars(6), train_sessions=3, test_sessions=2,
+            closed_sessions=(),
+        )

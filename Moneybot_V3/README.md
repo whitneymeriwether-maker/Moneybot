@@ -98,3 +98,21 @@ intended before research reporting or data migration; it is **not** run on
 every transaction. The audit cannot detect coordinated alteration of both
 the entire history and account state, authenticate market prints, or prove
 paper execution. This remains a broker-disconnected research component.
+
+## Offline chronological research folds (not a trained model)
+
+`backtesting.walk_forward.build_research_folds` creates separate training,
+embargo, and non-overlapping out-of-sample test windows by complete NYSE
+regular trading session. Each observed session must contain 390 consecutive
+minute-aligned bars with traded volume and valid OHLC prices. Pass
+`expected_session_span` and `closed_sessions` to also reject wholly missing
+weekdays; without a verified exchange calendar, an absent entire session
+cannot be detected. Early-close sessions are deliberately unsupported.
+
+`evaluate_fixed_baseline_folds` runs the unchanged opening-range simulator
+**only on each fold's test bars**. Every fold starts with independent
+hypothetical capital; fold returns are not a continuous compounded portfolio
+or evidence of strategy profitability. The training and embargo portions are
+not used to tune a model. This is infrastructure for future reproducible
+walk-forward comparisons, **not** completed point-in-time validation, AI
+integration, or autonomous paper trading. No network or brokerage access.
