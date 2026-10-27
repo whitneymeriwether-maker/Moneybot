@@ -22,6 +22,8 @@
 
 - SQLite paper-ledger initialization now refuses to recreate a missing account row, rejects partially missing ledger schemas, and verifies persisted cash/basis/PnL consistency on reopen. These checks detect some corruption but cannot authenticate a coordinated rewrite of stored fills and balances.
 
+- The SQLite paper ledger refuses to initialize a new account inside a pre-existing empty or unrelated SQLite file, in addition to rejecting incomplete ledger schemas and deleted account rows. A genuinely new account must use a database path that does not already exist. This reduces accidental paper-account resets after data loss or path reuse, but does not prevent an attacker from replacing the entire database with a valid-looking ledger or deleting the file before a new initialization.
+
 ## Still required before autonomous paper operation
 1. Connect an AI model using strictly structured output and source-backed, timestamped evidence; don't trust unverified news or social media as facts.
 2. Ingest historical point-in-time OHLCV and permitted news; control look-ahead bias, survivorship bias, stock splits, market holidays, and source licensing.
