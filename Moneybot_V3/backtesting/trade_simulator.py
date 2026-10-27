@@ -35,6 +35,18 @@ class SimulatedTrade:
     exit_fee: float = 0.0
 
 
+def net_trade_profit(trade):
+    """Realized paper PnL after both entry and exit commissions.
+
+    Entry/exit prices already include configured hypothetical slippage and
+    spread adjustments. This does not imply executable historical fills.
+    """
+    return (
+        (trade.exit_price - trade.entry_price) * trade.quantity
+        - trade.entry_fee - trade.exit_fee
+    )
+
+
 def simulate_trades(
     bars,
     signals,

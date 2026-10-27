@@ -12,6 +12,7 @@ V3_FOLDER = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(V3_FOLDER))
 
 from backtesting.pipeline import run_backtest
+from backtesting.trade_simulator import net_trade_profit
 
 
 # Official NYSE 2026 equity-market closures within this research window:
@@ -44,6 +45,9 @@ def main():
     print("Symbol: SPY")
     print("Period: April 1 - September 30, 2026")
     print("Starting virtual balance: $1,000.00")
+    print("Hypothetical slippage: 0.10% per side")
+    print("Hypothetical commission: $0.00 per share per side")
+    print("Assumed full bid-ask spread: 0.00%")
     print()
 
     report = run_backtest(
@@ -51,6 +55,8 @@ def main():
         starting_cash=1000.0,
         risk_per_trade=0.015,
         slippage_pct=0.001,
+        commission_per_share=0.0,
+        spread_pct=0.0,
         require_full_regular_sessions=True,
         require_traded_regular_minutes=True,
         expected_session_span=(date(2026, 4, 1), date(2026, 9, 30)),
@@ -97,9 +103,7 @@ def main():
         print("No completed trades.")
 
     for number, trade in enumerate(report.trades, start=1):
-        profit = (
-            trade.exit_price - trade.entry_price
-        ) * trade.quantity
+        profit = net_trade_profit(trade)
 
         print(
             f"{number}. {trade.entry_time} | "
@@ -112,7 +116,8 @@ def main():
 
     print()
     print("Research simulation only.")
-    print("Results exclude commissions and some market costs.")
+    print("Trade P/L is net of configured hypothetical commissions and spread.")
+    print("Default commission and spread are zero; actual execution costs are unverified.")
     print("Historical IEX data may omit market activity.")
     print(
         "Drawdown is calculated from closed trades, "

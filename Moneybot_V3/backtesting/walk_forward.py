@@ -17,7 +17,7 @@ from backtesting.pipeline import (
     validate_research_window,
 )
 from backtesting.signals import generate_breakout_signals
-from backtesting.trade_simulator import simulate_trades
+from backtesting.trade_simulator import net_trade_profit, simulate_trades
 
 
 _NEW_YORK = ZoneInfo("America/New_York")
@@ -264,11 +264,7 @@ def evaluate_fixed_baseline_folds(
             spread_pct=spread_pct,
             max_participation=max_participation,
         )
-        net_pnl = sum(
-            (trade.exit_price - trade.entry_price) * trade.quantity
-            - trade.entry_fee - trade.exit_fee
-            for trade in trades
-        )
+        net_pnl = sum(net_trade_profit(trade) for trade in trades)
         if not isfinite(net_pnl) or not isfinite(starting_cash + net_pnl):
             raise ValueError("Non-finite fixed-baseline fold result")
         results.append(FixedBaselineFoldResult(

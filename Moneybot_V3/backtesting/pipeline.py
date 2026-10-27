@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 
 from backtesting.historical_data import load_price_bars
 from backtesting.signals import generate_breakout_signals
-from backtesting.trade_simulator import simulate_trades
+from backtesting.trade_simulator import net_trade_profit, simulate_trades
 
 
 _NEW_YORK = ZoneInfo("America/New_York")
@@ -251,11 +251,7 @@ def run_backtest(
     # The simulator debits entry and exit fees from its cash balance. Mirror
     # that exact per-trade accounting in ALL report metrics, including win
     # rate and drawdown, instead of reporting gross price-only returns.
-    profits = [
-        (trade.exit_price - trade.entry_price) * trade.quantity
-        - trade.entry_fee - trade.exit_fee
-        for trade in trades
-    ]
+    profits = [net_trade_profit(trade) for trade in trades]
 
     net_profit = sum(profits)
     ending_cash = starting_cash + net_profit

@@ -315,6 +315,14 @@ future are also rejected. This is a response-consistency check, **not**
 independent market-data authentication, proof of complete exchange sessions,
 or a consolidated-volume guarantee.
 
+## Consistent net-of-cost trade reporting
+
+The six-month offline SPY command-line runner now prints each trade's P/L
+using the same net-of-entry-and-exit-commission calculation as the pipeline
+and walk-forward evaluator. It explicitly discloses its default hypothetical
+0.10% per-side slippage, $0 commission, and zero assumed full spread.
+Those defaults are **not** verified transaction costs or executable fills.
+
 ## Net-of-cost pipeline accounting
 
 The offline `backtesting.pipeline.run_backtest` accepts optional
