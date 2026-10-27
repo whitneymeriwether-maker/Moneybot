@@ -303,3 +303,41 @@ def test_cli_rejects_invalid_stress_scenarios(tmp_path, bad):
             "--stress-slippage-pcts", bad,
         ])
     assert exc.value.code == 2
+
+
+def test_runner_passes_commission_to_baseline_and_stress(tmp_path, monkeypatch):
+    import backtesting.run_walk_forward as runner_module
+
+    original = runner_module.evaluate_fixed_baseline_folds
+    seen = []
+
+    def track(folds, **kwargs):
+        seen.append((kwargs["slippage_pct"], kwargs["commission_per_share"]))
+        return original(folds, **kwargs)
+
+    monkeypatch.setattr(runner_module, "evaluate_fixed_baseline_folds", track)
+    report = run(
+        make_csv(tmp_path), commission_per_share=0.015,
+        stress_slippage_pcts=(0.002,),
+    )
+    assert seen == [(0.001, 0.015), (0.002, 0.015)]
+    assert report["commission_per_share"] == 0.015
+    assert report["slippage_stress"][0]["slippage_pct"] == 0.002
+
+
+@pytest.mark.parametrize("invalid", [None, True, -1, "0.01", float("nan"), float("inf"), 10 ** 400])
+def test_runner_rejects_invalid_commission(tmp_path, invalid):
+    with pytest.raises(ValueError, match="Invalid commission per share"):
+        run(make_csv(tmp_path), commission_per_share=invalid)
+
+
+def test_cli_reports_per_share_commission(tmp_path, capsys):
+    filename = make_csv(tmp_path)
+    main([
+        "--csv", str(filename), "--symbol", "SPY",
+        "--first-session", "2026-10-12", "--last-session", "2026-10-19",
+        "--closed-sessions", "none",
+        "--train-sessions", "3", "--test-sessions", "2",
+        "--commission-per-share", "0.02",
+    ])
+    assert json.loads(capsys.readouterr().out)["commission_per_share"] == 0.02
