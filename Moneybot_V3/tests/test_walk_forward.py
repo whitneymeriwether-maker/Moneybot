@@ -343,3 +343,27 @@ def test_fold_evaluator_forwards_assumed_spread_to_simulator(monkeypatch):
     monkeypatch.setattr("backtesting.walk_forward.simulate_trades", capture)
     evaluate_fixed_baseline_folds((fold,), spread_pct=0.006)
     assert observed == [0.006]
+
+
+def test_fold_evaluator_forwards_participation_limit_to_simulator(monkeypatch):
+    fold, = build_research_folds(
+        make_bars(6), train_sessions=3, embargo_sessions=1, test_sessions=2
+    )
+    observed = []
+
+    def capture(bars, signals, **kwargs):
+        observed.append(kwargs["max_participation"])
+        return []
+
+    monkeypatch.setattr("backtesting.walk_forward.simulate_trades", capture)
+    evaluate_fixed_baseline_folds((fold,), max_participation=0.025)
+    assert observed == [0.025]
+
+
+@pytest.mark.parametrize("invalid", [
+    None, True, "0.1", 0, -0.01, 1.01, float("nan"),
+    float("inf"), 10 ** 400,
+])
+def test_fold_evaluator_rejects_invalid_participation_limit(invalid):
+    with pytest.raises(ValueError, match="Invalid maximum participation"):
+        evaluate_fixed_baseline_folds((), max_participation=invalid)

@@ -39,6 +39,7 @@ def run_walk_forward_research(
     starting_cash=1000.0, risk_per_trade=0.015, slippage_pct=0.001,
     expected_sha256=None, stress_slippage_pcts=(),
     commission_per_share=0.0, spread_pct=0.0,
+    max_participation=0.10,
 ):
     """Return a JSON-compatible, independently restarted fold report.
 
@@ -61,11 +62,7 @@ def run_walk_forward_research(
         or re.fullmatch(r"[0-9a-f]{64}", expected_sha256) is None
     ):
         raise ValueError("Expected SHA-256 must be 64 lowercase hex characters")
-    if (
-        type(slippage_pct) not in (int, float)
-        or not isfinite(slippage_pct)
-        or not 0 <= slippage_pct < 1
-    ):
+    if not _finite_real(slippage_pct) or not 0 <= slippage_pct < 1:
         raise ValueError("Invalid baseline slippage")
     if (
         not _finite_real(commission_per_share)
@@ -74,6 +71,8 @@ def run_walk_forward_research(
         raise ValueError("Invalid commission per share")
     if not _finite_real(spread_pct) or not 0 <= spread_pct < 1:
         raise ValueError("Invalid assumed spread")
+    if not _finite_real(max_participation) or not 0 < max_participation <= 1:
+        raise ValueError("Invalid maximum participation")
     if slippage_pct + spread_pct / 2 >= 1:
         raise ValueError("Combined slippage and spread must be below 100%")
     # Predeclare adverse scenarios. No retrospective selection of a
@@ -83,8 +82,7 @@ def run_walk_forward_research(
     previous_slippage = slippage_pct
     for stress_slippage in stress_slippage_pcts:
         if (
-            type(stress_slippage) not in (int, float)
-            or not isfinite(stress_slippage)
+            not _finite_real(stress_slippage)
             or not previous_slippage < stress_slippage < 1 - spread_pct / 2
         ):
             raise ValueError(
@@ -118,6 +116,7 @@ def run_walk_forward_research(
         slippage_pct=slippage_pct,
         commission_per_share=commission_per_share,
         spread_pct=spread_pct,
+        max_participation=max_participation,
     )
     summary = summarize_fixed_baseline_folds(results, starting_cash=starting_cash)
     stress_reports = []
@@ -129,6 +128,7 @@ def run_walk_forward_research(
             slippage_pct=adverse_slippage,
             commission_per_share=commission_per_share,
             spread_pct=spread_pct,
+            max_participation=max_participation,
         )
         adverse_summary = summarize_fixed_baseline_folds(
             adverse_results, starting_cash=starting_cash
@@ -174,6 +174,7 @@ def run_walk_forward_research(
         "slippage_pct": slippage_pct,
         "commission_per_share": commission_per_share,
         "assumed_full_spread_pct": spread_pct,
+        "max_participation": max_participation,
         "evaluation_coverage": {
             "observed_session_count": len(observed_dates),
             "tested_session_count": len(tested_dates),
@@ -200,6 +201,8 @@ def run_walk_forward_research(
             "listed in evaluation_coverage. Commissions and other execution "
             "costs beyond the specified fixed per-share commission, assumed "
             "full bid-ask spread, and slippage are not fully modeled. The "
+            "Participation is a per-minute volume ceiling on both entries "
+            "and exits, not proof of executable liquidity. The "
             "spread is an assumption applied to midpoint OHLC, not measured "
             "quotes or proof of executable fills. Adverse slippage scenarios rerun "
             "position sizing and fills independently, so trade counts can "
@@ -242,6 +245,10 @@ def main(argv=None):
     parser.add_argument(
         "--spread-pct", type=float, default=0.0,
         help="Assumed full bid-ask spread fraction; half charged on each side",
+    )
+    parser.add_argument(
+        "--max-participation", type=float, default=0.10,
+        help="Maximum fraction of observed minute volume per hypothetical full fill",
     )
     parser.add_argument(
         "--commission-per-share", type=float, default=0.0,
@@ -287,6 +294,7 @@ def main(argv=None):
             slippage_pct=args.slippage_pct,
             commission_per_share=args.commission_per_share,
             spread_pct=args.spread_pct,
+            max_participation=args.max_participation,
             expected_sha256=args.expected_sha256,
             stress_slippage_pcts=stresses,
         )

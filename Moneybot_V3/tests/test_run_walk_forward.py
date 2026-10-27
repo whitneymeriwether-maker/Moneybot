@@ -397,3 +397,59 @@ def test_cli_exposes_assumed_spread_in_json(tmp_path, capsys):
     ])
     report = json.loads(capsys.readouterr().out)
     assert report["assumed_full_spread_pct"] == 0.004
+
+
+def test_runner_forwards_participation_to_baseline_and_stress(tmp_path, monkeypatch):
+    import backtesting.run_walk_forward as runner_module
+
+    original = runner_module.evaluate_fixed_baseline_folds
+    observed = []
+
+    def capture(folds, **kwargs):
+        observed.append((kwargs["slippage_pct"], kwargs["max_participation"]))
+        return original(folds, **kwargs)
+
+    monkeypatch.setattr(runner_module, "evaluate_fixed_baseline_folds", capture)
+    report = run(
+        make_csv(tmp_path), max_participation=0.025,
+        stress_slippage_pcts=(0.002,),
+    )
+    assert observed == [(0.001, 0.025), (0.002, 0.025)]
+    assert report["max_participation"] == 0.025
+    assert report["research_only"] is True
+    assert "not proof of executable liquidity" in report["limitations"]
+
+
+@pytest.mark.parametrize("invalid", [
+    None, True, "0.1", 0, -0.01, 1.01, float("nan"),
+    float("inf"), 10 ** 400,
+])
+def test_runner_rejects_invalid_participation_limit(tmp_path, invalid):
+    with pytest.raises(ValueError, match="Invalid maximum participation"):
+        run(make_csv(tmp_path), max_participation=invalid)
+
+
+def test_cli_records_configured_participation_limit(tmp_path, capsys):
+    filename = make_csv(tmp_path)
+    main([
+        "--csv", str(filename), "--symbol", "SPY",
+        "--first-session", "2026-10-12", "--last-session", "2026-10-19",
+        "--closed-sessions", "none",
+        "--train-sessions", "3", "--test-sessions", "2",
+        "--max-participation", "0.025",
+    ])
+    report = json.loads(capsys.readouterr().out)
+    assert report["max_participation"] == 0.025
+
+
+def test_cli_rejects_invalid_participation_limit(tmp_path):
+    filename = make_csv(tmp_path)
+    with pytest.raises(SystemExit) as exc:
+        main([
+            "--csv", str(filename), "--symbol", "SPY",
+            "--first-session", "2026-10-12", "--last-session", "2026-10-19",
+            "--closed-sessions", "none",
+            "--train-sessions", "3", "--test-sessions", "2",
+            "--max-participation", "0",
+        ])
+    assert exc.value.code == 2

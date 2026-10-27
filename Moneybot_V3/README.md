@@ -268,3 +268,21 @@ evidence of actual executable liquidity, queue priority, bid/ask depth, or
 real-world stop execution. It can also reject studies that would otherwise
 produce results; do not selectively discard rejected scenarios when
 reporting performance. No real orders or brokerage connection are involved.
+
+
+## Configurable paper volume-participation ceiling (offline only)
+
+The walk-forward runner now accepts `--max-participation 0.025` to cap each
+hypothetical **full** entry or exit at 2.5% of its minute's observed traded
+share volume (default 10%). The exact fraction is included in the JSON
+report and held constant across baseline and adverse-slippage scenarios.
+The fixed-baseline fold evaluator accepts the same keyword directly. Invalid,
+nonfinite, zero, or greater-than-100% participation settings fail closed.
+
+This is a volume feasibility assumption, **not** proof of executable quotes,
+order-book depth, fill priority, or sufficient liquidity. Entry sizes are
+based on completed signal-minute volume; the next minute's volume can only
+veto an entry. Exits that fail the configured ceiling invalidate the entire
+research scenario rather than assuming partial fills. More restrictive caps
+can therefore cause a study to fail, and such failures must not be silently
+excluded from reported comparisons. No broker, live orders, or spending.

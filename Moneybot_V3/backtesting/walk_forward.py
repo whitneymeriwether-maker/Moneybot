@@ -23,6 +23,15 @@ from backtesting.trade_simulator import simulate_trades
 _NEW_YORK = ZoneInfo("America/New_York")
 
 
+def _finite_real(value):
+    if type(value) not in (int, float):
+        return False
+    try:
+        return isfinite(value)
+    except OverflowError:
+        return False
+
+
 @dataclass(frozen=True)
 class ResearchFold:
     number: int
@@ -185,6 +194,7 @@ def _validate_fold_session_bars(bars, dates, role):
 def evaluate_fixed_baseline_folds(
     folds, *, starting_cash=1000.0, risk_per_trade=0.015,
     slippage_pct=0.001, commission_per_share=0.0, spread_pct=0.0,
+    max_participation=0.10,
 ):
     """Evaluate the unchanged opening-range baseline on test sessions only.
 
@@ -192,6 +202,8 @@ def evaluate_fixed_baseline_folds(
     NOT be added together as though one continuous portfolio were traded.
     This is not parameter tuning, AI evaluation, or a statistical edge claim.
     """
+    if not _finite_real(max_participation) or not 0 < max_participation <= 1:
+        raise ValueError("Invalid maximum participation")
     if type(folds) not in (tuple, list) or not folds:
         raise ValueError("At least one research fold is required")
     if type(starting_cash) not in (int, float) or not isfinite(starting_cash) or starting_cash <= 0:
@@ -250,6 +262,7 @@ def evaluate_fixed_baseline_folds(
             risk_per_trade=risk_per_trade, slippage_pct=slippage_pct,
             commission_per_share=commission_per_share,
             spread_pct=spread_pct,
+            max_participation=max_participation,
         )
         net_pnl = sum(
             (trade.exit_price - trade.entry_price) * trade.quantity
