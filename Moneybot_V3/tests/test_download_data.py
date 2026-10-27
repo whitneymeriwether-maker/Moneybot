@@ -350,3 +350,27 @@ def test_download_rejects_non_object_bar(monkeypatch, tmp_path):
     ])
     with pytest.raises(RuntimeError, match="Invalid historical bar"):
         download_history("SPY")
+
+
+@pytest.mark.parametrize("field,invalid", [
+    ("o", "100.0"), ("h", "101"), ("l", "99"),
+    ("c", "100"), ("v", "1000"), ("v", True),
+    ("o", None),
+])
+def test_download_rejects_nonnumeric_provider_ohlcv_without_overwrite(
+    monkeypatch, tmp_path, field, invalid,
+):
+    output_dir = tmp_path / "Moneybot_V3" / "data"
+    output_dir.mkdir(parents=True)
+    output = output_dir / "SPY_1min_2026_04_to_09.csv"
+    output.write_text("previous verified history", encoding="utf-8")
+    bar = sample_bar("2026-04-01T13:30:00Z")
+    bar[field] = invalid
+    mock_download(
+        monkeypatch, tmp_path,
+        [{"bars": {"SPY": [bar]}, "next_page_token": None}],
+    )
+    with pytest.raises(RuntimeError, match="Invalid historical OHLCV type"):
+        download_history("SPY")
+    assert output.read_text(encoding="utf-8") == "previous verified history"
+    assert sorted(path.name for path in output_dir.iterdir()) == [output.name]

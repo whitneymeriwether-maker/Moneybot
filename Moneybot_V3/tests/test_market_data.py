@@ -643,3 +643,32 @@ def test_daily_bars_accept_first_requested_utc_date(monkeypatch):
         lambda url: {"bars": [bar], "next_page_token": None},
     )
     assert market_data.get_recent_daily_bars("TEST")[0]["t"] == bar["t"]
+
+
+@pytest.mark.parametrize("field,invalid", [
+    ("bp", "11.99"), ("ap", "12.00"),
+    ("bp", []), ("ap", {}),
+])
+def test_quote_rejects_coercible_or_nonnumeric_provider_prices(
+    monkeypatch, field, invalid,
+):
+    quote = {"bp": 11.99, "ap": 12.00, "t": fresh_quote_timestamp()}
+    quote[field] = invalid
+    monkeypatch.setattr(
+        market_data, "_get_json", lambda url: {"quote": quote},
+    )
+    with pytest.raises(RuntimeError, match="Invalid bid-ask quote"):
+        market_data.get_latest_quote("TEST")
+
+
+@pytest.mark.parametrize("field,invalid", [
+    ("o", "12.0"), ("h", "12.2"), ("l", "11.8"),
+    ("c", "12"), ("v", "2000000"), ("v", False),
+])
+def test_daily_bar_rejects_coercible_or_nonnumeric_provider_ohlcv(
+    field, invalid,
+):
+    bars = make_daily_bars()
+    bars[-1][field] = invalid
+    with pytest.raises(RuntimeError, match="Invalid daily bar"):
+        market_data._validate_daily_bars(bars, "TEST")

@@ -136,6 +136,14 @@ def download_history(symbol=None):
                 for field in ("S", "symbol")
             ):
                 raise RuntimeError(f"Unexpected historical symbol for {symbol}")
+            # JSON OHLCV must be numeric at the provider boundary. The CSV
+            # reader accepts numeric text by design, but API numeric strings
+            # or booleans must not be silently laundered through that CSV.
+            if any(
+                type(bar.get(field)) not in (int, float)
+                for field in ("o", "h", "l", "c", "v")
+            ):
+                raise RuntimeError(f"Invalid historical OHLCV type for {symbol}")
         bars.extend(page_bars)
 
         next_page_token = payload.get("next_page_token")

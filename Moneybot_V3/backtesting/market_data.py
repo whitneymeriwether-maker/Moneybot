@@ -129,7 +129,9 @@ def get_latest_quote(symbol):
             f"timestamp {timestamp.isoformat()}"
         )
 
-    if type(bid) is bool or type(ask) is bool:
+    # Alpaca's JSON price fields must be numbers, not coercible strings,
+    # booleans or other JSON types. Do not silently reinterpret provider data.
+    if type(bid) not in (int, float) or type(ask) not in (int, float):
         raise RuntimeError(f"Invalid bid-ask quote for {symbol}")
 
     try:
@@ -254,8 +256,8 @@ def _validate_daily_bars(bars, symbol):
         try:
             timestamp = _parse_quote_timestamp(bar["t"])
             values = [bar[field] for field in ("o", "h", "l", "c", "v")]
-            if any(isinstance(value, bool) for value in values):
-                raise ValueError("Boolean OHLCV value")
+            if any(type(value) not in (int, float) for value in values):
+                raise ValueError("Non-numeric provider OHLCV value")
             open_price, high, low, close, volume = map(float, values)
         except (KeyError, TypeError, ValueError, OverflowError, RuntimeError):
             raise RuntimeError(f"Invalid daily bar for {symbol}") from None
