@@ -167,3 +167,17 @@ invalid OHLCV, wrong symbols, and unsupported early closes fail closed. The
 runner does not fetch data, fit a model, send orders, connect to a brokerage,
 or write results to a service. It excludes commissions and some execution
 costs. No profitable edge or operational readiness is implied.
+
+## Walk-forward test-session coverage disclosure
+
+The offline `run_walk_forward.py` JSON report now includes
+`evaluation_coverage`: the number of input trading sessions, the number
+actually scored out of sample, the fraction scored, the first and last
+test dates, and the explicit list of **untested** session dates. These
+untested dates include initial training/embargo sessions, any gaps created
+by `--step-sessions` greater than `--test-sessions`, and leftover
+sessions that cannot form a complete fold. The report's overall
+`first_session`/`last_session` describe the CSV validation window,
+**not** the out-of-sample performance window. The coverage fraction
+measures which dates were scored; it does not certify data authenticity,
+statistical significance, model quality, or trading profitability.
