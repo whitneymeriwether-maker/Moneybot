@@ -298,3 +298,55 @@ def test_download_rejects_duplicate_instant_with_different_offsets(
     )
     with pytest.raises(ValueError, match="Timestamps must be increasing"):
         download_history("SPY")
+
+
+@pytest.mark.parametrize("symbol_bars", [
+    {"AAPL": [sample_bar("2026-04-01T13:30:00Z")]},
+    {"SPY": [sample_bar("2026-04-01T13:30:00Z")],
+     "AAPL": [sample_bar("2026-04-01T13:31:00Z")]},
+])
+def test_download_rejects_unexpected_ticker_pages_without_overwrite(
+    monkeypatch, tmp_path, symbol_bars,
+):
+    output_dir = tmp_path / "Moneybot_V3" / "data"
+    output_dir.mkdir(parents=True)
+    output = output_dir / "SPY_1min_2026_04_to_09.csv"
+    output.write_text("previous history", encoding="utf-8")
+    mock_download(monkeypatch, tmp_path, [
+        {"bars": symbol_bars, "next_page_token": None},
+    ])
+    with pytest.raises(RuntimeError, match="Unexpected historical symbol"):
+        download_history("SPY")
+    assert output.read_text(encoding="utf-8") == "previous history"
+    assert sorted(p.name for p in output_dir.iterdir()) == [output.name]
+
+
+@pytest.mark.parametrize("field", ["S", "symbol"])
+def test_download_rejects_mismatched_bar_symbol_metadata(
+    monkeypatch, tmp_path, field,
+):
+    bar = sample_bar("2026-04-01T13:30:00Z")
+    bar[field] = "AAPL"
+    mock_download(monkeypatch, tmp_path, [
+        {"bars": {"SPY": [bar]}, "next_page_token": None},
+    ])
+    with pytest.raises(RuntimeError, match="Unexpected historical symbol"):
+        download_history("SPY")
+
+
+def test_download_accepts_matching_bar_symbol_metadata(monkeypatch, tmp_path):
+    bar = sample_bar("2026-04-01T13:30:00Z")
+    bar["S"] = "SPY"
+    bar["symbol"] = "SPY"
+    mock_download(monkeypatch, tmp_path, [
+        {"bars": {"SPY": [bar]}, "next_page_token": None},
+    ])
+    assert len(download_history("SPY").read_text().splitlines()) == 2
+
+
+def test_download_rejects_non_object_bar(monkeypatch, tmp_path):
+    mock_download(monkeypatch, tmp_path, [
+        {"bars": {"SPY": [None]}, "next_page_token": None},
+    ])
+    with pytest.raises(RuntimeError, match="Invalid historical bar"):
+        download_history("SPY")
