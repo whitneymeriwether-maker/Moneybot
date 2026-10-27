@@ -299,3 +299,32 @@ def test_evaluator_rejects_malformed_date_containers_cleanly(field, bad_dates):
     )
     with pytest.raises(ValueError, match="session dates"):
         evaluate_fixed_baseline_folds((replace(fold, **{field: bad_dates}),))
+
+
+def test_evaluator_subtracts_both_commission_sides_from_fold_returns(monkeypatch):
+    from backtesting.trade_simulator import SimulatedTrade
+
+    fold, = build_research_folds(
+        make_bars(6), train_sessions=3, embargo_sessions=1, test_sessions=2
+    )
+    seen = []
+
+    def fake_simulate(bars, signals, **kwargs):
+        seen.append(kwargs["commission_per_share"])
+        return [SimulatedTrade(
+            entry_time=fold.test_bars[0].timestamp,
+            exit_time=fold.test_bars[1].timestamp,
+            entry_price=100, exit_price=105, quantity=2,
+            exit_reason="target", entry_fee=0.5, exit_fee=0.5,
+        )]
+
+    monkeypatch.setattr("backtesting.walk_forward.generate_breakout_signals", lambda bars: [])
+    monkeypatch.setattr("backtesting.walk_forward.simulate_trades", fake_simulate)
+    result, = evaluate_fixed_baseline_folds(
+        (fold,), starting_cash=1000, commission_per_share=0.25,
+    )
+    assert seen == [0.25]
+    assert result.trade_count == 1
+    assert result.net_pnl == 9
+    assert result.ending_cash == 1009
+    assert result.return_pct == 0.9
