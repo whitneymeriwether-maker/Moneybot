@@ -328,3 +328,18 @@ def test_evaluator_subtracts_both_commission_sides_from_fold_returns(monkeypatch
     assert result.net_pnl == 9
     assert result.ending_cash == 1009
     assert result.return_pct == 0.9
+
+
+def test_fold_evaluator_forwards_assumed_spread_to_simulator(monkeypatch):
+    fold, = build_research_folds(
+        make_bars(6), train_sessions=3, embargo_sessions=1, test_sessions=2
+    )
+    observed = []
+
+    def capture(bars, signals, **kwargs):
+        observed.append(kwargs["spread_pct"])
+        return []
+
+    monkeypatch.setattr("backtesting.walk_forward.simulate_trades", capture)
+    evaluate_fixed_baseline_folds((fold,), spread_pct=0.006)
+    assert observed == [0.006]
