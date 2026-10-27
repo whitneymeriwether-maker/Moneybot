@@ -167,24 +167,65 @@ def evaluate_fixed_baseline_folds(
             )
         ):
             raise ValueError("Overlapping research fold test dates")
+        # Public folds can be constructed without using the strict splitter.
+        # Verify chronological separation and the complete underlying test
+        # tape before it can be presented as out-of-sample performance.
+        for dates in (fold.train_dates, fold.embargo_dates, fold.test_dates):
+            if (
+                type(dates) is not tuple
+                or any(type(day) is not date or day.weekday() >= 5 for day in dates)
+                or tuple(sorted(set(dates))) != dates
+            ):
+                raise ValueError("Invalid research fold session dates")
+        if (
+            not fold.train_dates
+            or fold.train_dates[-1] >= fold.test_dates[0]
+            or (fold.embargo_dates and (
+                fold.train_dates[-1] >= fold.embargo_dates[0]
+                or fold.embargo_dates[-1] >= fold.test_dates[0]
+            ))
+        ):
+            raise ValueError("Research fold dates are not chronological")
         # ResearchFold is a public dataclass: reject hand-built or modified
         # folds whose purported test bars actually come from training days.
         # Without this check an evaluator could report in-sample performance
         # as out-of-sample even though the splitter itself is correct.
-        test_bar_dates = []
-        for bar in fold.test_bars:
+        if len(fold.test_bars) != 390 * len(fold.test_dates):
+            raise ValueError("Research fold test bars do not match test dates")
+        previous_stamp = None
+        for index, bar in enumerate(fold.test_bars):
             stamp = getattr(bar, "timestamp", None)
             if (
                 not isinstance(stamp, datetime)
                 or stamp.tzinfo is None or stamp.utcoffset() is None
+                or stamp.second != 0 or stamp.microsecond != 0
+                or (previous_stamp is not None and stamp <= previous_stamp)
             ):
-                raise ValueError("Invalid research fold test timestamp")
-            test_bar_dates.append(stamp.astimezone(_NEW_YORK).date())
-        if (
-            len(test_bar_dates) != 390 * len(fold.test_dates)
-            or tuple(dict.fromkeys(test_bar_dates)) != fold.test_dates
-        ):
-            raise ValueError("Research fold test bars do not match test dates")
+                raise ValueError("Invalid or nonchronological research fold test timestamp")
+            previous_stamp = stamp
+            local = stamp.astimezone(_NEW_YORK)
+            expected_date = fold.test_dates[index // 390]
+            expected_minute = 9 * 60 + 30 + index % 390
+            if (
+                local.date() != expected_date
+                or local.hour * 60 + local.minute != expected_minute
+            ):
+                raise ValueError("Research fold test bars do not match test dates/minutes")
+            prices = tuple(
+                getattr(bar, key, None) for key in ("open", "high", "low", "close")
+            )
+            if any(
+                type(price) not in (int, float)
+                or not isfinite(price) or price <= 0
+                for price in prices
+            ):
+                raise ValueError("Invalid research fold test price")
+            opening, high, low, close = prices
+            if high < max(opening, low, close) or low > min(opening, high, close):
+                raise ValueError("Inconsistent research fold test OHLC bar")
+            volume = getattr(bar, "volume", None)
+            if type(volume) is not int or volume <= 0:
+                raise ValueError("Invalid research fold test volume")
         seen_test_dates.update(fold.test_dates)
         signals = generate_breakout_signals(fold.test_bars)
         trades = simulate_trades(
