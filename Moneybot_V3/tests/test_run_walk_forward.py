@@ -221,3 +221,85 @@ def test_runner_coverage_never_conflates_input_span_with_test_span(tmp_path):
     assert report["last_session"] == "2026-10-20"
     assert report["evaluation_coverage"]["last_test_session"] == "2026-10-19"
     assert "2026-10-20" in report["evaluation_coverage"]["untested_session_dates"]
+
+
+def test_adverse_slippage_stress_reruns_same_folds_without_changing_baseline(
+    tmp_path, monkeypatch,
+):
+    import backtesting.run_walk_forward as runner_module
+
+    filename = make_csv(tmp_path)
+    original_evaluator = runner_module.evaluate_fixed_baseline_folds
+    seen_slippage = []
+
+    def track_evaluation(folds, **kwargs):
+        seen_slippage.append(kwargs["slippage_pct"])
+        return original_evaluator(folds, **kwargs)
+
+    monkeypatch.setattr(
+        runner_module, "evaluate_fixed_baseline_folds", track_evaluation
+    )
+    baseline = run(filename)
+    seen_slippage.clear()
+    report = run(filename, stress_slippage_pcts=(0.002, 0.005))
+    assert seen_slippage == [0.001, 0.002, 0.005]
+    assert report["folds"] == baseline["folds"]
+    assert report["summary"] == baseline["summary"]
+    assert report["evaluation_coverage"] == baseline["evaluation_coverage"]
+    assert report["source_sha256"] == baseline["source_sha256"]
+    assert [item["slippage_pct"] for item in report["slippage_stress"]] == [
+        0.002, 0.005,
+    ]
+    assert all(item["folds"][0]["first_test_date"] == "2026-10-16"
+               for item in report["slippage_stress"])
+    assert all("total_return_pct" not in item["summary"]
+               for item in report["slippage_stress"])
+    assert json.loads(json.dumps(report)) == report
+    assert baseline["slippage_stress"] == []
+
+
+@pytest.mark.parametrize("bad_stresses", [
+    [0.002], "0.002", None, (0.002, 0.002), (0.003, 0.002),
+    (0.001,), (0.0005,), (float("nan"),), (float("inf"),),
+    (True,), ("0.002",), (1,), (0.002, 0.003, 0.004, 0.005, 0.006, 0.007),
+])
+def test_runner_rejects_invalid_stress_scenarios(tmp_path, bad_stresses):
+    with pytest.raises(ValueError, match="Stress slippage"):
+        run(make_csv(tmp_path), stress_slippage_pcts=bad_stresses)
+
+
+@pytest.mark.parametrize("bad_baseline", [float("nan"), float("inf"), True, -0.1, 1])
+def test_runner_rejects_invalid_baseline_slippage(tmp_path, bad_baseline):
+    with pytest.raises(ValueError, match="baseline slippage"):
+        run(make_csv(tmp_path), slippage_pct=bad_baseline)
+
+
+def test_cli_emits_adverse_slippage_stress_scenarios(tmp_path, capsys):
+    filename = make_csv(tmp_path)
+    main([
+        "--csv", str(filename), "--symbol", "SPY",
+        "--first-session", "2026-10-12",
+        "--last-session", "2026-10-19",
+        "--closed-sessions", "none",
+        "--train-sessions", "3", "--test-sessions", "2",
+        "--stress-slippage-pcts", "0.002,0.005",
+    ])
+    report = json.loads(capsys.readouterr().out)
+    assert [item["slippage_pct"] for item in report["slippage_stress"]] == [
+        0.002, 0.005,
+    ]
+
+
+@pytest.mark.parametrize("bad", ["", "0.002,", "oops", "0.001", "0.005,0.002", "nan"])
+def test_cli_rejects_invalid_stress_scenarios(tmp_path, bad):
+    filename = make_csv(tmp_path)
+    with pytest.raises(SystemExit) as exc:
+        main([
+            "--csv", str(filename), "--symbol", "SPY",
+            "--first-session", "2026-10-12",
+            "--last-session", "2026-10-19",
+            "--closed-sessions", "none",
+            "--train-sessions", "3", "--test-sessions", "2",
+            "--stress-slippage-pcts", bad,
+        ])
+    assert exc.value.code == 2
