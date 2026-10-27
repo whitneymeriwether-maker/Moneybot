@@ -62,7 +62,7 @@ def test_summary_rejects_missing_or_untyped_results(bad):
         summarize_fixed_baseline_folds(bad)
 
 
-@pytest.mark.parametrize("bad_cash", [0, -1, True, float("nan"), float("inf"), "1000"])
+@pytest.mark.parametrize("bad_cash", [0, -1, True, float("nan"), float("inf"), "1000", 10 ** 1000])
 def test_summary_rejects_invalid_capital(bad_cash):
     with pytest.raises(ValueError):
         summarize_fixed_baseline_folds(examples(), starting_cash=bad_cash)
@@ -96,3 +96,11 @@ def test_summary_rejects_reversed_or_overlapping_windows():
         summarize_fixed_baseline_folds((results[0], replace(results[1], first_test_date=results[0].last_test_date)))
     with pytest.raises(ValueError, match="numbers"):
         summarize_fixed_baseline_folds((results[0], replace(results[1], number=1)))
+
+
+def test_summary_rejects_oversized_fold_numbers_without_overflow():
+    results = examples()
+    with pytest.raises(ValueError, match="Non-finite"):
+        summarize_fixed_baseline_folds(
+            (replace(results[0], net_pnl=10 ** 1000),)
+        )
