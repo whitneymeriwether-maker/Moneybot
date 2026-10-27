@@ -79,6 +79,17 @@ def _parse_quote_timestamp(value):
     return timestamp.astimezone(timezone.utc)
 
 
+def _require_requested_symbol(record, symbol, context):
+    """Reject provider symbol metadata inconsistent with the requested ticker."""
+    if not isinstance(record, dict):
+        raise RuntimeError(f"Invalid {context} for {symbol}")
+    if any(
+        field in record and record[field] != symbol
+        for field in ("S", "symbol")
+    ):
+        raise RuntimeError(f"Unexpected {context} symbol for {symbol}")
+
+
 def get_latest_quote(symbol):
     """Return validated IEX bid and ask prices."""
 
@@ -92,9 +103,11 @@ def get_latest_quote(symbol):
     payload = _get_json(url)
     if not isinstance(payload, dict):
         raise RuntimeError(f"Invalid quote response for {symbol}")
+    _require_requested_symbol(payload, symbol, "quote response")
     quote_data = payload.get("quote") or {}
     if not isinstance(quote_data, dict):
         raise RuntimeError(f"Invalid quote response for {symbol}")
+    _require_requested_symbol(quote_data, symbol, "quote")
 
     bid = quote_data.get("bp")
     ask = quote_data.get("ap")
@@ -115,6 +128,9 @@ def get_latest_quote(symbol):
             f"Stale quote for {symbol}: "
             f"timestamp {timestamp.isoformat()}"
         )
+
+    if type(bid) is bool or type(ask) is bool:
+        raise RuntimeError(f"Invalid bid-ask quote for {symbol}")
 
     try:
         bid = float(bid)
@@ -179,9 +195,12 @@ def get_recent_daily_bars(symbol, days=45):
         if not isinstance(payload, dict):
             raise RuntimeError(f"Invalid daily bars response for {symbol}")
 
+        _require_requested_symbol(payload, symbol, "daily bars response")
         page_bars = payload.get("bars")
         if not isinstance(page_bars, list):
             raise RuntimeError(f"Invalid daily bars response for {symbol}")
+        for bar in page_bars:
+            _require_requested_symbol(bar, symbol, "daily bar")
         bars.extend(page_bars)
 
         next_page_token = payload.get("next_page_token")

@@ -538,3 +538,77 @@ def test_candidate_accepts_normal_weekend_gaps(monkeypatch):
     assert market_data.get_stock_candidate(
         "TEST", market_cap=1_000_000_000
     ).average_daily_volume == 2_000_000
+
+
+@pytest.mark.parametrize("location", ["response", "quote"])
+@pytest.mark.parametrize("field", ["symbol", "S"])
+def test_quote_rejects_mismatched_provider_symbol(
+    monkeypatch, location, field,
+):
+    payload = {
+        "quote": {
+            "bp": 11.99, "ap": 12.00, "t": fresh_quote_timestamp(),
+        },
+    }
+    record = payload if location == "response" else payload["quote"]
+    record[field] = "OTHER"
+    monkeypatch.setattr(market_data, "_get_json", lambda url: payload)
+
+    with pytest.raises(RuntimeError, match="Unexpected quote"):
+        market_data.get_latest_quote("TEST")
+
+
+def test_quote_accepts_matching_provider_symbol(monkeypatch):
+    payload = {
+        "symbol": "TEST",
+        "quote": {
+            "S": "TEST", "symbol": "TEST",
+            "bp": 11.99, "ap": 12.00, "t": fresh_quote_timestamp(),
+        },
+    }
+    monkeypatch.setattr(market_data, "_get_json", lambda url: payload)
+    assert market_data.get_latest_quote("TEST") == (11.99, 12.00)
+
+
+@pytest.mark.parametrize("field", ["bp", "ap"])
+def test_quote_rejects_boolean_prices(monkeypatch, field):
+    quote = {
+        "bp": 11.99, "ap": 12.00, "t": fresh_quote_timestamp(),
+    }
+    quote[field] = True
+    monkeypatch.setattr(
+        market_data, "_get_json", lambda url: {"quote": quote},
+    )
+    with pytest.raises(RuntimeError, match="Invalid bid-ask quote"):
+        market_data.get_latest_quote("TEST")
+
+
+@pytest.mark.parametrize("location", ["response", "bar"])
+@pytest.mark.parametrize("field", ["symbol", "S"])
+def test_daily_bars_reject_mismatched_provider_symbol(
+    monkeypatch, location, field,
+):
+    payload = {"bars": make_daily_bars(1), "next_page_token": None}
+    record = payload if location == "response" else payload["bars"][0]
+    record[field] = "OTHER"
+    monkeypatch.setattr(market_data, "_get_json", lambda url: payload)
+    with pytest.raises(RuntimeError, match="Unexpected daily bar"):
+        market_data.get_recent_daily_bars("TEST")
+
+
+def test_daily_bars_accept_matching_provider_symbol(monkeypatch):
+    payload = {"symbol": "TEST", "bars": make_daily_bars(1)}
+    payload["bars"][0]["S"] = "TEST"
+    payload["bars"][0]["symbol"] = "TEST"
+    monkeypatch.setattr(market_data, "_get_json", lambda url: payload)
+    assert len(market_data.get_recent_daily_bars("TEST")) == 1
+
+
+@pytest.mark.parametrize("bar", [None, "not a bar", 42, []])
+def test_daily_bars_reject_nonobject_bar_before_sorting(monkeypatch, bar):
+    monkeypatch.setattr(
+        market_data, "_get_json",
+        lambda url: {"bars": [bar], "next_page_token": None},
+    )
+    with pytest.raises(RuntimeError, match="Invalid daily bar"):
+        market_data.get_recent_daily_bars("TEST")
