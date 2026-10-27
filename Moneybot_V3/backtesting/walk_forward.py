@@ -142,6 +142,46 @@ def build_research_folds(
     return tuple(folds)
 
 
+def _validate_fold_session_bars(bars, dates, role):
+    """Recheck public fold tapes, including their claimed training sessions."""
+    if type(bars) is not tuple or len(bars) != 390 * len(dates):
+        raise ValueError(f"Research fold {role} bars do not match {role} dates")
+    previous_stamp = None
+    for index, bar in enumerate(bars):
+        stamp = getattr(bar, "timestamp", None)
+        if (
+            not isinstance(stamp, datetime)
+            or stamp.tzinfo is None or stamp.utcoffset() is None
+            or stamp.second != 0 or stamp.microsecond != 0
+            or (previous_stamp is not None and stamp <= previous_stamp)
+        ):
+            raise ValueError(f"Invalid or nonchronological research fold {role} timestamp")
+        previous_stamp = stamp
+        local = stamp.astimezone(_NEW_YORK)
+        expected_date = dates[index // 390]
+        expected_minute = 9 * 60 + 30 + index % 390
+        if (
+            local.date() != expected_date
+            or local.hour * 60 + local.minute != expected_minute
+        ):
+            raise ValueError(f"Research fold {role} bars do not match {role} dates/minutes")
+        prices = tuple(
+            getattr(bar, key, None) for key in ("open", "high", "low", "close")
+        )
+        if any(
+            type(price) not in (int, float)
+            or not isfinite(price) or price <= 0
+            for price in prices
+        ):
+            raise ValueError(f"Invalid research fold {role} price")
+        opening, high, low, close = prices
+        if high < max(opening, low, close) or low > min(opening, high, close):
+            raise ValueError(f"Inconsistent research fold {role} OHLC bar")
+        volume = getattr(bar, "volume", None)
+        if type(volume) is not int or volume <= 0:
+            raise ValueError(f"Invalid research fold {role} volume")
+
+
 def evaluate_fixed_baseline_folds(
     folds, *, starting_cash=1000.0, risk_per_trade=0.015,
     slippage_pct=0.001,
@@ -186,46 +226,11 @@ def evaluate_fixed_baseline_folds(
             ))
         ):
             raise ValueError("Research fold dates are not chronological")
-        # ResearchFold is a public dataclass: reject hand-built or modified
-        # folds whose purported test bars actually come from training days.
-        # Without this check an evaluator could report in-sample performance
-        # as out-of-sample even though the splitter itself is correct.
-        if len(fold.test_bars) != 390 * len(fold.test_dates):
-            raise ValueError("Research fold test bars do not match test dates")
-        previous_stamp = None
-        for index, bar in enumerate(fold.test_bars):
-            stamp = getattr(bar, "timestamp", None)
-            if (
-                not isinstance(stamp, datetime)
-                or stamp.tzinfo is None or stamp.utcoffset() is None
-                or stamp.second != 0 or stamp.microsecond != 0
-                or (previous_stamp is not None and stamp <= previous_stamp)
-            ):
-                raise ValueError("Invalid or nonchronological research fold test timestamp")
-            previous_stamp = stamp
-            local = stamp.astimezone(_NEW_YORK)
-            expected_date = fold.test_dates[index // 390]
-            expected_minute = 9 * 60 + 30 + index % 390
-            if (
-                local.date() != expected_date
-                or local.hour * 60 + local.minute != expected_minute
-            ):
-                raise ValueError("Research fold test bars do not match test dates/minutes")
-            prices = tuple(
-                getattr(bar, key, None) for key in ("open", "high", "low", "close")
-            )
-            if any(
-                type(price) not in (int, float)
-                or not isfinite(price) or price <= 0
-                for price in prices
-            ):
-                raise ValueError("Invalid research fold test price")
-            opening, high, low, close = prices
-            if high < max(opening, low, close) or low > min(opening, high, close):
-                raise ValueError("Inconsistent research fold test OHLC bar")
-            volume = getattr(bar, "volume", None)
-            if type(volume) is not int or volume <= 0:
-                raise ValueError("Invalid research fold test volume")
+        # A public fold can be hand-built: independently validate BOTH
+        # tapes, so a forged training window cannot be reported as a valid
+        # chronological research fold even when the baseline uses only tests.
+        _validate_fold_session_bars(fold.train_bars, fold.train_dates, "train")
+        _validate_fold_session_bars(fold.test_bars, fold.test_dates, "test")
         seen_test_dates.update(fold.test_dates)
         signals = generate_breakout_signals(fold.test_bars)
         trades = simulate_trades(

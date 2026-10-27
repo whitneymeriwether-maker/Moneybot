@@ -218,3 +218,38 @@ def test_evaluator_rejects_forged_fold_chronology(corruption):
         fold = replace(fold, test_dates=(date(2026, 10, 17), fold.test_dates[-1]))
     with pytest.raises(ValueError):
         evaluate_fixed_baseline_folds((fold,))
+
+
+@pytest.mark.parametrize("corruption", [
+    "empty", "training_from_test", "duplicate_minute",
+    "bad_price", "bad_ohlc", "zero_volume", "fractional_volume",
+    "off_minute",
+])
+def test_evaluator_revalidates_claimed_training_tape(corruption):
+    fold, = build_research_folds(
+        make_bars(6), train_sessions=3, embargo_sessions=1, test_sessions=2
+    )
+    bars = list(fold.train_bars)
+    if corruption == "empty":
+        bars = []
+    elif corruption == "training_from_test":
+        bars = list(fold.test_bars) + bars[780:]
+    elif corruption == "duplicate_minute":
+        bars[10] = bars[9]
+    else:
+        values = vars(bars[10]).copy()
+        if corruption == "bad_price":
+            values["close"] = float("inf")
+        elif corruption == "bad_ohlc":
+            values["high"] = 98.0
+        elif corruption == "zero_volume":
+            values["volume"] = 0
+        elif corruption == "fractional_volume":
+            values["volume"] = 1.5
+        elif corruption == "off_minute":
+            values["timestamp"] += timedelta(seconds=30)
+        bars[10] = SimpleNamespace(**values)
+    with pytest.raises(ValueError, match="train"):
+        evaluate_fixed_baseline_folds(
+            (replace(fold, train_bars=tuple(bars)),)
+        )
