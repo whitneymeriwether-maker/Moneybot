@@ -506,3 +506,35 @@ def test_candidate_rejects_older_duplicate_date_outside_recent_twenty(monkeypatc
 
     with pytest.raises(RuntimeError, match="Invalid daily bar"):
         market_data.get_stock_candidate("TEST", market_cap=1_000_000_000)
+
+
+
+def test_candidate_rejects_discontinuous_recent_daily_sample(monkeypatch):
+    # The most recent bar is fresh, but a two-week gap separates the
+    # twenty-bar sample. Its average volume is not a recent 20-session measure.
+    bars = make_daily_bars()
+    for bar in bars[:10]:
+        stamp = datetime.fromisoformat(bar["t"].replace("Z", "+00:00"))
+        bar["t"] = (stamp - timedelta(days=14)).isoformat()
+    monkeypatch.setattr(
+        market_data, "get_recent_daily_bars", lambda symbol: bars,
+    )
+    monkeypatch.setattr(
+        market_data, "get_latest_quote",
+        lambda symbol: pytest.fail("Do not quote after a historical data gap"),
+    )
+    with pytest.raises(RuntimeError, match="Discontinuous recent daily bars"):
+        market_data.get_stock_candidate("TEST", market_cap=1_000_000_000)
+
+
+def test_candidate_accepts_normal_weekend_gaps(monkeypatch):
+    bars = make_daily_bars()
+    monkeypatch.setattr(
+        market_data, "get_recent_daily_bars", lambda symbol: bars,
+    )
+    monkeypatch.setattr(
+        market_data, "get_latest_quote", lambda symbol: (11.99, 12.00),
+    )
+    assert market_data.get_stock_candidate(
+        "TEST", market_cap=1_000_000_000
+    ).average_daily_volume == 2_000_000

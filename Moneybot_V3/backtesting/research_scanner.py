@@ -23,6 +23,7 @@ from backtesting.market_cap_data import (
 from backtesting.market_data import (
     _parse_quote_timestamp,
     _validate_daily_bars,
+    _validate_recent_daily_continuity,
     get_recent_daily_bars,
     get_stock_candidate,
 )
@@ -70,6 +71,7 @@ def _estimate_using_sec(symbol):
     # A corrupt or duplicate older observation must not be hidden by the
     # slice when the primary FMP provider is unavailable.
     _validate_daily_bars(bars, symbol)
+    _validate_recent_daily_continuity(bars, symbol)
     recent = bars[-20:]
     latest_bar = _parse_quote_timestamp(recent[-1]["t"])
     if datetime.now(timezone.utc) - latest_bar > timedelta(days=7):

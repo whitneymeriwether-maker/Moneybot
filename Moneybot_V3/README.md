@@ -286,3 +286,16 @@ veto an entry. Exits that fail the configured ceiling invalidate the entire
 research scenario rather than assuming partial fills. More restrictive caps
 can therefore cause a study to fail, and such failures must not be silently
 excluded from reported comparisons. No broker, live orders, or spending.
+
+
+### Daily screening sample continuity (research-only)
+
+Both the primary Alpaca IEX candidate screen and the provisional SEC market-cap
+fallback now reject a 20-bar daily sample containing a gap of more than seven
+calendar days between successive observed trading dates. A fresh final daily
+bar cannot make much older volume observations a recent 20-session average.
+These conservative failures are treated as missing/unverified market data,
+not as evidence that a stock fails a market-wide liquidity requirement.
+The seven-day heuristic permits ordinary weekends and short closures; it is
+**not** an authenticated exchange calendar, does not catch every missing
+session, and does not establish consolidated liquidity or price provenance.

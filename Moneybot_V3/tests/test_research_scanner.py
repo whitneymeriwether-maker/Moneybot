@@ -586,3 +586,41 @@ def test_sec_fallback_failure_classifies_as_unverified(monkeypatch):
     assert result.provisional is False
     assert result.data_unverified is True
     assert any("Invalid daily bar" in reason for reason in result.reasons)
+
+
+
+def test_sec_fallback_rejects_discontinuous_recent_daily_sample(monkeypatch):
+    bars = make_sec_fallback_bars()
+    for bar in bars[:10]:
+        stamp = datetime.fromisoformat(bar["t"].replace("Z", "+00:00"))
+        bar["t"] = (stamp - timedelta(days=14)).isoformat()
+    monkeypatch.setattr(
+        research_scanner, "get_recent_daily_bars", lambda symbol: bars,
+    )
+    monkeypatch.setattr(
+        research_scanner, "estimate_market_cap",
+        lambda symbol, price: pytest.fail(
+            "SEC fallback must not estimate using a discontinuous sample"
+        ),
+    )
+    with pytest.raises(RuntimeError, match="Discontinuous recent daily bars"):
+        research_scanner._estimate_using_sec("TEST")
+
+
+def test_discontinuous_sec_fallback_is_classified_unverified(monkeypatch):
+    fake_fmp_failure(monkeypatch)
+    bars = make_sec_fallback_bars()
+    for bar in bars[:10]:
+        stamp = datetime.fromisoformat(bar["t"].replace("Z", "+00:00"))
+        bar["t"] = (stamp - timedelta(days=14)).isoformat()
+    monkeypatch.setattr(
+        research_scanner, "get_recent_daily_bars", lambda symbol: bars,
+    )
+    monkeypatch.setattr(
+        research_scanner, "estimate_market_cap",
+        lambda symbol, price: pytest.fail("Do not use discontinuous prices"),
+    )
+    result = research_scanner.scan_stock("TEST")
+    assert result.qualifies is False
+    assert result.data_unverified is True
+    assert any("Discontinuous recent daily bars" in reason for reason in result.reasons)

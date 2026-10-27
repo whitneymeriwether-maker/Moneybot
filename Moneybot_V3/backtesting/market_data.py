@@ -246,6 +246,28 @@ def _validate_daily_bars(bars, symbol):
         observed_dates.add(timestamp.date())
 
 
+
+def _validate_recent_daily_continuity(bars, symbol, lookback=20):
+    """Reject large gaps in the latest screening sample.
+
+    A recent last bar alone does not make the preceding nineteen sessions
+    recent. Seven calendar days allows ordinary weekends and short exchange
+    closures, but cannot authenticate an exchange calendar or detect every
+    missing trading day. Missing evidence must remain unverified.
+    """
+    if len(bars) < lookback:
+        raise RuntimeError(f"Insufficient recent daily bars for {symbol}")
+    dates = [
+        _parse_quote_timestamp(bar["t"]).date()
+        for bar in bars[-lookback:]
+    ]
+    if any(
+        not 0 < (later - earlier).days <= 7
+        for earlier, later in zip(dates, dates[1:])
+    ):
+        raise RuntimeError(f"Discontinuous recent daily bars for {symbol}")
+
+
 def get_stock_candidate(symbol, market_cap):
     """Build a research candidate using IEX market data.
 
@@ -281,6 +303,7 @@ def get_stock_candidate(symbol, market_cap):
     # 20 bars. Older malformed/duplicate records can otherwise be hidden
     # by slicing and silently alter which sessions are sampled.
     _validate_daily_bars(bars, symbol)
+    _validate_recent_daily_continuity(bars, symbol)
     recent = bars[-20:]
 
     # A successful API response is not proof of current data.
