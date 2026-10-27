@@ -62,6 +62,17 @@ def test_runner_produces_reproducible_json_safe_independent_folds(tmp_path):
     assert result["folds"][0]["last_test_date"] == "2026-10-19"
     assert result["folds"][0]["net_pnl"] == 0
     assert result["summary"]["fold_count"] == 1
+    assert result["evaluation_coverage"] == {
+        "observed_session_count": 6,
+        "tested_session_count": 2,
+        "untested_session_count": 4,
+        "tested_session_fraction": 2 / 6,
+        "first_test_session": "2026-10-16",
+        "last_test_session": "2026-10-19",
+        "untested_session_dates": [
+            "2026-10-12", "2026-10-13", "2026-10-14", "2026-10-15",
+        ],
+    }
     assert result["summary"]["mean_fold_return_pct"] == 0
     assert "total_return_pct" not in result["summary"]
     assert json.loads(json.dumps(result)) == result
@@ -175,3 +186,38 @@ def test_cli_can_pin_local_input_digest(tmp_path, capsys):
     with pytest.raises(SystemExit) as exc:
         main(arguments[:-1] + ["0" * 64])
     assert exc.value.code == 2
+
+
+def test_runner_discloses_skipped_step_sessions_and_incomplete_tail(tmp_path):
+    filename = make_csv(tmp_path, sessions=10)
+    report = run(
+        filename,
+        expected_session_span=(date(2026, 10, 12), date(2026, 10, 23)),
+        step_sessions=3,
+    )
+    # Starts at session offsets 0 and 3. The final two input sessions
+    # cannot form a third full training/embargo/test fold.
+    assert len(report["folds"]) == 2
+    coverage = report["evaluation_coverage"]
+    assert coverage["observed_session_count"] == 10
+    assert coverage["tested_session_count"] == 4
+    assert coverage["untested_session_count"] == 6
+    assert coverage["tested_session_fraction"] == 0.4
+    assert coverage["first_test_session"] == "2026-10-16"
+    assert coverage["last_test_session"] == "2026-10-22"
+    assert coverage["untested_session_dates"] == [
+        "2026-10-12", "2026-10-13", "2026-10-14", "2026-10-15",
+        "2026-10-20", "2026-10-23",
+    ]
+
+
+def test_runner_coverage_never_conflates_input_span_with_test_span(tmp_path):
+    filename = make_csv(tmp_path, sessions=7)
+    report = run(
+        filename,
+        expected_session_span=(date(2026, 10, 12), date(2026, 10, 20)),
+    )
+    assert len(report["folds"]) == 1
+    assert report["last_session"] == "2026-10-20"
+    assert report["evaluation_coverage"]["last_test_session"] == "2026-10-19"
+    assert "2026-10-20" in report["evaluation_coverage"]["untested_session_dates"]
