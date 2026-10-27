@@ -216,13 +216,26 @@ def get_recent_daily_bars(symbol, days=45):
     else:
         raise RuntimeError(f"Daily bars pagination limit reached for {symbol}")
 
-    # ISO text ordering is not chronological when API pages use different
-    # explicit timezone offsets. Reject missing/naive timestamps and sort
-    # by actual UTC instants before selecting the most recent sessions.
+    # Daily bars represent exchange sessions, so compare normalized UTC
+    # dates against the requested window. An intraday comparison would
+    # incorrectly exclude a midnight-stamped bar on the first date.
+    # Provider responses outside the requested range are unverified, even
+    # if a later 20-bar sample happens to look fresh.
     try:
-        return sorted(bars, key=lambda bar: _parse_quote_timestamp(bar["t"]))
+        dated_bars = [
+            (_parse_quote_timestamp(bar["t"]), bar) for bar in bars
+        ]
     except (KeyError, TypeError, RuntimeError):
         raise RuntimeError(f"Invalid daily bar for {symbol}") from None
+    if any(
+        not start.date() <= stamp.date() <= end.date()
+        or stamp > end + timedelta(minutes=5)
+        for stamp, _ in dated_bars
+    ):
+        raise RuntimeError(f"Daily bar outside requested window for {symbol}")
+
+    # ISO text ordering is not chronological with differing UTC offsets.
+    return [bar for _, bar in sorted(dated_bars, key=lambda item: item[0])]
 
 
 

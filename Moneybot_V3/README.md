@@ -302,3 +302,15 @@ not as evidence that a stock fails a market-wide liquidity requirement.
 The seven-day heuristic permits ordinary weekends and short closures; it is
 **not** an authenticated exchange calendar, does not catch every missing
 session, and does not establish consolidated liquidity or price provenance.
+
+### Daily provider request-window binding (research-only)
+
+The read-only Alpaca IEX daily-bar downloader now checks each returned bar
+against the requested UTC calendar-date range before returning it to the
+screening pipeline. A provider response containing an older or future date
+fails closed, even if the last twenty records appear plausible. Daily bars
+are session-dated, so the first requested date is inclusive despite the
+intraday time in the API query; timestamps more than five minutes in the
+future are also rejected. This is a response-consistency check, **not**
+independent market-data authentication, proof of complete exchange sessions,
+or a consolidated-volume guarantee.

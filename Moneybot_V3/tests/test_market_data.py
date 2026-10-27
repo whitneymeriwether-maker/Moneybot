@@ -450,8 +450,9 @@ def test_stock_candidate_rejects_nonfinite_or_nonpositive_market_cap(invalid_cap
 def test_daily_bars_sorted_by_utc_instant_not_offset_text(monkeypatch):
     # "10:00-04:00" is later than "13:59Z", despite text ordering.
     bars = make_daily_bars(2)
-    bars[0]["t"] = "2026-04-01T10:00:00-04:00"
-    bars[1]["t"] = "2026-04-01T13:59:00Z"
+    day = make_daily_bars(1)[0]["t"][:10]
+    bars[0]["t"] = f"{day}T10:00:00-04:00"
+    bars[1]["t"] = f"{day}T13:59:00Z"
     monkeypatch.setattr(
         market_data, "_get_json",
         lambda url: {"bars": bars, "next_page_token": None},
@@ -459,8 +460,8 @@ def test_daily_bars_sorted_by_utc_instant_not_offset_text(monkeypatch):
 
     result = market_data.get_recent_daily_bars("TEST")
 
-    assert result[0]["t"] == "2026-04-01T13:59:00Z"
-    assert result[1]["t"] == "2026-04-01T10:00:00-04:00"
+    assert result[0]["t"] == f"{day}T13:59:00Z"
+    assert result[1]["t"] == f"{day}T10:00:00-04:00"
 
 
 @pytest.mark.parametrize("invalid_timestamp", [None, "not-a-date", "2026-04-01T13:59:00"])
@@ -612,3 +613,33 @@ def test_daily_bars_reject_nonobject_bar_before_sorting(monkeypatch, bar):
     )
     with pytest.raises(RuntimeError, match="Invalid daily bar"):
         market_data.get_recent_daily_bars("TEST")
+
+
+@pytest.mark.parametrize("offset_days", [-46, 1])
+def test_daily_bars_reject_provider_dates_outside_requested_window(
+    monkeypatch, offset_days,
+):
+    # The provider must not silently return old or future sessions for
+    # a 45-calendar-day query, even if the response is otherwise well formed.
+    bar = make_daily_bars(1)[0]
+    day = datetime.now(timezone.utc).date() + timedelta(days=offset_days)
+    bar["t"] = f"{day.isoformat()}T04:00:00Z"
+    monkeypatch.setattr(
+        market_data, "_get_json",
+        lambda url: {"bars": [bar], "next_page_token": None},
+    )
+    with pytest.raises(RuntimeError, match="outside requested window"):
+        market_data.get_recent_daily_bars("TEST")
+
+
+def test_daily_bars_accept_first_requested_utc_date(monkeypatch):
+    # Alpaca daily records can be stamped at midnight, earlier than the
+    # intraday 'start' clock time on the same calendar date.
+    day = (datetime.now(timezone.utc) - timedelta(days=45)).date()
+    bar = make_daily_bars(1)[0]
+    bar["t"] = f"{day.isoformat()}T04:00:00Z"
+    monkeypatch.setattr(
+        market_data, "_get_json",
+        lambda url: {"bars": [bar], "next_page_token": None},
+    )
+    assert market_data.get_recent_daily_bars("TEST")[0]["t"] == bar["t"]
