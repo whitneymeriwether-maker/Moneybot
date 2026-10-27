@@ -165,8 +165,9 @@ the feed or prove point-in-time data provenance. Supply `--closed-sessions none`
 only for a reviewed span with no weekday closures. Missing whole sessions,
 invalid OHLCV, wrong symbols, and unsupported early closes fail closed. The
 runner does not fetch data, fit a model, send orders, connect to a brokerage,
-or write results to a service. It excludes commissions and some execution
-costs. No profitable edge or operational readiness is implied.
+or write results to a service. Fixed hypothetical commissions, assumed
+spread, and slippage can be configured, but many execution costs remain
+unmodeled. No profitable edge or operational readiness is implied.
 
 ## Walk-forward test-session coverage disclosure
 
@@ -190,7 +191,8 @@ The local walk-forward runner accepts an optional
 **0.2% and 0.5% adverse slippage per fill**, respectively, versus the
 default baseline of 0.1% per fill. Supply at most five strictly increasing
 finite fractions, each greater than the selected `--slippage-pct` and
-less than 1. This is a *predeclared cost sensitivity check*, not a strategy
+less than 1 minus half the assumed full spread fraction. This is a
+*predeclared cost sensitivity check*, not a strategy
 optimizer. The runner rejects duplicate, cheaper, unsorted, and invalid
 scenarios rather than selecting whichever assumption looks most profitable.
 
@@ -203,7 +205,8 @@ between scenarios; returns need not change monotonically. An empty array
 means no stress scenarios were requested. The primary `folds` and
 `summary` remain the original baseline.
 
-These tests **do not** model commissions, spread dynamics, borrow costs,
+These tests can include fixed per-share commissions and a constant assumed
+full spread, but **do not** model actual spread dynamics, borrow costs,
 market impact, partial fills, or execution queue position. They do not
 authenticate the CSV or prove an investable edge. Stress comparisons are
 descriptive, not confidence intervals, independently verified market
@@ -228,3 +231,25 @@ model bid-ask spread dynamics, regulatory minimums, variable fees, market
 impact, queue priority, partial fills, or financing. A modeled stop or
 end-of-day exit still assumes sufficient liquidity. It does not authenticate
 historical prices or demonstrate positive out-of-sample performance.
+
+## Assumed bid-ask spread sensitivity (offline only)
+
+The historical simulator and walk-forward runner now accept a nonnegative
+hypothetical **full** bid-ask spread fraction (CLI: `--spread-pct 0.004`
+means a 0.4% full spread). OHLC bars are **assumed to represent midpoint
+prices**, and half the spread is charged on the buy entry and half on the
+sell exit, in addition to the selected adverse slippage and fixed per-share
+commission. The entry and exit adjustments are additive: a 0.4% full spread
+plus 0.1% slippage means a 0.3% adverse adjustment on each side. Position
+affordability, planned-stop sizing, and realized PnL reflect these costs.
+The JSON field `assumed_full_spread_pct` records the chosen assumption.
+All adverse-slippage scenarios retain the same spread assumption. The
+default zero spread preserves prior baseline results.
+
+Invalid, nonfinite, negative, or 100%-plus full spread assumptions fail
+closed; the combined adverse slippage and half spread must be less than 100%
+on either side. **These are not observed bid/ask quotes.** Historical OHLC
+may represent trades rather than midpoints, and actual spreads change with
+liquidity and time. The constant-spread sensitivity check cannot establish
+executable fills, reliable market impact, or profitable trading. No broker
+connection or live order path is introduced.
