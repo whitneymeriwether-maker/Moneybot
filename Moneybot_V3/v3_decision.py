@@ -113,6 +113,12 @@ def validate_paper_entry(candidate: Candidate, proposal: AIProposal,
     actual_age = now - candidate.timestamp
     if not timedelta(seconds=-5) <= actual_age <= timedelta(seconds=policy.max_data_age_seconds):
         return Decision(False, 'Stale or future market timestamp')
+    # The caller's age is untrusted. It may conservatively overstate staleness,
+    # but must not claim a substantially newer observation than its timestamp.
+    # Allow five seconds for clock/processing skew; the paper engine still
+    # needs independent source authentication and fill-time validation.
+    if actual_age > timedelta(seconds=candidate.data_age_seconds + 5):
+        return Decision(False, 'Reported market data age understates timestamp')
     values = (candidate.price, candidate.atr, candidate.relative_volume, proposal.confidence,
               account.cash, account.equity, account.current_exposure,
               account.realized_pnl_today, account.starting_equity, account.peak_equity)

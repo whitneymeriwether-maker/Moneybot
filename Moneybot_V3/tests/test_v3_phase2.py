@@ -343,7 +343,7 @@ def test_entry_accepts_equivalent_non_utc_timestamp():
 
 def test_entry_timestamp_freshness_respects_policy_age_limit():
     observed = datetime.now(timezone.utc) - timedelta(minutes=14)
-    candidate = replace(C, timestamp=observed, data_age_seconds=60)
+    candidate = replace(C, timestamp=observed, data_age_seconds=14 * 60)
     assert not validate_paper_entry(candidate, P, A).approved
     extended = RiskPolicy(max_data_age_seconds=900)
     assert validate_paper_entry(candidate, P, A, extended).approved
@@ -375,3 +375,31 @@ def test_market_data_age_policy_accepts_bounded_24h_limit():
     assert validate_paper_entry(
         C, P, A, RiskPolicy(max_data_age_seconds=86400)
     ).approved
+
+
+def test_entry_rejects_underreported_age_within_freshness_window():
+    # A quote ten minutes old is within the default 12-minute maximum,
+    # but reporting zero seconds of age contradicts its source timestamp.
+    observed = datetime.now(timezone.utc) - timedelta(minutes=10)
+    decision = validate_paper_entry(
+        replace(C, timestamp=observed, data_age_seconds=0), P, A
+    )
+    assert not decision.approved
+    assert decision.reason == 'Reported market data age understates timestamp'
+
+
+def test_entry_accepts_consistent_reported_age():
+    observed = datetime.now(timezone.utc) - timedelta(minutes=10)
+    decision = validate_paper_entry(
+        replace(C, timestamp=observed, data_age_seconds=600), P, A
+    )
+    assert decision.approved
+
+
+def test_entry_accepts_conservatively_overstated_age():
+    # A caller may report older data, but not younger data.
+    observed = datetime.now(timezone.utc) - timedelta(minutes=2)
+    decision = validate_paper_entry(
+        replace(C, timestamp=observed, data_age_seconds=600), P, A
+    )
+    assert decision.approved
