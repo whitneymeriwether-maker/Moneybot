@@ -29,6 +29,7 @@ def run_walk_forward_research(
     train_sessions, test_sessions, embargo_sessions=1, step_sessions=None,
     starting_cash=1000.0, risk_per_trade=0.015, slippage_pct=0.001,
     expected_sha256=None, stress_slippage_pcts=(),
+    commission_per_share=0.0,
 ):
     """Return a JSON-compatible, independently restarted fold report.
 
@@ -57,6 +58,12 @@ def run_walk_forward_research(
         or not 0 <= slippage_pct < 1
     ):
         raise ValueError("Invalid baseline slippage")
+    if (
+        type(commission_per_share) not in (int, float)
+        or not isfinite(commission_per_share)
+        or commission_per_share < 0
+    ):
+        raise ValueError("Invalid commission per share")
     # Predeclare adverse scenarios. No retrospective selection of a
     # best-performing assumption, and no scenarios cheaper than baseline.
     if type(stress_slippage_pcts) is not tuple or len(stress_slippage_pcts) > 5:
@@ -97,6 +104,7 @@ def run_walk_forward_research(
         starting_cash=starting_cash,
         risk_per_trade=risk_per_trade,
         slippage_pct=slippage_pct,
+        commission_per_share=commission_per_share,
     )
     summary = summarize_fixed_baseline_folds(results, starting_cash=starting_cash)
     stress_reports = []
@@ -106,6 +114,7 @@ def run_walk_forward_research(
             starting_cash=starting_cash,
             risk_per_trade=risk_per_trade,
             slippage_pct=adverse_slippage,
+            commission_per_share=commission_per_share,
         )
         adverse_summary = summarize_fixed_baseline_folds(
             adverse_results, starting_cash=starting_cash
@@ -149,6 +158,7 @@ def run_walk_forward_research(
         "starting_cash": starting_cash,
         "risk_per_trade": risk_per_trade,
         "slippage_pct": slippage_pct,
+        "commission_per_share": commission_per_share,
         "evaluation_coverage": {
             "observed_session_count": len(observed_dates),
             "tested_session_count": len(tested_dates),
@@ -173,7 +183,8 @@ def run_walk_forward_research(
             "portfolio, authenticated data, trained AI, or evidence of an edge. "
             "Unscored training, embargo, step-gap, and tail sessions are "
             "listed in evaluation_coverage. Commissions and other execution "
-            "costs are not fully modeled. Adverse slippage scenarios rerun "
+            "costs beyond the specified fixed per-share commission are not "
+            "fully modeled. Adverse slippage scenarios rerun "
             "position sizing and fills independently, so trade counts can "
             "change; they are not a confidence interval or an edge claim."
         ),
@@ -212,6 +223,10 @@ def main(argv=None):
     parser.add_argument("--risk-per-trade", type=float, default=0.015)
     parser.add_argument("--slippage-pct", type=float, default=0.001)
     parser.add_argument(
+        "--commission-per-share", type=float, default=0.0,
+        help="Hypothetical dollar commission per share on EACH fill side",
+    )
+    parser.add_argument(
         "--stress-slippage-pcts",
         help="Optional increasing adverse slippage fractions, e.g. 0.002,0.005 (max five)",
     )
@@ -249,6 +264,7 @@ def main(argv=None):
             starting_cash=args.starting_cash,
             risk_per_trade=args.risk_per_trade,
             slippage_pct=args.slippage_pct,
+            commission_per_share=args.commission_per_share,
             expected_sha256=args.expected_sha256,
             stress_slippage_pcts=stresses,
         )
