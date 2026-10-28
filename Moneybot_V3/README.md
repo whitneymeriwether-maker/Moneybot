@@ -335,3 +335,18 @@ The default commission and spread remain zero, so callers must explicitly
 supply reviewed hypothetical costs; these are not observed executable quotes.
 Volume participation is only a conservative bar-volume proxy, not proof of
 fillability, partial fills, market impact, or live trading readiness.
+
+## Dated FMP market-cap screening observations (research only)
+
+The current FMP market-cap endpoint returns a reported trading date with each
+capitalization value. V3 now requires a canonical `YYYY-MM-DD` date no more
+than seven UTC calendar days old and never in the future. Every matching
+record must have a finite positive market cap and a valid date; multiple
+matching records must agree on both the capitalization and observation date.
+Missing, stale, malformed, future-dated, or conflicting values are treated as
+unavailable provider evidence, so the scanner may attempt its **provisional**
+SEC/Alpaca estimate rather than reporting a verified market-cap pass.
+The seven-day limit tolerates weekends and short closures but is not an
+authenticated exchange calendar. A recent provider-reported date does not
+authenticate its source, confirm the market cap's accuracy, or establish
+point-in-time historical validity. No brokerage orders or spending are enabled.
