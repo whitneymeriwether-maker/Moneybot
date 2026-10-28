@@ -8,6 +8,13 @@ from datetime import datetime, timezone
 from math import isfinite
 from pathlib import Path
 
+# Python's ISO parser accepts compact/week dates and nonstandard offsets.
+# Require an explicit canonical UTC offset for historical research tapes.
+_RFC3339_MINUTE_BAR = re.compile(
+    r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
+    r"(?:\.[0-9]{1,9})?(?:Z|[+-][0-9]{2}:[0-9]{2})"
+)
+
 
 @dataclass(frozen=True)
 class PriceBar:
@@ -102,6 +109,9 @@ def load_price_bars(filename, expected_symbol=None):
                 or utc_timestamp.second or utc_timestamp.microsecond
             ):
                 raise ValueError("Historical minute bar must be UTC minute-aligned")
+
+            if not _RFC3339_MINUTE_BAR.fullmatch(row["timestamp"]):
+                raise ValueError("Noncanonical historical CSV timestamp")
 
             if previous_timestamp is not None and timestamp <= previous_timestamp:
                 raise ValueError("Timestamps must be increasing")

@@ -390,3 +390,15 @@ offsets as apparently valid provider evidence. Invalid timestamps now fail
 closed before quote freshness checks or daily-bar sorting. This format check
 does not authenticate provider responses, guarantee session completeness, or
 establish actual fillability. V3 remains research/paper-only.
+
+## Canonical historical CSV timestamps (research-only)
+
+The offline historical CSV reader now requires canonical RFC 3339 timestamps
+with a complete calendar date, T separator, seconds, and an explicit Z or
+minute-resolution UTC offset. Optional fractional seconds (up to nine digits)
+are permitted only when the minute-bar instant is aligned to a UTC minute.
+Python's permissive ISO parser also accepts compact/week dates, spaces,
+and second-resolution offsets; those forms are rejected rather than silently
+entering backtests. The earlier UTC-minute alignment check remains in place.
+This validates timestamp representation, not the authenticity, completeness,
+or provenance of historical market data.
