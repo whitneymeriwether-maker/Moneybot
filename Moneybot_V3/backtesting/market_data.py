@@ -31,7 +31,7 @@ MAX_QUOTE_AGE = timedelta(hours=72)
 # provider quote/session evidence.
 _RFC3339_TIMESTAMP = re.compile(
     r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
-    r"(?:\\.[0-9]{1,9})?(?:Z|[+-][0-9]{2}:[0-9]{2})"
+    r"(?:\.[0-9]{1,9})?(?:Z|[+-][0-9]{2}:[0-9]{2})"
 )
 
 
