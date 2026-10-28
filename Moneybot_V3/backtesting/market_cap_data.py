@@ -91,6 +91,9 @@ def get_market_cap(symbol):
         for record in payload
         if isinstance(record, dict)
         and isinstance(record.get("symbol"), str)
+        # Unicode uppercasing can turn a lookalike into a different ASCII
+        # ticker (e.g. long-s into S). Bind only ASCII provider identities.
+        and record["symbol"].isascii()
         and record["symbol"].upper() == symbol
     ]
 
