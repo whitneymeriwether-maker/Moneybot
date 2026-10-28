@@ -420,3 +420,14 @@ completed trade after an exact zero balance (including purported zero-PnL or
 winning trades), and reject malformed trade records instead of crashing on
 missing attributes. This is an accounting integrity check, not an intratrade
 mark-to-market risk limit, proof of executable fills, or a live-trading control.
+
+## Zero-equity paper ledger reporting (offline research)
+
+The broker-disconnected SQLite paper ledger's read-only marked snapshot now
+supports a fully liquidated account with exactly zero remaining cash. Such an
+account has no open positions or market exposure, so its gross exposure is
+reported as 0.0000% without dividing by zero; realized and total losses remain
+visible. The existing checks for extra/missing marks, backdated snapshots,
+insufficient cash for further hypothetical buys, and accounting integrity
+remain in force. This is a terminal accounting edge case, not permission for
+margin trading, new capital, broker orders, or deployment.
