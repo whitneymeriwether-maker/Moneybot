@@ -5,6 +5,7 @@ Research only. Does not connect to a broker or place orders.
 """
 
 from dataclasses import dataclass
+from math import isfinite
 from datetime import date, time, timedelta
 from zoneinfo import ZoneInfo
 
@@ -14,6 +15,16 @@ from backtesting.trade_simulator import net_trade_profit, simulate_trades
 
 
 _NEW_YORK = ZoneInfo("America/New_York")
+
+
+def _finite_report_number(value):
+    """Reject non-finite/oversized arithmetic before publishing research PnL."""
+    if type(value) not in (int, float):
+        return False
+    try:
+        return isfinite(value)
+    except (OverflowError, ValueError):
+        return False
 
 
 def validate_regular_session_gaps(bars, max_gap_minutes=1):
@@ -203,6 +214,8 @@ def run_backtest(
 ):
     """Load prices, validate session coverage, and report net-of-cost paper PnL."""
 
+    if not _finite_report_number(starting_cash) or starting_cash <= 0:
+        raise ValueError("Invalid starting cash for research report")
     if type(require_full_regular_sessions) is not bool:
         raise ValueError("Invalid full regular-session requirement")
     if type(require_traded_regular_minutes) is not bool:
@@ -252,9 +265,18 @@ def run_backtest(
     # that exact per-trade accounting in ALL report metrics, including win
     # rate and drawdown, instead of reporting gross price-only returns.
     profits = [net_trade_profit(trade) for trade in trades]
+    if not all(_finite_report_number(profit) for profit in profits):
+        raise ValueError("Non-finite simulated trade profit")
 
     net_profit = sum(profits)
     ending_cash = starting_cash + net_profit
+    return_pct = 100 * net_profit / starting_cash
+    if not all(_finite_report_number(value) for value in (
+        net_profit, ending_cash, return_pct,
+    )):
+        raise ValueError("Non-finite research return or equity")
+    if ending_cash < 0:
+        raise ValueError("Negative cash-funded research equity")
 
     wins = [profit for profit in profits if profit > 0]
     losses = [profit for profit in profits if profit < 0]
@@ -290,6 +312,12 @@ def run_backtest(
         else 0.0
     )
 
+    if not all(_finite_report_number(value) for value in (
+        average_win, average_loss, gross_profit, gross_loss, profit_factor,
+        win_rate_pct,
+    )):
+        raise ValueError("Non-finite research trade statistics")
+
     # Calculate drawdown using equity after each closed trade.
     equity = starting_cash
     peak_equity = starting_cash
@@ -297,11 +325,15 @@ def run_backtest(
 
     for profit in profits:
         equity += profit
+        if not _finite_report_number(equity) or equity < 0:
+            raise ValueError("Invalid simulated closed-trade equity")
         peak_equity = max(peak_equity, equity)
 
         drawdown_pct = (
             100 * (peak_equity - equity) / peak_equity
         )
+        if not _finite_report_number(drawdown_pct):
+            raise ValueError("Non-finite research drawdown")
 
         maximum_drawdown_pct = max(
             maximum_drawdown_pct,
@@ -331,7 +363,7 @@ def run_backtest(
         starting_cash=starting_cash,
         ending_cash=ending_cash,
         net_profit=net_profit,
-        return_pct=100 * net_profit / starting_cash,
+        return_pct=return_pct,
         trade_count=trade_count,
         winning_trades=winning_trades,
         losing_trades=losing_trades,
