@@ -65,8 +65,12 @@ def reconcile_closed_simulation(trades, *, symbol, starting_cash="1000.00"):
             raise ValueError("Invalid simulated trade record")
         entry_at = _instant(trade.entry_time)
         exit_at = _instant(trade.exit_time)
-        if exit_at <= entry_at:
-            raise ValueError("Simulated trade exit must follow entry")
+        # OHLC stop/target exits can occur after the opening fill within
+        # the same minute. Minute bars cannot resolve their subminute order,
+        # but the simulator records BUY before SELL and the paper ledger
+        # preserves that insertion order when timestamps tie.
+        if exit_at < entry_at:
+            raise ValueError("Simulated trade exit cannot precede entry")
         if previous_exit is not None and entry_at < previous_exit:
             raise ValueError("Simulated trades must not overlap or be reordered")
         previous_exit = exit_at

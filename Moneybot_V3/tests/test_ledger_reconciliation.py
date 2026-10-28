@@ -61,7 +61,7 @@ def test_negative_net_sale_proceeds_fail_closed():
     ("entry_price", float("nan")), ("exit_price", float("inf")),
     ("quantity", True), ("quantity", 0),
     ("entry_time", T.replace(tzinfo=None)),
-    ("exit_time", T),
+    ("exit_time", T - timedelta(microseconds=1)),
 ])
 def test_invalid_or_unrepresentable_simulator_fill_fails_closed(field, value):
     with pytest.raises(ValueError):

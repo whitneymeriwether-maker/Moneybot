@@ -1,5 +1,15 @@
 # Moneybot V3 — Phase 2 research prototype
 
+## Same-minute simulator fill reconciliation
+
+The optional SQLite reconciliation now accepts a completed hypothetical trade
+whose BUY and SELL share a **minute-bar timestamp**, as the simulator can
+trigger a stop or target within its entry minute. It preserves BUY-before-SELL
+insertion order in the audited paper ledger and still rejects exits preceding
+entries or overlapping trades. Minute OHLC does not establish subminute price
+ordering or executable fills; this change corrects an accounting diagnostic
+false rejection, not execution realism or profitability.
+
 ## Cash-funded historical report depletion guard
 
 The historical pipeline now rejects any additional completed hypothetical
