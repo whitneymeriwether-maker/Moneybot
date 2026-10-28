@@ -171,10 +171,20 @@ def download_history(symbol=None):
     end_utc = datetime.fromisoformat(END.replace("Z", "+00:00"))
     normalized_bars = []
     for bar in bars:
-        timestamp = datetime.fromisoformat(bar["t"].replace("Z", "+00:00"))
+        raw_timestamp = bar.get("t")
+        if type(raw_timestamp) is not str:
+            raise ValueError("Invalid historical bar timestamp")
+        try:
+            timestamp = datetime.fromisoformat(raw_timestamp.replace("Z", "+00:00"))
+        except ValueError:
+            raise ValueError("Invalid historical bar timestamp") from None
         if timestamp.tzinfo is None or timestamp.utcoffset() is None:
             raise ValueError("Historical bar timestamp must include timezone")
+        if timestamp.second or timestamp.microsecond:
+            raise ValueError("Historical bar timestamp must be minute-aligned")
         timestamp = timestamp.astimezone(timezone.utc)
+        if timestamp.second or timestamp.microsecond:
+            raise ValueError("Historical bar timestamp must be UTC minute-aligned")
         if not start_utc <= timestamp < end_utc:
             raise ValueError("Historical bar outside requested UTC window")
         normalized_bars.append((timestamp, bar))

@@ -374,3 +374,42 @@ def test_download_rejects_nonnumeric_provider_ohlcv_without_overwrite(
         download_history("SPY")
     assert output.read_text(encoding="utf-8") == "previous verified history"
     assert sorted(path.name for path in output_dir.iterdir()) == [output.name]
+
+
+@pytest.mark.parametrize("timestamp", [None, 123, [], {}, "", "not-a-timestamp"])
+def test_download_rejects_malformed_provider_timestamp_without_overwrite(
+    monkeypatch, tmp_path, timestamp,
+):
+    output_dir = tmp_path / "Moneybot_V3" / "data"
+    output_dir.mkdir(parents=True)
+    output = output_dir / "SPY_1min_2026_04_to_09.csv"
+    output.write_text("previous validated history", encoding="utf-8")
+    mock_download(
+        monkeypatch, tmp_path,
+        [{"bars": {"SPY": [sample_bar(timestamp)]}, "next_page_token": None}],
+    )
+    with pytest.raises(ValueError, match="Invalid historical bar timestamp"):
+        download_history("SPY")
+    assert output.read_text(encoding="utf-8") == "previous validated history"
+    assert sorted(path.name for path in output_dir.iterdir()) == [output.name]
+
+
+@pytest.mark.parametrize("timestamp,expected", [
+    ("2026-04-01T13:30:30Z", "minute-aligned"),
+    ("2026-04-01T09:30:00-04:00:30", "UTC minute-aligned"),
+])
+def test_download_rejects_non_minute_provider_instants_without_overwrite(
+    monkeypatch, tmp_path, timestamp, expected,
+):
+    output_dir = tmp_path / "Moneybot_V3" / "data"
+    output_dir.mkdir(parents=True)
+    output = output_dir / "SPY_1min_2026_04_to_09.csv"
+    output.write_text("previous validated history", encoding="utf-8")
+    mock_download(
+        monkeypatch, tmp_path,
+        [{"bars": {"SPY": [sample_bar(timestamp)]}, "next_page_token": None}],
+    )
+    with pytest.raises(ValueError, match=expected):
+        download_history("SPY")
+    assert output.read_text(encoding="utf-8") == "previous validated history"
+    assert sorted(path.name for path in output_dir.iterdir()) == [output.name]

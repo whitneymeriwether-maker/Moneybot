@@ -159,3 +159,14 @@ def test_allows_named_extra_metadata_column_with_complete_rows(tmp_path):
     bars = load_price_bars(filename)
     assert len(bars) == 1
     assert bars[0].volume == 10000
+
+
+def test_rejects_local_minute_aligned_but_utc_half_minute(tmp_path):
+    # An explicit offset with seconds can make 09:30:00 a 13:29:30 UTC
+    # instant. It must not be treated as a real one-minute observation.
+    filename = write_csv(
+        tmp_path,
+        "2026-04-01T09:30:00-04:00:30,100,105,99,103,10000\n",
+    )
+    with pytest.raises(ValueError, match="UTC minute-aligned"):
+        load_price_bars(filename)

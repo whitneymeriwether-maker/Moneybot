@@ -4,7 +4,7 @@
 import csv
 import re
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from math import isfinite
 from pathlib import Path
 
@@ -93,8 +93,15 @@ def load_price_bars(filename, expected_symbol=None):
 
             if timestamp.tzinfo is None or timestamp.utcoffset() is None:
                 raise ValueError("Timestamp must include timezone")
-            if timestamp.second or timestamp.microsecond:
-                raise ValueError("Historical minute bar must be minute-aligned")
+            # A minute-aligned local timestamp can still represent a half-minute
+            # UTC instant when the supplied offset includes seconds. Research
+            # bars must be aligned to both the source clock and UTC.
+            utc_timestamp = timestamp.astimezone(timezone.utc)
+            if (
+                timestamp.second or timestamp.microsecond
+                or utc_timestamp.second or utc_timestamp.microsecond
+            ):
+                raise ValueError("Historical minute bar must be UTC minute-aligned")
 
             if previous_timestamp is not None and timestamp <= previous_timestamp:
                 raise ValueError("Timestamps must be increasing")
