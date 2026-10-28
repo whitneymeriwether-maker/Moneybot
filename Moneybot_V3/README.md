@@ -351,3 +351,16 @@ The seven-day limit tolerates weekends and short closures but is not an
 authenticated exchange calendar. A recent provider-reported date does not
 authenticate its source, confirm the market cap's accuracy, or establish
 point-in-time historical validity. No brokerage orders or spending are enabled.
+
+
+## SEC share-observation input integrity (research only)
+
+The provisional SEC market-cap estimator now requires the company-facts
+`units.shares` collection to be a JSON list and accepts only canonical
+`YYYY-MM-DD` observation and filing dates. Malformed date entries are
+ignored, while a malformed collection fails closed with an explicit data
+error. This avoids treating compact ISO or week-date representations as
+verified SEC observations and prevents unexpected provider shapes from
+escaping as unhandled Python exceptions. The SEC/Alpaca estimate remains
+provisional: these checks do not authenticate EDGAR data, reconstruct
+historical point-in-time shares, or establish trading profitability.

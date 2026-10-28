@@ -132,6 +132,17 @@ def get_company_cik(symbol):
     return matching_ciks.pop()
 
 
+def _canonical_sec_date(value):
+    """Require the SEC's canonical YYYY-MM-DD dates, not ISO week/compact dates."""
+    if type(value) is not str:
+        return None
+    try:
+        parsed = date.fromisoformat(value)
+    except ValueError:
+        return None
+    return parsed if parsed.isoformat() == value else None
+
+
 def get_reported_shares_outstanding(symbol):
     """Return recent SEC-reported shares and observation date."""
 
@@ -158,6 +169,11 @@ def get_reported_shares_outstanding(symbol):
             f"No SEC shares-outstanding facts for {symbol}"
         ) from None
 
+    if type(observations) is not list:
+        raise SECMarketCapError(
+            f"Malformed SEC shares-outstanding observations for {symbol}"
+        )
+
     today = date.today()
     earliest = today - timedelta(days=180)
 
@@ -167,19 +183,13 @@ def get_reported_shares_outstanding(symbol):
         if not isinstance(observation, dict):
             continue
 
-        try:
-            observation_date = date.fromisoformat(
-                observation["end"]
-            )
-            filed_date = date.fromisoformat(
-                observation["filed"]
-            )
-            shares = observation["val"]
-        except (KeyError, TypeError, ValueError):
-            continue
-
+        observation_date = _canonical_sec_date(observation.get("end"))
+        filed_date = _canonical_sec_date(observation.get("filed"))
+        shares = observation.get("val")
         if (
-            not _valid_positive_number(shares)
+            observation_date is None
+            or filed_date is None
+            or not _valid_positive_number(shares)
             or not earliest <= observation_date <= today
             or filed_date > today
             or filed_date < observation_date
