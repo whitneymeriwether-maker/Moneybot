@@ -1,5 +1,14 @@
 # Moneybot V3 — Phase 2 research prototype
 
+## Cash-funded historical report depletion guard
+
+The historical pipeline now rejects any additional completed hypothetical
+trade after closed-trade equity reaches exactly zero, even if the later trade
+claims zero profit or a recovery. A final trade that loses exactly 100% of
+starting capital remains reportable. This protects the descriptive report
+against impossible cash-funded histories supplied by external callers; it
+does not authenticate fills or prove trading profitability.
+
 ## Opt-in pipeline-to-ledger accounting audit
 
 `backtesting.pipeline.run_backtest(..., expected_symbol="SPY", audit_paper_ledger=True)`

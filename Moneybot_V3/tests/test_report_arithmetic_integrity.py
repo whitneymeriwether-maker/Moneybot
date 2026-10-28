@@ -101,3 +101,19 @@ def test_finite_research_report_still_works(report_with_profits):
     assert report.winning_trades == 2
     assert report.losing_trades == 1
     assert report.profit_factor == 3.0
+
+@pytest.mark.parametrize("later_profit", [0.0, 10.0, 1000.0])
+def test_report_rejects_trades_after_exact_account_depletion(
+    report_with_profits, later_profit,
+):
+    with pytest.raises(ValueError, match="after cash-funded account depletion"):
+        report_with_profits([-1000.0, later_profit])
+
+
+def test_report_allows_exact_total_loss_as_final_trade(report_with_profits):
+    report = report_with_profits([-1000.0])
+    assert report.ending_cash == 0.0
+    assert report.net_profit == -1000.0
+    assert report.maximum_drawdown_pct == 100.0
+    assert report.trade_count == 1
+

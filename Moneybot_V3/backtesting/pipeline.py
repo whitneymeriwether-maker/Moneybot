@@ -336,6 +336,11 @@ def run_backtest(
     maximum_drawdown_pct = 0.0
 
     for profit in profits:
+        # Once a cash-funded account is fully depleted, it cannot finance
+        # another trade, including an apparently harmless zero-PnL trade.
+        # Reject impossible recovery histories before publishing a report.
+        if equity == 0:
+            raise ValueError("Simulated trade after cash-funded account depletion")
         equity += profit
         if not _finite_report_number(equity) or equity < 0:
             raise ValueError("Invalid simulated closed-trade equity")
