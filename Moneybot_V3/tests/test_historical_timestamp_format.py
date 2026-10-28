@@ -14,7 +14,7 @@ def _csv(tmp_path, stamp):
     path = tmp_path / "minute.csv"
     path.write_text(
         "timestamp,open,high,low,close,volume\n"
-        f"{stamp},100,101,99,100,1000\n",
+        f'"{stamp}",100,101,99,100,1000\n',
         encoding="utf-8",
     )
     return path
