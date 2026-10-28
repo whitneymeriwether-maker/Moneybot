@@ -12,7 +12,7 @@ from pathlib import Path
 # Require an explicit canonical UTC offset for historical research tapes.
 _RFC3339_MINUTE_BAR = re.compile(
     r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
-    r"(?:\.[0-9]{1,9})?(?:Z|[+-][0-9]{2}:[0-9]{2})"
+    r"(?P<fraction>\.[0-9]{1,9})?(?:Z|[+-][0-9]{2}:[0-9]{2})"
 )
 
 
@@ -110,8 +110,14 @@ def load_price_bars(filename, expected_symbol=None):
             ):
                 raise ValueError("Historical minute bar must be UTC minute-aligned")
 
-            if not _RFC3339_MINUTE_BAR.fullmatch(row["timestamp"]):
+            match = _RFC3339_MINUTE_BAR.fullmatch(row["timestamp"])
+            if match is None:
                 raise ValueError("Noncanonical historical CSV timestamp")
+            # datetime.fromisoformat truncates fractional nanoseconds: even
+            # .000000001 is not an exact minute, despite microsecond == 0.
+            fraction = match.group("fraction")
+            if fraction is not None and any(digit != "0" for digit in fraction[1:]):
+                raise ValueError("Historical minute bar must be UTC minute-aligned")
 
             if previous_timestamp is not None and timestamp <= previous_timestamp:
                 raise ValueError("Timestamps must be increasing")

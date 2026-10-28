@@ -2,6 +2,8 @@
 
 **NOT DEPLOYED.** This folder is a standalone, offline, broker-disconnected paper-research component. It does not change V2 or execute orders.
 
+Historical minute-bar downloads now reject noncanonical provider timestamps before UTC normalization can launder them into valid-looking CSVs. Both the downloader and CSV reader also reject nonzero nanosecond fractions below Python datetime\u0027s microsecond precision; exact zero fractional seconds remain valid. These are timestamp-integrity checks, not evidence of source authenticity or complete market coverage.
+
 ## Implemented
 - Deterministic gate for an AI proposal to buy an opening-range breakout, with evidence and thesis required. The advisory entry gate independently verifies that the candidate's timezone-aware market timestamp is within the policy's freshness window relative to the current UTC clock (allowing up to five seconds of future clock skew), even when the caller reports a fresh data age. It also rejects reported ages that understate the independently calculated timestamp age by more than five seconds; conservatively older reported ages are permitted. This does not authenticate the source or replace execution-time revalidation.
 - Initial V3 policy: 1.5% equity risk per trade, 3% of starting equity daily realized-loss stop, 50% total notional exposure, 10% peak-equity drawdown pause, 25% overnight exposure, maximum two trading sessions.

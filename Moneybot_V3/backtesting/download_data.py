@@ -36,6 +36,13 @@ DEFAULT_SYMBOL = "SPY"
 RESEARCH_MIN_PRICE = 2.00
 RESEARCH_MAX_PRICE = 30.00
 
+# Python datetime silently truncates RFC 3339 nanoseconds to microseconds.
+# Validate the original provider text before converting minute bars to CSV.
+_RFC3339_MINUTE_BAR = re.compile(
+    r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
+    r"(?P<fraction>\.[0-9]{1,9})?(?:Z|[+-][0-9]{2}:[0-9]{2})"
+)
+
 
 def validate_symbol(symbol):
     """Allow conventional stock ticker symbols only."""
@@ -189,6 +196,14 @@ def download_history(symbol=None):
         timestamp = timestamp.astimezone(timezone.utc)
         if timestamp.second or timestamp.microsecond:
             raise ValueError("Historical bar timestamp must be UTC minute-aligned")
+        # Check the original string: normalization can erase both malformed
+        # ISO spellings and nonzero sub-microsecond fractions (.000000001).
+        match = _RFC3339_MINUTE_BAR.fullmatch(raw_timestamp)
+        if match is None:
+            raise ValueError("Noncanonical historical bar timestamp")
+        fraction = match.group("fraction")
+        if fraction is not None and any(digit != "0" for digit in fraction[1:]):
+            raise ValueError("Historical bar timestamp must be minute-aligned")
         if not start_utc <= timestamp < end_utc:
             raise ValueError("Historical bar outside requested UTC window")
         normalized_bars.append((timestamp, bar))
