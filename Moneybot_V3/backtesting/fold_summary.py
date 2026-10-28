@@ -66,6 +66,11 @@ def summarize_fixed_baseline_folds(results, *, starting_cash=1000.0):
         ):
             raise ValueError("Baseline test windows must be chronological and disjoint")
         if (
+            result.first_test_date.weekday() >= 5
+            or result.last_test_date.weekday() >= 5
+        ):
+            raise ValueError("Baseline test window boundaries must be weekdays")
+        if (
             type(result.signal_count) is not int
             or type(result.trade_count) is not int
             or result.signal_count < 0
@@ -77,6 +82,13 @@ def summarize_fixed_baseline_folds(results, *, starting_cash=1000.0):
             raise ValueError("Non-finite baseline fold result")
         if result.ending_cash < 0:
             raise ValueError("Negative baseline ending cash")
+        # A fold without completed trades cannot generate realized PnL.
+        # Fail closed on hand-built or corrupted results that otherwise
+        # could present phantom gains as out-of-sample performance.
+        if result.trade_count == 0 and (
+            result.net_pnl != 0 or result.return_pct != 0
+        ):
+            raise ValueError("Nonzero baseline result without completed trades")
         expected_cash = starting_cash + result.net_pnl
         expected_return = 100 * result.net_pnl / starting_cash
         if (
