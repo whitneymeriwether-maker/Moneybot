@@ -2,6 +2,8 @@
 
 **NOT DEPLOYED.** This folder is a standalone, offline, broker-disconnected paper-research component. It does not change V2 or execute orders.
 
+Historical backtest reports now fail closed on non-finite individual/aggregate PnL, unrepresentable return and trade statistics, and negative cash-funded or intermediate closed-trade equity. These are accounting/reporting sanity checks, not validation of simulated fill realism, market-data authenticity, or strategy profitability.
+
 Historical minute-bar downloads now reject noncanonical provider timestamps before UTC normalization can launder them into valid-looking CSVs. Both the downloader and CSV reader also reject nonzero nanosecond fractions below Python datetime\u0027s microsecond precision; exact zero fractional seconds remain valid. These are timestamp-integrity checks, not evidence of source authenticity or complete market coverage.
 
 ## Implemented
