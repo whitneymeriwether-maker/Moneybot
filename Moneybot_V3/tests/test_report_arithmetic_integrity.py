@@ -30,7 +30,7 @@ def report_with_profits(monkeypatch):
         values = iter(profits)
         monkeypatch.setattr(
             pipeline, "simulate_trades",
-            lambda *a, **kw: [object() for _ in profits],
+            lambda *a, **kw: [SimpleNamespace(exit_reason="target") for _ in profits],
         )
         monkeypatch.setattr(
             pipeline, "net_trade_profit", lambda trade: next(values),
