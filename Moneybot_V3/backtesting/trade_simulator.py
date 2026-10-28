@@ -155,6 +155,11 @@ def simulate_trades(
         if type(volume) is not int or volume < 0 or not _finite_number(volume):
             raise ValueError("Invalid simulated bar volume")
 
+    # Bind every externally supplied signal to an observed bar. Otherwise a
+    # mismatched research tape can silently discard a signal and understate
+    # the strategy's trade count without reporting a data-integrity error.
+    bars_by_time = {bar.timestamp: bar for bar in bars}
+
     # Direct callers may supply externally constructed signals rather than
     # signals produced by our historical scanner. Reject invalid or ambiguous
     # stop distances before they can influence paper position sizing.
@@ -184,6 +189,32 @@ def simulate_trades(
             or high <= low
         ):
             raise ValueError("Invalid opening range in signal")
+        if timestamp not in bars_by_time:
+            raise ValueError("Signal timestamp absent from supplied bars")
+
+        # The scanner's complete signal records include the observed close
+        # and VWAP. Verify both against the actual signal bar rather than
+        # accepting fabricated breakout metadata. Older direct-call test
+        # signals with neither optional field remain supported.
+        has_entry = hasattr(signal, "entry_price")
+        has_vwap = hasattr(signal, "vwap")
+        if has_entry != has_vwap:
+            raise ValueError("Incomplete signal price/VWAP metadata")
+        if has_entry:
+            entry_price = signal.entry_price
+            vwap = signal.vwap
+            if (
+                not _finite_number(entry_price) or entry_price <= 0
+                or not _finite_number(vwap) or vwap <= 0
+            ):
+                raise ValueError("Invalid signal price/VWAP metadata")
+            if (
+                entry_price != bars_by_time[timestamp].close
+                or entry_price <= high
+                or entry_price <= vwap
+            ):
+                raise ValueError("Signal breakout disagrees with observed bar")
+
         if timestamp in signals_by_time:
             raise ValueError("Duplicate signal timestamp")
         signals_by_time[timestamp] = signal
