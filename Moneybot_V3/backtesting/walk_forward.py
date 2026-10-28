@@ -7,7 +7,7 @@ There are no broker, network, or order-submission operations.
 """
 
 from dataclasses import dataclass
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timezone
 from math import isfinite
 from zoneinfo import ZoneInfo
 
@@ -162,6 +162,8 @@ def _validate_fold_session_bars(bars, dates, role):
             not isinstance(stamp, datetime)
             or stamp.tzinfo is None or stamp.utcoffset() is None
             or stamp.second != 0 or stamp.microsecond != 0
+            or stamp.astimezone(timezone.utc).second != 0
+            or stamp.astimezone(timezone.utc).microsecond != 0
             or (previous_stamp is not None and stamp <= previous_stamp)
         ):
             raise ValueError(f"Invalid or nonchronological research fold {role} timestamp")

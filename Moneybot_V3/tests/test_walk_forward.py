@@ -2,7 +2,7 @@
 
 import sys
 from dataclasses import replace
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
@@ -367,3 +367,23 @@ def test_fold_evaluator_forwards_participation_limit_to_simulator(monkeypatch):
 def test_fold_evaluator_rejects_invalid_participation_limit(invalid):
     with pytest.raises(ValueError, match="Invalid maximum participation"):
         evaluate_fixed_baseline_folds((), max_participation=invalid)
+
+
+@pytest.mark.parametrize("role", ["train", "test"])
+def test_evaluator_rejects_seconds_bearing_offset_in_fold_tape(role):
+    # Every displayed local minute is :00, but UTC instants are at :30.
+    # A hand-built fold must not evade the CSV reader's UTC alignment check.
+    fold, = build_research_folds(
+        make_bars(6), train_sessions=3, embargo_sessions=1, test_sessions=2
+    )
+    field = role + "_bars"
+    misleading_offset = timezone(timedelta(hours=-4, seconds=-30))
+    corrupted = tuple(
+        SimpleNamespace(**{
+            **vars(bar),
+            "timestamp": bar.timestamp.replace(tzinfo=misleading_offset),
+        })
+        for bar in getattr(fold, field)
+    )
+    with pytest.raises(ValueError, match=role):
+        evaluate_fixed_baseline_folds((replace(fold, **{field: corrupted}),))

@@ -1,7 +1,7 @@
 
 """Tests for Moneybot V3's historical trade simulator."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import pytest
 from pathlib import Path
 import sys
@@ -1031,3 +1031,24 @@ def test_invalid_assumed_spread_fails_closed(invalid):
 def test_combined_spread_and_slippage_cannot_create_negative_exit_prices():
     with pytest.raises(ValueError, match="Combined slippage and spread"):
         simulate_trades([], [], slippage_pct=0.9, spread_pct=0.4)
+
+
+def test_simulator_rejects_half_minute_utc_offset_on_bar():
+    # Local 09:45:00 with a seconds-bearing offset is 13:45:30 UTC.
+    bar = make_bar(0, 100, 101, 99, 100)
+    bar.timestamp = datetime(
+        2026, 10, 12, 9, 45,
+        tzinfo=timezone(timedelta(hours=-4, seconds=-30)),
+    )
+    with pytest.raises(ValueError, match="UTC minute-aligned"):
+        simulate_trades([bar], [])
+
+
+def test_simulator_rejects_half_minute_utc_offset_on_signal():
+    bar = make_bar(0, 100, 101, 99, 100)
+    signal = make_signal(datetime(
+        2026, 10, 12, 9, 45,
+        tzinfo=timezone(timedelta(hours=-4, seconds=-30)),
+    ))
+    with pytest.raises(ValueError, match="UTC minute-aligned"):
+        simulate_trades([bar], [signal])
