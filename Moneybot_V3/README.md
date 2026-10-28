@@ -364,3 +364,15 @@ verified SEC observations and prevents unexpected provider shapes from
 escaping as unhandled Python exceptions. The SEC/Alpaca estimate remains
 provisional: these checks do not authenticate EDGAR data, reconstruct
 historical point-in-time shares, or establish trading profitability.
+
+
+## ASCII ticker identity consistency (research only)
+
+The historical downloader and SEC provisional market-cap lookup share the
+same ASCII-only ticker validation. Non-string symbols and Unicode characters
+that could turn into different ASCII tickers during uppercasing are rejected
+before any provider request. Conventional dotted class-share symbols are
+accepted consistently, and SEC company-directory ticker matches must be
+ASCII. SEC research reports use the canonical uppercase symbol even when a
+caller supplies surrounding whitespace. This is input-identity validation,
+not independent authentication of a provider's company mapping or prices.

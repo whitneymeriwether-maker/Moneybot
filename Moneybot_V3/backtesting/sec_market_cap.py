@@ -12,6 +12,8 @@ from datetime import date, timedelta
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from backtesting.download_data import validate_symbol
+
 
 SEC_TICKERS_URL = (
     "https://www.sec.gov/files/company_tickers.json"
@@ -90,10 +92,9 @@ def _normalize_cik(value):
 def get_company_cik(symbol):
     """Look up a unique, well-formed US public-company SEC identifier."""
 
-    symbol = symbol.strip().upper()
-
-    if not symbol or not symbol.replace("-", "").isalnum():
-        raise ValueError("Invalid stock symbol")
+    # Reuse the downloader's strict ASCII ticker identity policy. In
+    # particular, dotted class-share tickers are valid research symbols.
+    symbol = validate_symbol(symbol)
 
     companies = _request_json(SEC_TICKERS_URL)
 
@@ -111,6 +112,7 @@ def get_company_cik(symbol):
         if not (
             isinstance(company, dict)
             and isinstance(company.get("ticker"), str)
+            and company["ticker"].isascii()
             and company["ticker"].upper() == symbol
         ):
             continue
@@ -146,6 +148,7 @@ def _canonical_sec_date(value):
 def get_reported_shares_outstanding(symbol):
     """Return recent SEC-reported shares and observation date."""
 
+    symbol = validate_symbol(symbol)
     cik = get_company_cik(symbol)
 
     facts = _request_json(

@@ -39,6 +39,10 @@ RESEARCH_MAX_PRICE = 30.00
 
 def validate_symbol(symbol):
     """Allow conventional stock ticker symbols only."""
+    # Reject non-text and Unicode lookalikes before uppercasing: e.g.
+    # long-s and dotless-i otherwise normalize into unrelated ASCII tickers.
+    if type(symbol) is not str or not symbol.isascii():
+        raise ValueError("Invalid stock symbol")
     symbol = symbol.strip().upper()
 
     if not re.fullmatch(r"[A-Z][A-Z0-9.-]{0,9}", symbol):
