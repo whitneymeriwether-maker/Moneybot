@@ -44,6 +44,7 @@ def configure_fake_sec(monkeypatch, observations):
 
         if "companyfacts" in url:
             return {
+                "cik": 123456,
                 "facts": {
                     "dei": {
                         "EntityCommonStockSharesOutstanding": {
@@ -71,6 +72,58 @@ def test_company_cik_lookup(monkeypatch):
         sec_market_cap.get_company_cik("test")
         == "0000123456"
     )
+
+
+@pytest.mark.parametrize("reported_cik", [None, 0, True, 1.5, 654321, "bad", "12345678901"])
+def test_company_facts_rejects_invalid_or_other_company_cik(monkeypatch, reported_cik):
+    configure_fake_sec(monkeypatch, [make_observation()])
+    original_request = sec_market_cap._request_json
+
+    def altered_request(url):
+        payload = original_request(url)
+        if "companyfacts" in url:
+            payload["cik"] = reported_cik
+        return payload
+
+    monkeypatch.setattr(sec_market_cap, "_request_json", altered_request)
+    with pytest.raises(
+        sec_market_cap.SECMarketCapError,
+        match="SEC company facts identifier mismatch",
+    ):
+        sec_market_cap.get_reported_shares_outstanding("TEST")
+
+
+def test_company_facts_rejects_missing_cik(monkeypatch):
+    configure_fake_sec(monkeypatch, [make_observation()])
+    original_request = sec_market_cap._request_json
+
+    def altered_request(url):
+        payload = original_request(url)
+        if "companyfacts" in url:
+            del payload["cik"]
+        return payload
+
+    monkeypatch.setattr(sec_market_cap, "_request_json", altered_request)
+    with pytest.raises(
+        sec_market_cap.SECMarketCapError,
+        match="SEC company facts identifier mismatch",
+    ):
+        sec_market_cap.estimate_market_cap("TEST", 5.0)
+
+
+def test_company_facts_accepts_equivalent_padded_cik(monkeypatch):
+    configure_fake_sec(monkeypatch, [make_observation()])
+    original_request = sec_market_cap._request_json
+
+    def altered_request(url):
+        payload = original_request(url)
+        if "companyfacts" in url:
+            payload["cik"] = "0000123456"
+        return payload
+
+    monkeypatch.setattr(sec_market_cap, "_request_json", altered_request)
+    result = sec_market_cap.get_reported_shares_outstanding("TEST")
+    assert result["shares_outstanding"] == 100_000_000
 
 
 def test_recent_shares_outstanding(monkeypatch):

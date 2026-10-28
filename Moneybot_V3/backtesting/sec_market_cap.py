@@ -141,6 +141,14 @@ def get_reported_shares_outstanding(symbol):
         SEC_COMPANY_FACTS_URL.format(cik=cik)
     )
 
+    # A successful CIK-specific HTTP request does not establish that the
+    # returned payload belongs to that company. Bind the SEC facts to the
+    # ticker's independently resolved CIK before using any share counts.
+    if not isinstance(facts, dict) or _normalize_cik(facts.get("cik")) != cik:
+        raise SECMarketCapError(
+            f"SEC company facts identifier mismatch for {symbol}"
+        )
+
     try:
         observations = (
             facts["facts"]["dei"][SHARES_TAG]["units"]["shares"]
