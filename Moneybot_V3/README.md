@@ -1,5 +1,23 @@
 # Moneybot V3 — Phase 2 research prototype
 
+## Offline simulator-to-ledger reconciliation (diagnostic only)
+
+`backtesting.ledger_reconciliation.reconcile_closed_simulation` replays
+chronologically ordered, non-overlapping `SimulatedTrade` records as
+hypothetical BUY/SELL fill pairs into a **temporary, disposable SQLite
+ledger**. It independently audits the ledger history and checks exact-cent
+realized PnL and ending cash against Decimal arithmetic on the original
+trades. It never touches an existing ledger, calls a provider, or submits
+broker orders. Example: `reconcile_closed_simulation(trades, symbol="SPY")`.
+
+This bridge **intentionally refuses fractional-cent prices or fees**, which
+the historical simulator commonly produces under nonzero slippage or spread
+assumptions. It does not round those away, pretend a failed reconciliation
+is a failed trading strategy, or silently modify the original backtest.
+It is an opt-in accounting diagnostic for cent-representable scenarios,
+not a persistent Neon adapter, AI integration, execution-time risk gate,
+authentication of hypothetical fills, or evidence of profitability.
+
 **NOT DEPLOYED.** This folder is a standalone, offline, broker-disconnected paper-research component. It does not change V2 or execute orders.
 
 The standalone completed-trade evaluator now requires canonical uppercase ticker identities, explicit-offset RFC 3339 entry/exit timestamps (up to microsecond precision), strictly positive holding durations, and strictly increasing UTC exit instants. A caller cannot reorder a loss behind a later winner to evade the cash-funded insolvency check, or arbitrarily order simultaneous exits. Legacy placeholder timestamps are no longer accepted; supply actual hypothetical fill times. This checks reported metadata and replay ordering only: it does not authenticate fill provenance, enforce position-level affordability, or prove executable market prices.
