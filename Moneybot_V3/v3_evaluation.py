@@ -34,6 +34,12 @@ def evaluate_closed_trades(trades: list[ClosedTrade], starting_capital: float) -
     max_drawdown = 0.0
     pnls = []
     for trade in trades:
+        if not isinstance(trade, ClosedTrade):
+            raise ValueError('Invalid closed trade record')
+        # Once a cash-only account reaches zero, another completed trade
+        # cannot be funded, even if its reported PnL is zero or positive.
+        if equity == 0:
+            raise ValueError('Closed trade after cash-funded account depletion')
         if not _finite_number(trade.pnl):
             raise ValueError('Trade PnL must be a finite number')
         equity += trade.pnl
