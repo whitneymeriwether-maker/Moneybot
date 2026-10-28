@@ -479,3 +479,91 @@ def test_pipeline_rejects_invalid_cost_and_liquidity_options(tmp_path, option, v
     write_prices(filename)
     with pytest.raises(ValueError):
         run_backtest(filename, **{option: value})
+
+
+# The opt-in bridge must bind a declared ticker to every input CSV row.
+def write_symbol_prices(filename, breakout=True):
+    write_prices(filename, breakout=breakout)
+    with filename.open(newline="", encoding="utf-8") as source:
+        reader = csv.DictReader(source)
+        fields = list(reader.fieldnames) + ["symbol"]
+        rows = [dict(row, symbol="SPY") for row in reader]
+    with filename.open("w", newline="", encoding="utf-8") as target:
+        writer = csv.DictWriter(target, fieldnames=fields)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def test_opt_in_paper_ledger_audits_real_pipeline_trades(tmp_path):
+    filename = tmp_path / "symbol_prices.csv"
+    write_symbol_prices(filename)
+    report = run_backtest(
+        filename, expected_symbol="SPY", slippage_pct=0,
+        audit_paper_ledger=True,
+    )
+    assert report.trade_count == 1
+    assert report.paper_ledger_audit["audited_fills"] == 2
+    assert report.paper_ledger_audit["trade_count"] == report.trade_count
+    assert float(report.paper_ledger_audit["net_pnl"]) == pytest.approx(report.net_profit)
+    assert float(report.paper_ledger_audit["ending_cash"]) == pytest.approx(report.ending_cash)
+
+
+def test_opt_in_paper_ledger_audits_empty_pipeline(tmp_path):
+    filename = tmp_path / "no_trades.csv"
+    write_symbol_prices(filename, breakout=False)
+    report = run_backtest(
+        filename, expected_symbol="SPY", audit_paper_ledger=True,
+    )
+    assert report.paper_ledger_audit["trade_count"] == 0
+    assert report.paper_ledger_audit["audited_fills"] == 0
+    assert report.paper_ledger_audit["ending_cash"] == "1000.00"
+
+
+def test_paper_ledger_audit_is_off_by_default(tmp_path):
+    filename = tmp_path / "prices.csv"
+    write_prices(filename)
+    assert run_backtest(filename, slippage_pct=0).paper_ledger_audit is None
+
+
+def test_opt_in_audit_rejects_fractional_cent_simulator_fills(tmp_path):
+    filename = tmp_path / "symbol_prices.csv"
+    write_symbol_prices(filename)
+    with pytest.raises(ValueError, match="not exact cents"):
+        run_backtest(filename, expected_symbol="SPY", audit_paper_ledger=True)
+
+
+def test_opt_in_audit_requires_symbol_bound_historical_data(tmp_path):
+    filename = tmp_path / "prices.csv"
+    write_prices(filename)
+    with pytest.raises(ValueError, match="requires an explicit CSV symbol"):
+        run_backtest(filename, slippage_pct=0, audit_paper_ledger=True)
+    with pytest.raises(ValueError, match="missing symbol metadata"):
+        run_backtest(
+            filename, slippage_pct=0, expected_symbol="SPY",
+            audit_paper_ledger=True,
+        )
+
+
+@pytest.mark.parametrize("invalid", [None, 0, 1, "yes", [], float("nan")])
+def test_opt_in_audit_rejects_invalid_toggle(tmp_path, invalid):
+    filename = tmp_path / "prices.csv"
+    write_prices(filename)
+    with pytest.raises(ValueError, match="Invalid paper-ledger audit requirement"):
+        run_backtest(filename, audit_paper_ledger=invalid)
+
+
+def test_opt_in_audit_rejects_report_disagreement(tmp_path, monkeypatch):
+    filename = tmp_path / "symbol_prices.csv"
+    write_symbol_prices(filename)
+    monkeypatch.setattr(
+        "backtesting.pipeline.reconcile_closed_simulation",
+        lambda *args, **kwargs: {
+            "net_pnl": "0.00", "ending_cash": "1000.00",
+            "trade_count": 1,
+        },
+    )
+    with pytest.raises(ValueError, match="disagrees with audited paper ledger"):
+        run_backtest(
+            filename, expected_symbol="SPY", slippage_pct=0,
+            audit_paper_ledger=True,
+        )

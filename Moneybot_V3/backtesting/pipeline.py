@@ -5,11 +5,13 @@ Research only. Does not connect to a broker or place orders.
 """
 
 from dataclasses import dataclass
+from decimal import Decimal
 from math import isfinite
 from datetime import date, time, timedelta
 from zoneinfo import ZoneInfo
 
 from backtesting.historical_data import load_price_bars
+from backtesting.ledger_reconciliation import reconcile_closed_simulation
 from backtesting.signals import generate_breakout_signals
 from backtesting.trade_simulator import net_trade_profit, simulate_trades
 
@@ -194,6 +196,7 @@ class BacktestReport:
     stop_loss_exits: int = 0
     target_exits: int = 0
     end_of_day_exits: int = 0
+    paper_ledger_audit: dict | None = None
 
 
 def run_backtest(
@@ -211,11 +214,20 @@ def run_backtest(
     commission_per_share=0.0,
     spread_pct=0.0,
     max_participation=0.10,
+    audit_paper_ledger=False,
 ):
-    """Load prices, validate session coverage, and report net-of-cost paper PnL."""
+    """Load prices, validate session coverage, and report net-of-cost paper PnL.
+
+    Optional audit replays only cent-exact hypothetical fills in a disposable
+    SQLite paper ledger. It is not a fill-verification or broker integration.
+    """
 
     if not _finite_report_number(starting_cash) or starting_cash <= 0:
         raise ValueError("Invalid starting cash for research report")
+    if type(audit_paper_ledger) is not bool:
+        raise ValueError("Invalid paper-ledger audit requirement")
+    if audit_paper_ledger and expected_symbol is None:
+        raise ValueError("Paper-ledger audit requires an explicit CSV symbol")
     if type(require_full_regular_sessions) is not bool:
         raise ValueError("Invalid full regular-session requirement")
     if type(require_traded_regular_minutes) is not bool:
@@ -359,6 +371,23 @@ def run_backtest(
         for trade in trades
     )
 
+    paper_ledger_audit = None
+    if audit_paper_ledger:
+        # Opt in only when every hypothetical price and fee is exactly
+        # representable in cents; never round slippage-generated fractions.
+        # The CSV reader has already bound expected_symbol to every row.
+        paper_ledger_audit = reconcile_closed_simulation(
+            trades, symbol=expected_symbol, starting_cash=str(starting_cash),
+        )
+        if (
+            abs(Decimal(str(net_profit)) - Decimal(paper_ledger_audit["net_pnl"]))
+            > Decimal("0.005")
+            or abs(Decimal(str(ending_cash)) - Decimal(paper_ledger_audit["ending_cash"]))
+            > Decimal("0.005")
+            or paper_ledger_audit["trade_count"] != trade_count
+        ):
+            raise ValueError("Research report disagrees with audited paper ledger")
+
     return BacktestReport(
         starting_cash=starting_cash,
         ending_cash=ending_cash,
@@ -377,4 +406,5 @@ def run_backtest(
         stop_loss_exits=stop_loss_exits,
         target_exits=target_exits,
         end_of_day_exits=end_of_day_exits,
+        paper_ledger_audit=paper_ledger_audit,
     )

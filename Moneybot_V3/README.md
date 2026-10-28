@@ -1,5 +1,21 @@
 # Moneybot V3 — Phase 2 research prototype
 
+## Opt-in pipeline-to-ledger accounting audit
+
+`backtesting.pipeline.run_backtest(..., expected_symbol="SPY", audit_paper_ledger=True)`
+now optionally replays its completed historical simulator trades into a
+**disposable, independently audited SQLite paper ledger** and attaches the
+reconciliation result to `BacktestReport.paper_ledger_audit`. The CSV must
+contain matching symbol metadata in every row. The option defaults to `False`,
+so ordinary research reports and the six-month SPY runner are unchanged.
+It rejects non-cent-representable hypothetical prices/fees rather than
+rounding them or presenting a false audit pass; normal slippage settings can
+legitimately make the audit inapplicable. The pipeline also rejects a mismatch
+between its reported cash/PnL and the independently audited paper fills.
+This is a local accounting integration check, **not** independent validation
+of vendor market data, hypothetical fill executability, AI integration,
+persistent Neon integration, or trading profitability.
+
 ## Offline simulator-to-ledger reconciliation (diagnostic only)
 
 `backtesting.ledger_reconciliation.reconcile_closed_simulation` replays
