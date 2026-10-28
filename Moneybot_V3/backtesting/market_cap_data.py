@@ -8,6 +8,7 @@ Read-only research. No brokerage orders.
 import json
 import math
 import os
+from datetime import date, datetime, timedelta, timezone
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -16,6 +17,7 @@ from backtesting.download_data import validate_symbol
 
 
 FMP_BASE_URL = "https://financialmodelingprep.com/stable"
+MAX_MARKET_CAP_AGE = timedelta(days=7)  # Allow weekends and short market closures.
 
 
 class MarketCapDataError(RuntimeError):
@@ -97,14 +99,41 @@ def get_market_cap(symbol):
             f"No matching market-cap record for {symbol}"
         )
 
-    # A provider may return repeated records for the requested symbol.
-    # Validate every matching record before choosing a value: taking the
-    # first can silently approve a stock based on contradictory market caps.
+    # The current-cap endpoint supplies a trading-date field. A plausible
+    # number without a valid, recent observation date is not verified
+    # screening evidence; never treat it as a current market cap.
+    today = datetime.now(timezone.utc).date()
+    observed_dates = set()
     for record in matching_records:
         if not _valid_positive_number(record.get("marketCap")):
             raise MarketCapDataError(
                 f"Invalid market capitalization for {symbol}"
             )
+        raw_date = record.get("date")
+        if type(raw_date) is not str:
+            raise MarketCapDataError(
+                f"Missing or invalid market-cap date for {symbol}"
+            )
+        try:
+            observed_date = date.fromisoformat(raw_date)
+        except ValueError:
+            raise MarketCapDataError(
+                f"Missing or invalid market-cap date for {symbol}"
+            ) from None
+        if observed_date.isoformat() != raw_date:
+            raise MarketCapDataError(
+                f"Missing or invalid market-cap date for {symbol}"
+            )
+        if observed_date > today or today - observed_date > MAX_MARKET_CAP_AGE:
+            raise MarketCapDataError(
+                f"Stale or future market-cap date for {symbol}"
+            )
+        observed_dates.add(observed_date)
+
+    if len(observed_dates) != 1:
+        raise MarketCapDataError(
+            f"Conflicting market-cap record dates for {symbol}"
+        )
 
     values = {float(record["marketCap"]) for record in matching_records}
     if len(values) != 1:
