@@ -1,5 +1,18 @@
 # Moneybot V3 — Phase 2 research prototype
 
+## Historical signal-to-bar integrity
+
+The offline trade simulator now rejects externally supplied signals whose
+timestamp is absent from the provided historical minute-bar tape. When a
+signal includes the scanner's entry-price and VWAP fields, both must be finite
+and positive, the entry-price must match the observed signal-minute close,
+and the close must exceed both the opening-range high and VWAP. Partially
+supplied metadata is rejected. Legacy direct-call test signals that provide
+neither field remain supported; they do **not** receive the stronger breakout
+metadata verification. These checks bind reported signal metadata to the
+supplied bars, not to an authenticated exchange feed, and do not prove that
+hypothetical fills could have executed.
+
 ## Same-minute simulator fill reconciliation
 
 The optional SQLite reconciliation now accepts a completed hypothetical trade
