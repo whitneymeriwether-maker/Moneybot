@@ -7,6 +7,8 @@ Research only. No brokerage orders or live trading.
 from dataclasses import dataclass
 from math import isfinite
 
+from backtesting.download_data import validate_symbol
+
 
 def _finite_number(value):
     """Fail closed on booleans, malformed numbers, and oversized integers."""
@@ -50,8 +52,17 @@ def screen_stock(candidate):
 
     reasons = []
 
-    if not isinstance(candidate.symbol, str) or not candidate.symbol.strip():
+    # The direct screener is a public research entry point. Do not let a
+    # malformed or Unicode lookalike ticker pass simply because its prices
+    # satisfy the numeric thresholds. Reuse the provider-side ASCII rules.
+    symbol = candidate.symbol
+    if type(symbol) is not str or not symbol.strip():
         reasons.append("Missing stock symbol")
+    else:
+        try:
+            symbol = validate_symbol(symbol)
+        except ValueError:
+            reasons.append("Invalid stock symbol")
 
     numeric_values = (
         candidate.price,
@@ -63,7 +74,7 @@ def screen_stock(candidate):
 
     if not all(_finite_number(value) for value in numeric_values):
         return ScreeningResult(
-            symbol=candidate.symbol,
+            symbol=symbol,
             qualifies=False,
             reasons=("Invalid numeric market data",),
         )
@@ -102,7 +113,7 @@ def screen_stock(candidate):
                 reasons.append("Bid-ask spread too wide")
 
     return ScreeningResult(
-        symbol=candidate.symbol,
+        symbol=symbol,
         qualifies=len(reasons) == 0,
         reasons=tuple(reasons),
     )

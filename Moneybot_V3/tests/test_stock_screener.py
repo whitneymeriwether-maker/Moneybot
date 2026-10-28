@@ -205,3 +205,37 @@ def test_finite_quote_inputs_cannot_overflow_into_a_false_pass(bid, ask):
     result = screen_stock(make_candidate(bid=bid, ask=ask))
     assert result.qualifies is False
     assert "Invalid numeric market data" in result.reasons
+
+
+@pytest.mark.parametrize("symbol", [
+    "ſPY",       # Unicode long-s uppercases into ASCII S.
+    "ıBM",       # Unicode dotless-i uppercases into ASCII I.
+    "SPY;DROP",
+    "SPY/QQQ",
+    "SPY QQQ",
+    "A" * 11,
+    "1SPY",
+])
+def test_direct_screener_rejects_invalid_or_lookalike_tickers(symbol):
+    result = screen_stock(make_candidate(symbol=symbol))
+    assert result.qualifies is False
+    assert "Invalid stock symbol" in result.reasons
+    assert result.symbol == symbol
+
+
+@pytest.mark.parametrize("symbol,expected", [
+    ("spy", "SPY"),
+    ("brk.b", "BRK.B"),
+    (" SPY ", "SPY"),
+])
+def test_direct_screener_normalizes_valid_ascii_tickers(symbol, expected):
+    result = screen_stock(make_candidate(symbol=symbol))
+    assert result.qualifies is True
+    assert result.reasons == ()
+    assert result.symbol == expected
+
+
+def test_invalid_ticker_cannot_pass_with_otherwise_valid_market_data():
+    result = screen_stock(make_candidate(symbol="ＳＰＹ"))
+    assert not result.qualifies
+    assert result.reasons == ("Invalid stock symbol",)

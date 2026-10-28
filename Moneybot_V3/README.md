@@ -402,3 +402,5 @@ and second-resolution offsets; those forms are rejected rather than silently
 entering backtests. The earlier UTC-minute alignment check remains in place.
 This validates timestamp representation, not the authenticity, completeness,
 or provenance of historical market data.
+
+- The direct stock screener now validates ASCII ticker identities even when callers bypass the Alpaca downloader/scanner, rejecting Unicode lookalikes and malformed symbols before classifying a numeric pass. Legitimate lowercase ASCII and dotted class-share tickers are normalized to canonical uppercase in results. This is symbol consistency, not provider authentication or permission to trade.
