@@ -1,7 +1,7 @@
 """Independent, reproducible evaluation of completed paper trades. No market data fetched."""
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from math import isfinite
+from math import fsum, isfinite
 import re
 from statistics import mean
 
@@ -95,11 +95,24 @@ def evaluate_closed_trades(trades: list[ClosedTrade], starting_capital: float) -
         pnls.append(trade.pnl)
     wins = [p for p in pnls if p > 0]
     losses = [p for p in pnls if p < 0]
-    net_pnl = sum(pnls)
+    # Use compensated summation so cancellation does not conceal PnL that
+    # sequential floating-point cash updates may have silently lost.
+    try:
+        net_pnl = fsum(pnls)
+    except (OverflowError, ValueError):
+        raise ValueError('Non-finite aggregate PnL') from None
     gross_wins = sum(wins)
     gross_losses = sum(losses)
     if not all(isfinite(value) for value in (net_pnl, gross_wins, gross_losses)):
         raise ValueError('Non-finite aggregate PnL')
+    # This is a cash-funded replay. A rounded cash balance that disagrees
+    # with the realized trade PnL by more than half a cent is not a credible
+    # performance result. Reject it instead of presenting contradictory
+    # ending equity and return numbers.
+    realized_change = equity - starting_capital
+    if (not isfinite(realized_change)
+            or abs(realized_change - net_pnl) > 0.005):
+        raise ValueError('Inconsistent closed-trade cash accounting')
     profit_factor = gross_wins / abs(gross_losses) if losses else None
     if profit_factor is not None and not isfinite(profit_factor):
         raise ValueError('Non-finite profit factor')
