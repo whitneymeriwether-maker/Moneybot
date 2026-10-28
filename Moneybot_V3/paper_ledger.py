@@ -559,13 +559,20 @@ class PaperLedger:
                 unrealized = total_market - total_basis
                 total_pnl = realized + unrealized
                 if (
-                    equity <= 0 or abs(unrealized) > MAX_CENTS
+                    equity < 0 or abs(unrealized) > MAX_CENTS
                     or abs(total_pnl) > MAX_CENTS
                 ):
                     raise ValueError("Marked paper totals exceed accounting bounds")
+                # A fully liquidated cash-funded paper account may have
+                # exactly zero cash after a total loss. Report that valid
+                # terminal state with zero exposure, not a division error.
+                # Any open position has a positive mark, so zero equity can
+                # only occur with no positions and no market value.
                 exposure_pct = (
-                    Decimal(100) * Decimal(total_market) / Decimal(equity)
-                ).quantize(Decimal("0.0001"))
+                    (Decimal(100) * Decimal(total_market) / Decimal(equity))
+                    .quantize(Decimal("0.0001"))
+                    if equity else Decimal("0.0000")
+                )
                 count = db.execute(
                     "SELECT COUNT(*) FROM paper_fills"
                 ).fetchone()[0]
