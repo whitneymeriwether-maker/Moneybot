@@ -2,6 +2,8 @@
 
 **NOT DEPLOYED.** This folder is a standalone, offline, broker-disconnected paper-research component. It does not change V2 or execute orders.
 
+The standalone completed-trade evaluator now requires canonical uppercase ticker identities, explicit-offset RFC 3339 entry/exit timestamps (up to microsecond precision), strictly positive holding durations, and strictly increasing UTC exit instants. A caller cannot reorder a loss behind a later winner to evade the cash-funded insolvency check, or arbitrarily order simultaneous exits. Legacy placeholder timestamps are no longer accepted; supply actual hypothetical fill times. This checks reported metadata and replay ordering only: it does not authenticate fill provenance, enforce position-level affordability, or prove executable market prices.
+
 Independent fold summaries now reject even tolerance-sized negative expected cash balances and require exact unchanged cash when no trades completed. A genuine final 100% loss remains reportable. These are offline accounting-integrity checks, not evidence of strategy profitability.
 
 Historical backtest reports now fail closed on non-finite individual/aggregate PnL, unrepresentable return and trade statistics, and negative cash-funded or intermediate closed-trade equity. These are accounting/reporting sanity checks, not validation of simulated fill realism, market-data authenticity, or strategy profitability.

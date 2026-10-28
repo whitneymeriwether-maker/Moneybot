@@ -10,19 +10,22 @@ from backtesting.backtest import Trade, backtest
 from v3_evaluation import ClosedTrade, evaluate_closed_trades, compare_paper_strategies
 
 
-def closed(pnl):
-    return ClosedTrade("AMD", pnl, "entry", "exit")
+def closed(pnl, index=0):
+    return ClosedTrade(
+        "AMD", pnl, "2026-01-02T14:30:00Z",
+        f"2026-01-02T14:{31 + index:02d}:00Z",
+    )
 
 
 @pytest.mark.parametrize("later_pnl", [0, 100, -1])
 def test_completed_trade_evaluator_rejects_trade_after_total_loss(later_pnl):
     with pytest.raises(ValueError, match="after cash-funded account depletion"):
-        evaluate_closed_trades([closed(-1000), closed(later_pnl)], 1000)
+        evaluate_closed_trades([closed(-1000), closed(later_pnl, 1)], 1000)
 
 
 @pytest.mark.parametrize("side", ["ai", "baseline"])
 def test_strategy_comparison_rejects_post_depletion_trade(side):
-    invalid = [closed(-1000), closed(100)]
+    invalid = [closed(-1000), closed(100, 1)]
     ai = invalid if side == "ai" else []
     baseline = invalid if side == "baseline" else []
     with pytest.raises(ValueError, match="after cash-funded account depletion"):

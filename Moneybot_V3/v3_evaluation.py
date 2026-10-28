@@ -1,7 +1,30 @@
 """Independent, reproducible evaluation of completed paper trades. No market data fetched."""
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from math import isfinite
+import re
 from statistics import mean
+
+
+# Explicit offset and second precision are mandatory. Restrict fractions to
+# microseconds so Python cannot silently truncate ordering information.
+_RFC3339 = re.compile(
+    r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
+    r"(?:\.[0-9]{1,6})?(?:Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])"
+)
+_SYMBOL = re.compile(r"[A-Z][A-Z0-9.-]{0,9}")
+
+
+def _trade_instant(value):
+    """Parse an explicit-offset RFC 3339 timestamp without lossy precision."""
+    if type(value) is not str or _RFC3339.fullmatch(value) is None:
+        raise ValueError("Invalid closed trade timestamp")
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(
+            timezone.utc
+        )
+    except (ValueError, OverflowError):
+        raise ValueError("Invalid closed trade timestamp") from None
 
 
 def _finite_number(value):
@@ -30,12 +53,27 @@ def evaluate_closed_trades(trades: list[ClosedTrade], starting_capital: float) -
     """
     if not _finite_number(starting_capital) or starting_capital <= 0:
         raise ValueError('Starting capital must be finite and positive')
+    if type(trades) not in (list, tuple):
+        raise ValueError('Closed trades must be a list or tuple')
     equity = peak = starting_capital
     max_drawdown = 0.0
     pnls = []
+    previous_exit = None
     for trade in trades:
         if not isinstance(trade, ClosedTrade):
             raise ValueError('Invalid closed trade record')
+        if type(trade.symbol) is not str or _SYMBOL.fullmatch(trade.symbol) is None:
+            raise ValueError('Invalid closed trade symbol')
+        entry = _trade_instant(trade.entry_time)
+        exit_at = _trade_instant(trade.exit_time)
+        if exit_at <= entry:
+            raise ValueError('Closed trade exit must follow entry')
+        # A cash-only replay is sensitive to realized PnL ordering. Do not
+        # allow a caller to reorder winners ahead of earlier losses, or to
+        # choose an arbitrary ordering for simultaneous closes.
+        if previous_exit is not None and exit_at <= previous_exit:
+            raise ValueError('Closed trades require strictly increasing exits')
+        previous_exit = exit_at
         # Once a cash-only account reaches zero, another completed trade
         # cannot be funded, even if its reported PnL is zero or positive.
         if equity == 0:

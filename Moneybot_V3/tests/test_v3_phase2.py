@@ -145,7 +145,7 @@ def test_overnight_rejects_equity_above_recorded_peak():
     ).approved
 
 def test_evaluator_and_baseline():
-    t = [ClosedTrade('AMD', 10, 'a', 'b'), ClosedTrade('AMD', -5, 'c', 'd')]
+    t = [ClosedTrade('AMD', 10, '2026-01-02T14:30:00Z', '2026-01-02T14:31:00Z'), ClosedTrade('AMD', -5, '2026-01-02T14:32:00Z', '2026-01-02T14:33:00Z')]
     r = evaluate_closed_trades(t, 1000)
     assert r['net_pnl'] == 5 and r['trade_count'] == 2 and r['win_rate_pct'] == 50
     assert compare_paper_strategies([], t, 1000)['ai_minus_baseline_pnl'] == 5
@@ -162,19 +162,19 @@ def test_evaluator_rejects_invalid_starting_capital(invalid):
 
 @pytest.mark.parametrize('invalid', [float('nan'), float('inf'), float('-inf'), True, '10'])
 def test_evaluator_rejects_invalid_trade_pnl(invalid):
-    trades = [ClosedTrade('AMD', invalid, 'a', 'b')]
+    trades = [ClosedTrade('AMD', invalid, '2026-01-02T14:30:00Z', '2026-01-02T14:31:00Z')]
     with pytest.raises(ValueError, match='Trade PnL'):
         evaluate_closed_trades(trades, 1000)
 
 
 def test_evaluator_rejects_cumulative_equity_overflow():
-    trades = [ClosedTrade('AMD', 1e308, 'a', 'b')]
+    trades = [ClosedTrade('AMD', 1e308, '2026-01-02T14:30:00Z', '2026-01-02T14:31:00Z')]
     with pytest.raises(ValueError, match='Non-finite cumulative equity'):
         evaluate_closed_trades(trades, 1e308)
 
 
 def test_strategy_comparison_rejects_invalid_pnl():
-    trades = [ClosedTrade('AMD', float('nan'), 'a', 'b')]
+    trades = [ClosedTrade('AMD', float('nan'), '2026-01-02T14:30:00Z', '2026-01-02T14:31:00Z')]
     with pytest.raises(ValueError, match='Trade PnL'):
         compare_paper_strategies([], trades, 1000)
 
@@ -268,14 +268,16 @@ def test_evaluator_rejects_oversized_integers_without_crashing():
     with pytest.raises(ValueError, match='Starting capital'):
         evaluate_closed_trades([], huge)
     with pytest.raises(ValueError, match='Trade PnL'):
-        evaluate_closed_trades([ClosedTrade('AMD', huge, 'a', 'b')], 1000)
+        evaluate_closed_trades([ClosedTrade('AMD', huge, '2026-01-02T14:30:00Z', '2026-01-02T14:31:00Z')], 1000)
 
 
 def test_evaluator_rejects_nonfinite_gross_pnl_even_if_equity_is_finite():
     trades = [
-        ClosedTrade('AMD', pnl, 'a', 'b')
-        for _ in range(5)
-        for pnl in (4e307, -4e307)
+        ClosedTrade('AMD', pnl, '2026-01-02T14:30:00Z',
+                    f'2026-01-02T14:{31 + i:02d}:00Z')
+        for i, pnl in enumerate(
+            pnl for _ in range(5) for pnl in (4e307, -4e307)
+        )
     ]
     with pytest.raises(ValueError, match='Non-finite aggregate PnL'):
         evaluate_closed_trades(trades, 1e308)
@@ -306,14 +308,14 @@ def test_entry_rejects_overflowed_target_without_approval():
 
 def test_evaluator_rejects_nonfinite_percentage_return():
     # Finite dollars can still yield an unrepresentable percentage.
-    trades = [ClosedTrade('AMD', 1e100, 'a', 'b')]
+    trades = [ClosedTrade('AMD', 1e100, '2026-01-02T14:30:00Z', '2026-01-02T14:31:00Z')]
     with pytest.raises(ValueError, match='Non-finite return percentage'):
         evaluate_closed_trades(trades, 1e-300)
 
 
 def test_evaluator_rejects_nonfinite_closed_trade_drawdown():
     # An extreme loss against tiny starting equity must not report infinity.
-    trades = [ClosedTrade('AMD', -1e100, 'a', 'b')]
+    trades = [ClosedTrade('AMD', -1e100, '2026-01-02T14:30:00Z', '2026-01-02T14:31:00Z')]
     with pytest.raises(ValueError, match='Non-finite closed-trade drawdown'):
         evaluate_closed_trades(trades, 1e-300)
 

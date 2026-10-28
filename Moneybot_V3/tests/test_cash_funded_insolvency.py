@@ -11,8 +11,11 @@ from backtesting.backtest import Trade, backtest
 from v3_evaluation import ClosedTrade, compare_paper_strategies, evaluate_closed_trades
 
 
-def closed(pnl):
-    return ClosedTrade("AMD", pnl, "entry", "exit")
+def closed(pnl, index=0):
+    return ClosedTrade(
+        "AMD", pnl, "2026-01-02T14:30:00Z",
+        f"2026-01-02T14:{31 + index:02d}:00Z",
+    )
 
 
 @pytest.mark.parametrize("pnls", [
@@ -21,7 +24,7 @@ def closed(pnl):
 ])
 def test_closed_trade_evaluator_rejects_insolvency_even_if_recovered(pnls):
     with pytest.raises(ValueError, match="Negative cash-funded closed-trade equity"):
-        evaluate_closed_trades([closed(pnl) for pnl in pnls], 1000)
+        evaluate_closed_trades([closed(pnl, i) for i, pnl in enumerate(pnls)], 1000)
 
 
 def test_closed_trade_evaluator_allows_exact_total_loss():
