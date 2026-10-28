@@ -126,9 +126,10 @@ def simulate_trades(
             or timestamp.utcoffset() is None
         ):
             raise ValueError("Bar timestamp must be timezone-aware")
-        if (timestamp.second or timestamp.microsecond
-                or timestamp.astimezone(timezone.utc).second
-                or timestamp.astimezone(timezone.utc).microsecond):
+        if timestamp.second or timestamp.microsecond:
+            raise ValueError("Bar timestamp must be minute-aligned")
+        utc_timestamp = timestamp.astimezone(timezone.utc)
+        if utc_timestamp.second or utc_timestamp.microsecond:
             raise ValueError("Bar timestamp must be UTC minute-aligned")
         if previous_timestamp is not None and timestamp <= previous_timestamp:
             raise ValueError("Bar timestamps must be strictly increasing")
@@ -166,9 +167,10 @@ def simulate_trades(
             or timestamp.utcoffset() is None
         ):
             raise ValueError("Signal timestamp must be timezone-aware")
-        if (timestamp.second or timestamp.microsecond
-                or timestamp.astimezone(timezone.utc).second
-                or timestamp.astimezone(timezone.utc).microsecond):
+        if timestamp.second or timestamp.microsecond:
+            raise ValueError("Signal timestamp must be minute-aligned")
+        utc_timestamp = timestamp.astimezone(timezone.utc)
+        if utc_timestamp.second or utc_timestamp.microsecond:
             raise ValueError("Signal timestamp must be UTC minute-aligned")
 
         high = getattr(signal, "opening_range_high", None)
