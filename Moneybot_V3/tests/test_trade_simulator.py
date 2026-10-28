@@ -1052,3 +1052,24 @@ def test_simulator_rejects_half_minute_utc_offset_on_signal():
     ))
     with pytest.raises(ValueError, match="UTC minute-aligned"):
         simulate_trades([bar], [signal])
+
+
+def test_simulator_accepts_genuine_half_hour_timezone_offset():
+    # +05:30 is an ordinary offset: both local and UTC are minute-aligned.
+    bar = make_bar(0, 100, 101, 99, 100)
+    bar.timestamp = bar.timestamp.astimezone(
+        timezone(timedelta(hours=5, minutes=30))
+    )
+    assert simulate_trades([bar], []) == []
+
+
+def test_simulator_accepts_genuine_half_hour_timezone_offset_on_signal():
+    bars = [
+        make_bar(0, 100, 101, 99, 100),
+        make_bar(1, 101, 101.5, 100.5, 101),
+    ]
+    signal = make_signal(bars[0].timestamp.astimezone(
+        timezone(timedelta(hours=5, minutes=30))
+    ))
+    trades = simulate_trades(bars, [signal], slippage_pct=0)
+    assert len(trades) == 1
