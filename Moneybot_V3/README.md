@@ -415,5 +415,8 @@ Both the lightweight completed-trade evaluator and the sequential historical
 backtester now reject a negative cash-funded equity balance **at the first
 insolvent closed trade**, even if later hypothetical trades would recover it.
 An exactly zero balance may be reported as a total loss, but does not authorize
-subsequent purchases. This is an accounting integrity check, not an intratrade
+subsequent purchases. Both evaluators now explicitly reject any additional
+completed trade after an exact zero balance (including purported zero-PnL or
+winning trades), and reject malformed trade records instead of crashing on
+missing attributes. This is an accounting integrity check, not an intratrade
 mark-to-market risk limit, proof of executable fills, or a live-trading control.
