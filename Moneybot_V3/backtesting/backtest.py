@@ -79,6 +79,12 @@ def backtest(trades, starting_cash=1000.0, slippage_pct=0.001):
         drawdown = (peak - cash) / peak
         if not isfinite(drawdown):
             raise ValueError("Non-finite backtest drawdown")
+        # Preserve the existing overflow rejection for percent drawdown.
+        if not isfinite(100 * drawdown):
+            raise ValueError("Non-finite backtest performance metric")
+        # Do not let a hypothetical later trade erase prior insolvency.
+        if cash < 0:
+            raise ValueError("Negative cash-funded backtest equity")
         max_drawdown = max(max_drawdown, drawdown)
         results.append(round(pnl, 2))
 

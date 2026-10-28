@@ -408,3 +408,12 @@ This validates timestamp representation, not the authenticity, completeness,
 or provenance of historical market data.
 
 - The direct stock screener now validates ASCII ticker identities even when callers bypass the Alpaca downloader/scanner, rejecting Unicode lookalikes and malformed symbols before classifying a numeric pass. Legitimate lowercase ASCII and dotted class-share tickers are normalized to canonical uppercase in results. This is symbol consistency, not provider authentication or permission to trade.
+
+## Cash-funded closed-trade insolvency checks (offline research)
+
+Both the lightweight completed-trade evaluator and the sequential historical
+backtester now reject a negative cash-funded equity balance **at the first
+insolvent closed trade**, even if later hypothetical trades would recover it.
+An exactly zero balance may be reported as a total loss, but does not authorize
+subsequent purchases. This is an accounting integrity check, not an intratrade
+mark-to-market risk limit, proof of executable fills, or a live-trading control.

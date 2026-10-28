@@ -43,6 +43,10 @@ def evaluate_closed_trades(trades: list[ClosedTrade], starting_capital: float) -
         drawdown = (peak - equity) / peak
         if not isfinite(drawdown):
             raise ValueError('Non-finite closed-trade drawdown')
+        # A cash-funded paper account cannot continue after insolvency.
+        # Reject even if a later hypothetical win would restore equity.
+        if equity < 0:
+            raise ValueError('Negative cash-funded closed-trade equity')
         max_drawdown = max(max_drawdown, drawdown)
         pnls.append(trade.pnl)
     wins = [p for p in pnls if p > 0]
