@@ -45,6 +45,10 @@ def backtest(trades, starting_cash=1000.0, slippage_pct=0.001):
     results = []
 
     for trade in trades:
+        if cash <= 0:
+            raise ValueError('Trade after cash-funded account depletion')
+        if not isinstance(trade, Trade):
+            raise ValueError('Invalid completed trade record')
         values = (
             trade.entry_price, trade.exit_price,
             trade.entry_fee, trade.exit_fee
