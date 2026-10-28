@@ -66,3 +66,38 @@ def test_valid_weekday_fold_boundaries_still_work():
         result(first=date(2026, 10, 26), last=date(2026, 10, 27)),
     ))
     assert summary.fold_count == 1
+
+
+
+def test_no_trade_cash_drift_is_not_excused_by_accounting_tolerance():
+    # A hand-built zero-trade result must not mint even a tiny cash balance.
+    forged = replace(result(), ending_cash=1000 + 1e-9)
+    with pytest.raises(ValueError, match="without completed trades"):
+        summarize_fixed_baseline_folds((forged,))
+
+
+def test_tolerance_cannot_launder_slightly_insolvent_fold():
+    # An ending cash of zero is within the ordinary 1e-8 absolute
+    # tolerance of this *negative* expected balance. It is still insolvent.
+    forged = replace(
+        result(trades=1, signals=1, pnl=-1000.000000001),
+        ending_cash=0.0,
+    )
+    with pytest.raises(ValueError, match="accounting"):
+        summarize_fixed_baseline_folds((forged,))
+
+
+def test_exact_terminal_loss_is_a_valid_final_fold_result():
+    summary = summarize_fixed_baseline_folds((
+        result(trades=1, signals=1, pnl=-1000),
+    ))
+    assert summary.worst_fold_return_pct == -100
+    assert summary.trade_count == 1
+
+
+def test_tiny_positive_cash_balance_remains_valid():
+    summary = summarize_fixed_baseline_folds((
+        result(trades=1, signals=1, pnl=-999.999999999),
+    ))
+    assert summary.trade_count == 1
+    assert summary.worst_fold_return_pct > -100
