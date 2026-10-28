@@ -9,6 +9,7 @@ No brokerage orders or live trading.
 
 import json
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from math import isfinite
 from urllib.error import HTTPError, URLError
@@ -23,6 +24,15 @@ DATA_BASE = "https://data.alpaca.markets/v2/stocks"
 ASSETS_BASE = "https://paper-api.alpaca.markets/v2/assets"
 
 MAX_QUOTE_AGE = timedelta(hours=72)
+
+# Alpaca supplies RFC 3339 timestamps (including fractional nanoseconds).
+# datetime.fromisoformat also accepts compact and ISO week dates, spaces,
+# and offsets with seconds, none of which should be silently interpreted as
+# provider quote/session evidence.
+_RFC3339_TIMESTAMP = re.compile(
+    r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
+    r"(?:\\.[0-9]{1,9})?(?:Z|[+-][0-9]{2}:[0-9]{2})"
+)
 
 
 def _credentials():
@@ -63,8 +73,10 @@ def _get_json(url):
 def _parse_quote_timestamp(value):
     """Convert an Alpaca timestamp to UTC."""
 
-    if not isinstance(value, str) or not value.strip():
+    if type(value) is not str or not value.strip():
         raise RuntimeError("Missing quote timestamp")
+    if not _RFC3339_TIMESTAMP.fullmatch(value):
+        raise RuntimeError("Invalid quote timestamp")
 
     try:
         timestamp = datetime.fromisoformat(

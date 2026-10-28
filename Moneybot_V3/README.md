@@ -377,3 +377,16 @@ accepted consistently, and SEC company-directory ticker matches must be
 ASCII. SEC research reports use the canonical uppercase symbol even when a
 caller supplies surrounding whitespace. This is input-identity validation,
 not independent authentication of a provider's company mapping or prices.
+
+
+## Canonical Alpaca research timestamps (read-only)
+
+The IEX quote and recent daily-bar reader now requires RFC 3339 timestamps
+with a full calendar date, `T` separator, seconds, and an explicit `Z` or
+minute-resolution UTC offset. Alpaca's fractional-second timestamps, including
+nanosecond precision, remain accepted. Python's permissive ISO parser could
+otherwise accept compact dates, week dates, spaces, or second-level timezone
+offsets as apparently valid provider evidence. Invalid timestamps now fail
+closed before quote freshness checks or daily-bar sorting. This format check
+does not authenticate provider responses, guarantee session completeness, or
+establish actual fillability. V3 remains research/paper-only.
