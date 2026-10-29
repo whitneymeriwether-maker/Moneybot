@@ -171,19 +171,22 @@ def _validate_fold_session_bars(bars, dates, role):
     """Recheck public fold tapes, including their claimed training sessions."""
     if type(bars) is not tuple or len(bars) != 390 * len(dates):
         raise ValueError(f"Research fold {role} bars do not match {role} dates")
-    previous_stamp = None
+    previous_utc = None
     for index, bar in enumerate(bars):
         stamp = getattr(bar, "timestamp", None)
         if (
             not isinstance(stamp, datetime)
             or stamp.tzinfo is None or stamp.utcoffset() is None
             or stamp.second != 0 or stamp.microsecond != 0
-            or stamp.astimezone(timezone.utc).second != 0
-            or stamp.astimezone(timezone.utc).microsecond != 0
-            or (previous_stamp is not None and stamp <= previous_stamp)
         ):
             raise ValueError(f"Invalid or nonchronological research fold {role} timestamp")
-        previous_stamp = stamp
+        utc_stamp = stamp.astimezone(timezone.utc)
+        if (
+            utc_stamp.second != 0 or utc_stamp.microsecond != 0
+            or (previous_utc is not None and utc_stamp <= previous_utc)
+        ):
+            raise ValueError(f"Invalid or nonchronological research fold {role} timestamp")
+        previous_utc = utc_stamp
         local = stamp.astimezone(_NEW_YORK)
         expected_date = dates[index // 390]
         expected_minute = 9 * 60 + 30 + index % 390
