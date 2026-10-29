@@ -80,3 +80,19 @@ def test_direct_fold_evaluator_rejects_inexact_volume_in_either_tape(corrupted_r
     )
     with pytest.raises(ValueError, match="volume"):
         evaluate_fixed_baseline_folds((fold,))
+
+
+@pytest.mark.parametrize(
+    "volume",
+    ["1_000", "+1000", "-0", " 1000", "1000 ", "١٠٠٠", "1e3", ""],
+)
+def test_historical_reader_rejects_noncanonical_share_volume_tokens(tmp_path, volume):
+    # Python int() accepts several of these spellings; a research CSV must
+    # not silently reinterpret non-ASCII or decorated share-count evidence.
+    with pytest.raises(ValueError, match="Invalid historical volume"):
+        load_price_bars(_csv(tmp_path, volume))
+
+
+@pytest.mark.parametrize("volume,expected", [("0", 0), ("0007", 7), ("1000", 1000)])
+def test_historical_reader_keeps_plain_ascii_whole_share_counts(tmp_path, volume, expected):
+    assert load_price_bars(_csv(tmp_path, volume))[0].volume == expected

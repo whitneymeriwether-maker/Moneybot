@@ -477,6 +477,12 @@ entering backtests. The earlier UTC-minute alignment check remains in place.
 This validates timestamp representation, not the authenticity, completeness,
 or provenance of historical market data.
 
+Historical CSV whole-share volume tokens must contain only ASCII decimal
+digits. The reader rejects signs, whitespace, underscores, Unicode digits,
+and exponent notation rather than allowing Python's permissive `int()` parser
+to reinterpret malformed research evidence. Leading zeroes remain accepted.
+This is a representation check, not proof of observed exchange volume.
+
 - The direct stock screener now validates ASCII ticker identities even when callers bypass the Alpaca downloader/scanner, rejecting Unicode lookalikes and malformed symbols before classifying a numeric pass. Legitimate lowercase ASCII and dotted class-share tickers are normalized to canonical uppercase in results. This is symbol consistency, not provider authentication or permission to trade.
 
 ## Cash-funded closed-trade insolvency checks (offline research)

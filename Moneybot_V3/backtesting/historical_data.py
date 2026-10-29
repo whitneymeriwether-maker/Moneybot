@@ -83,7 +83,13 @@ def load_price_bars(filename, expected_symbol=None):
             high = float(row["high"])
             low = float(row["low"])
             close = float(row["close"])
-            volume = int(row["volume"])
+            # int() accepts underscores, signs, whitespace and Unicode digits.
+            # Historical whole-share CSV evidence must use ASCII decimal digits.
+            # Reject ambiguous encodings rather than silently normalizing them.
+            volume_text = row["volume"]
+            if re.fullmatch(r"[0-9]+", volume_text) is None:
+                raise ValueError("Invalid historical volume")
+            volume = int(volume_text)
 
             prices = (opening, high, low, close)
             if not all(isfinite(value) and value > 0 for value in prices):
