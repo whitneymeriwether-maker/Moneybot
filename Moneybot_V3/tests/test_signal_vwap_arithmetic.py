@@ -43,7 +43,7 @@ def test_rejects_overflowed_weighted_price_volume():
 
 
 def test_rejects_unrepresentable_huge_integer_volume():
-    with pytest.raises(ValueError, match="VWAP arithmetic"):
+    with pytest.raises(ValueError, match="Invalid signal bar volume"):
         generate_breakout_signals([bar(30, 100.0, 10 ** 400)])
 
 
