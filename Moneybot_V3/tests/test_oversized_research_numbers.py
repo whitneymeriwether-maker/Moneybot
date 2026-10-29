@@ -3,7 +3,7 @@
 Offline historical research only; no network, broker, or order submission.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 import sys
@@ -41,12 +41,15 @@ def test_simulator_rejects_oversized_bar_prices_as_validation_error(field):
 
 @pytest.mark.parametrize("field", ["opening_range_high", "opening_range_low"])
 def test_simulator_rejects_oversized_signal_prices_as_validation_error(field):
+    # Exercise numeric validation inside the eligible signal window.
+    signal_time = STAMP + timedelta(minutes=15)
     signal = SimpleNamespace(
-        timestamp=STAMP, opening_range_high=101.0, opening_range_low=99.0,
+        timestamp=signal_time, opening_range_high=101.0,
+        opening_range_low=99.0,
     )
     setattr(signal, field, HUGE)
     with pytest.raises(ValueError, match="Invalid opening range in signal"):
-        simulate_trades([bar()], [signal])
+        simulate_trades([bar(timestamp=signal_time)], [signal])
 
 
 @pytest.mark.parametrize("field", ["open", "high", "low", "close"])

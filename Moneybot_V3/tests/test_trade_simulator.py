@@ -671,9 +671,10 @@ def test_weekend_bars_cannot_fill_direct_paper_signal():
         make_bar(2, 102, 106, 101, 105, day=11),
     ]
     assert bars[0].timestamp.weekday() == 6
-    assert simulate_trades(
-        bars, [make_signal(bars[0].timestamp)], slippage_pct=0
-    ) == []
+    with pytest.raises(ValueError, match="outside eligible breakout session"):
+        simulate_trades(
+            bars, [make_signal(bars[0].timestamp)], slippage_pct=0
+        )
 
 
 def test_simulator_rejects_subminute_bar_timestamp():
