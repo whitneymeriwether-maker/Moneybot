@@ -426,8 +426,8 @@ def test_malformed_quote_response_fails_closed(monkeypatch, payload):
         market_data.get_latest_quote("TEST")
 
 
-def test_overflowed_daily_volume_average_is_unverified(monkeypatch):
-    # Every daily volume is finite, but the 20-day sum overflows.
+def test_unrepresentably_large_daily_volume_is_unverified(monkeypatch):
+    # Finite but implausibly large volume cannot represent exact shares.
     monkeypatch.setattr(
         market_data, "get_recent_daily_bars",
         lambda symbol: make_daily_bars(volume=1e308),
@@ -437,7 +437,7 @@ def test_overflowed_daily_volume_average_is_unverified(monkeypatch):
         lambda symbol: pytest.fail("Do not request a quote after bad volume"),
     )
 
-    with pytest.raises(RuntimeError, match="Invalid daily volume average"):
+    with pytest.raises(RuntimeError, match="Invalid daily bar"):
         market_data.get_stock_candidate("TEST", market_cap=1_000_000_000)
 
 
