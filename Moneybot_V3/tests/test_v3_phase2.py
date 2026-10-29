@@ -273,7 +273,7 @@ def test_evaluator_rejects_oversized_integers_without_crashing():
 
 def test_evaluator_rejects_nonfinite_gross_pnl_even_if_equity_is_finite():
     trades = [
-        ClosedTrade('AMD', pnl, '2026-01-02T14:30:00Z',
+        ClosedTrade('AMD', pnl, f'2026-01-02T14:{30 + i:02d}:00Z',
                     f'2026-01-02T14:{31 + i:02d}:00Z')
         for i, pnl in enumerate(
             pnl for _ in range(5) for pnl in (4e307, -4e307)
