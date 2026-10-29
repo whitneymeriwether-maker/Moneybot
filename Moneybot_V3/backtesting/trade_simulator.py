@@ -122,7 +122,7 @@ def simulate_trades(
     bars = list(bars)
     # Reject malformed or nonchronological direct simulator inputs.
     # The CSV loader validates these too, but callers can pass bars directly.
-    previous_timestamp = None
+    previous_utc_timestamp = None
     for bar in bars:
         timestamp = getattr(bar, "timestamp", None)
         if (
@@ -136,9 +136,12 @@ def simulate_trades(
         utc_timestamp = timestamp.astimezone(timezone.utc)
         if utc_timestamp.second or utc_timestamp.microsecond:
             raise ValueError("Bar timestamp must be UTC minute-aligned")
-        if previous_timestamp is not None and timestamp <= previous_timestamp:
+        # Python compares datetimes sharing a ZoneInfo object by wall clock,
+        # ignoring the DST fold. Compare UTC instants so the repeated autumn
+        # hour cannot hide reversed bars or reject valid chronological bars.
+        if previous_utc_timestamp is not None and utc_timestamp <= previous_utc_timestamp:
             raise ValueError("Bar timestamps must be strictly increasing")
-        previous_timestamp = timestamp
+        previous_utc_timestamp = utc_timestamp
 
         prices = (
             getattr(bar, "open", None),
