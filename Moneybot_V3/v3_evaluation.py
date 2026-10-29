@@ -73,11 +73,17 @@ def evaluate_closed_trades(trades: list[ClosedTrade], starting_capital: float) -
         # choose an arbitrary ordering for simultaneous closes.
         if previous_exit is not None and exit_at <= previous_exit:
             raise ValueError('Closed trades require strictly increasing exits')
-        previous_exit = exit_at
         # Once a cash-only account reaches zero, another completed trade
         # cannot be funded, even if its reported PnL is zero or positive.
         if equity == 0:
             raise ValueError('Closed trade after cash-funded account depletion')
+        # This evaluator has no entry notionals or reserved-cash history.
+        # It can verify a sequential cash-funded replay, but cannot prove
+        # that overlapping positions were funded. Fail closed rather than
+        # presenting an unverified portfolio drawdown or return.
+        if previous_exit is not None and entry < previous_exit:
+            raise ValueError('Closed trades overlap in cash-only evaluation')
+        previous_exit = exit_at
         if not _finite_number(trade.pnl):
             raise ValueError('Trade PnL must be a finite number')
         equity += trade.pnl
