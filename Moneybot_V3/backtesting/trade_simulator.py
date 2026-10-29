@@ -219,6 +219,12 @@ def simulate_trades(
         if timestamp not in bars_by_time:
             raise ValueError("Signal timestamp absent from supplied bars")
 
+        # A zero-volume bar is not evidence of a traded breakout. Without
+        # this guard, externally supplied short-tape signals could schedule
+        # a next-minute paper fill despite no trades at signal time.
+        if bars_by_time[timestamp].volume == 0:
+            raise ValueError("Signal minute has no observed trades")
+
         # The scanner's complete signal records include the observed close
         # and VWAP. Verify both against the actual signal bar rather than
         # accepting fabricated breakout metadata. Older direct-call test
