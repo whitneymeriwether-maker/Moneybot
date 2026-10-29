@@ -1,3 +1,14 @@
+## Advisory paper-account cent precision (offline research)
+
+The paper entry and overnight-hold advisory gates now reject cash, initial
+equity, and daily realized PnL values that cannot be represented as exact
+ledger cents, and reject cash or initial equity above the local SQLite
+ledger's monetary bound. Mark-to-market equity, exposure, and peak equity
+may legitimately contain fractional cents and remain unrestricted by the
+cent-tick check. These are compatibility checks for untrusted hypothetical
+account snapshots, not proof of ledger provenance or atomic fill-time risk
+enforcement.
+
 # Moneybot V3 — Phase 2 research prototype
 
 ## Direct scanner OHLCV integrity (offline research)

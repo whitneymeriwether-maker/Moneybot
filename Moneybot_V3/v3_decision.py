@@ -95,6 +95,27 @@ def _valid_evidence(evidence_ids):
         and all(isinstance(item, str) and bool(item.strip()) for item in evidence_ids)
     )
 
+def _ledger_monetary_state(account):
+    """Check cash accounting without imposing cent ticks on marked equity.
+
+    The local paper ledger stores cash and realized PnL in exact cents,
+    while market-valued equity, exposure, and peaks can have subcent marks.
+    Its initial cash and available cash cannot exceed MAX_CENTS.
+    """
+    if not (
+        0 <= account.cash <= MAX_CENTS / 100
+        and 0 < account.starting_equity <= MAX_CENTS / 100
+    ):
+        return False
+    return all(
+        (Decimal(str(value)) * 100).to_integral_value()
+        == Decimal(str(value)) * 100
+        for value in (
+            account.cash, account.starting_equity, account.realized_pnl_today
+        )
+    )
+
+
 def validate_paper_entry(candidate: Candidate, proposal: AIProposal,
                          account: PaperAccount, policy: RiskPolicy = RiskPolicy()) -> Decision:
     """Advisory gate only; real paper engine must recheck atomically before a fill."""
@@ -189,6 +210,8 @@ def validate_paper_entry(candidate: Candidate, proposal: AIProposal,
     price_in_cents = Decimal(str(candidate.price)) * 100
     if price_in_cents != price_in_cents.to_integral_value():
         return Decision(False, 'Paper price is not representable in ledger cents')
+    if not _ledger_monetary_state(account):
+        return Decision(False, 'Paper account monetary state incompatible with ledger')
     return Decision(True, 'Approved for paper simulation only', quantity, stop, target)
 
 
@@ -234,4 +257,6 @@ def validate_overnight_hold(sessions_held: int, proposed_exposure: float,
         return Decision(False, 'Proposed hold exceeds existing paper exposure')
     if proposed_exposure > account.equity*policy.overnight_exposure:
         return Decision(False, 'Overnight exposure limit exceeded')
+    if not _ledger_monetary_state(account):
+        return Decision(False, 'Paper account monetary state incompatible with ledger')
     return Decision(True, 'Eligible for paper overnight review only')
