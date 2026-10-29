@@ -549,3 +549,13 @@ sessions are used. The read-only downloader already sorts provider responses;
 this additionally protects direct callers and injected research datasets.
 It does not independently authenticate exchange timestamps, consolidated
 volume, historical prices, or the data provider.
+
+## Direct simulator share-volume precision
+
+The broker-disconnected historical simulator now applies the same maximum
+exact whole-share count (2^53 - 1) as the CSV loader and walk-forward folds,
+even when callers pass in-memory bars directly. Larger counts are rejected
+before participation-based sizing can round or misrepresent volume. Zero-volume
+non-signal bars remain supported for sparse exploratory tapes. This is an
+input-integrity safeguard, not a verification of genuine exchange volume,
+market liquidity, executable fills, or strategy profitability.
