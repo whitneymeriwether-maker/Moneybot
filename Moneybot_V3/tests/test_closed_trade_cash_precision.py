@@ -11,7 +11,7 @@ from v3_evaluation import ClosedTrade, evaluate_closed_trades, compare_paper_str
 def records(*pnls):
     return [
         ClosedTrade(
-            "AMD", pnl, "2026-01-02T14:30:00Z",
+            "AMD", pnl, f"2026-01-02T14:{30 + index:02d}:00Z",
             f"2026-01-02T14:{31 + index:02d}:00Z",
         )
         for index, pnl in enumerate(pnls)
