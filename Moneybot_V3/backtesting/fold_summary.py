@@ -92,13 +92,18 @@ def summarize_fixed_baseline_folds(results, *, starting_cash=1000.0):
             raise ValueError("Nonzero baseline result without completed trades")
         expected_cash = starting_cash + result.net_pnl
         expected_return = 100 * result.net_pnl / starting_cash
-        # The tolerance below accommodates ordinary floating-point reporting
-        # differences, but must never excuse an actually insolvent fold.
+        # Never let a relative tolerance scale into dollars of unexplained
+        # cash at large starting balances. Permit at most half a cent of
+        # reporting drift, and retain the tighter historical tolerance for
+        # ordinary small research accounts. Return tolerances are in
+        # percentage points and correspond to the same cash discrepancy.
+        cash_tolerance = min(0.005, starting_cash * 1e-9)
+        return_tolerance = min(1e-8, 0.5 / starting_cash)
         if (
             not _finite_number(expected_cash) or expected_cash < 0
             or not _finite_number(expected_return)
-            or not isclose(result.ending_cash, expected_cash, rel_tol=1e-9, abs_tol=1e-8)
-            or not isclose(result.return_pct, expected_return, rel_tol=1e-9, abs_tol=1e-8)
+            or not isclose(result.ending_cash, expected_cash, rel_tol=0, abs_tol=cash_tolerance)
+            or not isclose(result.return_pct, expected_return, rel_tol=0, abs_tol=return_tolerance)
         ):
             raise ValueError("Inconsistent baseline fold accounting")
         previous_number = result.number
