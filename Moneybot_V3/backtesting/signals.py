@@ -38,7 +38,7 @@ def generate_breakout_signals(bars):
     cumulative_price_volume = 0.0
     cumulative_volume = 0
     signaled_today = False
-    previous_timestamp = None
+    previous_utc_timestamp = None
 
     for bar in bars:
         # Direct scanner callers can bypass the CSV reader and simulator.
@@ -58,9 +58,12 @@ def generate_breakout_signals(bars):
             or utc_timestamp.second or utc_timestamp.microsecond
         ):
             raise ValueError("Signal scanner requires UTC minute-aligned bars")
-        if previous_timestamp is not None and timestamp <= previous_timestamp:
+        # Compare UTC instants, not local wall-clock times: Python ignores
+        # fold when comparing datetimes with the same ZoneInfo instance.
+        # The repeated autumn DST hour contains distinct valid instants.
+        if previous_utc_timestamp is not None and utc_timestamp <= previous_utc_timestamp:
             raise ValueError("Signal scanner requires strictly increasing bar timestamps")
-        previous_timestamp = timestamp
+        previous_utc_timestamp = utc_timestamp
 
         local_time = timestamp.astimezone(NEW_YORK)
         day = local_time.date()
