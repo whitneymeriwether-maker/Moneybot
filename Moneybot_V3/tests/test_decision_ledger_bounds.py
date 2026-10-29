@@ -134,3 +134,29 @@ def test_advisory_accepts_cent_accounting_with_subcent_marked_equity():
         },
     )
     assert entry.approved
+
+
+@pytest.mark.parametrize("gate", ["entry", "overnight"])
+def test_positive_daily_realized_pnl_above_ledger_limit_fails_closed(gate):
+    # An otherwise healthy account must not claim a daily realized gain
+    # larger than the local ledger can represent in its lifetime PnL.
+    account = PaperAccount(
+        cash=1000.0, equity=1000.0, current_exposure=200.0,
+        realized_pnl_today=MAX_CENTS / 100 + 0.01,
+        starting_equity=1000.0, peak_equity=1000.0,
+    )
+    if gate == "entry":
+        result = _decision(
+            price=100.0, atr=1.0, equity=1000.0,
+            account_updates={
+                "current_exposure": 200.0,
+                "realized_pnl_today": account.realized_pnl_today,
+            },
+        )
+    else:
+        from v3_decision import validate_overnight_hold
+        result = validate_overnight_hold(
+            1, 100.0, account, "Hypothetical thesis", ("offline:1",),
+        )
+    assert not result.approved
+    assert result.reason == "Paper account monetary state incompatible with ledger"

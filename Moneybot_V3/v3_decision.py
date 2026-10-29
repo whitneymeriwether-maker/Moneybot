@@ -105,6 +105,9 @@ def _ledger_monetary_state(account):
     if not (
         0 <= account.cash <= MAX_CENTS / 100
         and 0 < account.starting_equity <= MAX_CENTS / 100
+        # The ledger bounds cumulative realized PnL. A single day's
+        # realized PnL cannot exceed that same absolute accounting limit.
+        and abs(account.realized_pnl_today) <= MAX_CENTS / 100
     ):
         return False
     return all(
