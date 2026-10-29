@@ -501,3 +501,13 @@ visible. The existing checks for extra/missing marks, backdated snapshots,
 insufficient cash for further hypothetical buys, and accounting integrity
 remain in force. This is a terminal accounting edge case, not permission for
 margin trading, new capital, broker orders, or deployment.
+
+### Complete opening-range signal provenance (offline)
+
+For simulator inputs with full entry-price/VWAP metadata and all 15 traded
+9:30–9:44 a.m. New York opening-range minutes, the simulator now independently
+regenerates the opening-range breakout signal from the supplied OHLCV bars.
+A changed opening-range high/low, understated VWAP, fabricated breakout, or
+wrong signal minute fails validation instead of changing paper results.
+Short legacy direct-call tapes without the full opening range remain supported;
+this check does not authenticate the underlying historical data or fills.

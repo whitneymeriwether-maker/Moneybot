@@ -6,8 +6,10 @@ Paper simulation only. No broker connections or real orders.
 
 from dataclasses import dataclass
 from datetime import datetime, time, timezone
-from math import isfinite
+from math import isclose, isfinite
 from zoneinfo import ZoneInfo
+
+from backtesting.signals import generate_breakout_signals
 
 
 NEW_YORK = ZoneInfo("America/New_York")
@@ -160,6 +162,21 @@ def simulate_trades(
     # the strategy's trade count without reporting a data-integrity error.
     bars_by_time = {bar.timestamp: bar for bar in bars}
 
+    # When the full traded 15-minute opening range is present, complete
+    # external signal metadata must match the independent scanner output.
+    # Preserve short, legacy direct-call tapes that omit the opening range.
+    opening_minutes_by_day = {}
+    for bar in bars:
+        local = bar.timestamp.astimezone(NEW_YORK)
+        clock = local.time()
+        if (local.weekday() < 5
+                and time(9, 30) <= clock < time(9, 45)
+                and bar.volume > 0):
+            opening_minutes_by_day.setdefault(local.date(), set()).add(
+                (clock.hour, clock.minute)
+            )
+    scanner_signals_by_time = None
+
     # Direct callers may supply externally constructed signals rather than
     # signals produced by our historical scanner. Reject invalid or ambiguous
     # stop distances before they can influence paper position sizing.
@@ -214,6 +231,28 @@ def simulate_trades(
                 or entry_price <= vwap
             ):
                 raise ValueError("Signal breakout disagrees with observed bar")
+
+            # A fabricated opening range or understated VWAP can make a
+            # non-breakout look profitable and alter stop sizing. Recompute
+            # scanner provenance when all 15 traded opening minutes exist.
+            local_day = timestamp.astimezone(NEW_YORK).date()
+            if len(opening_minutes_by_day.get(local_day, ())) == 15:
+                if scanner_signals_by_time is None:
+                    scanner_signals_by_time = {
+                        candidate.timestamp: candidate
+                        for candidate in generate_breakout_signals(bars)
+                    }
+                expected = scanner_signals_by_time.get(timestamp)
+                if (
+                    expected is None
+                    or high != expected.opening_range_high
+                    or low != expected.opening_range_low
+                    or not isclose(vwap, expected.vwap,
+                                   rel_tol=1e-12, abs_tol=1e-9)
+                ):
+                    raise ValueError(
+                        "Signal metadata disagrees with observed opening range/VWAP"
+                    )
 
         if timestamp in signals_by_time:
             raise ValueError("Duplicate signal timestamp")
