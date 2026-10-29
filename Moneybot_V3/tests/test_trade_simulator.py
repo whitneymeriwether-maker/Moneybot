@@ -455,9 +455,12 @@ def test_zero_volume_signal_bar_cannot_trigger_entry():
     ]
     bars[0].volume = 0
 
-    assert simulate_trades(
-        bars, [make_signal(bars[0].timestamp)], slippage_pct=0
-    ) == []
+    # An externally supplied signal on an untraded minute is invalid
+    # evidence, not merely an entry to skip silently.
+    with pytest.raises(ValueError, match="no observed trades"):
+        simulate_trades(
+            bars, [make_signal(bars[0].timestamp)], slippage_pct=0
+        )
 
 
 def test_zero_volume_bar_cannot_trigger_target_exit():
