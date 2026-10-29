@@ -291,8 +291,16 @@ def evaluate_fixed_baseline_folds(
             max_participation=max_participation,
         )
         net_pnl = sum(net_trade_profit(trade) for trade in trades)
-        if not isfinite(net_pnl) or not isfinite(starting_cash + net_pnl):
-            raise ValueError("Non-finite fixed-baseline fold result")
+        ending_cash = starting_cash + net_pnl
+        return_pct = 100 * net_pnl / starting_cash
+        # The fold evaluator is also a public research-report boundary:
+        # never emit infinite percentage returns or negative cash, even if
+        # a supplied simulator result is malformed or arithmetic overflows.
+        if (
+            not all(isfinite(value) for value in (net_pnl, ending_cash, return_pct))
+            or ending_cash < 0
+        ):
+            raise ValueError("Invalid fixed-baseline fold accounting")
         results.append(FixedBaselineFoldResult(
             number=fold.number,
             first_test_date=fold.test_dates[0],
@@ -300,7 +308,7 @@ def evaluate_fixed_baseline_folds(
             signal_count=len(signals),
             trade_count=len(trades),
             net_pnl=net_pnl,
-            return_pct=100 * net_pnl / starting_cash,
-            ending_cash=starting_cash + net_pnl,
+            return_pct=return_pct,
+            ending_cash=ending_cash,
         ))
     return tuple(results)
