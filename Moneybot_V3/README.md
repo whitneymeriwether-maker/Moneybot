@@ -581,3 +581,15 @@ before participation-based sizing can round or misrepresent volume. Zero-volume
 non-signal bars remain supported for sparse exploratory tapes. This is an
 input-integrity safeguard, not a verification of genuine exchange volume,
 market liquidity, executable fills, or strategy profitability.
+
+## Advisory price precision versus the paper ledger (offline research)
+
+The V3 advisory entry gate now rejects hypothetical BUY prices with
+fractional cents after position sizing. The persistent SQLite paper ledger
+requires exact-cent price inputs, so approving a sub-cent candidate would
+produce a hypothetical fill the ledger cannot record. Decimal validation of
+the readable price representation accepts ordinary floating-point values
+such as $0.29 without treating binary representation noise as fractional
+cents. The ledger still independently validates the actual fill price,
+fees, cash, and positions atomically. This is not a market-price feed,
+execution guarantee, or authorization to place live orders.

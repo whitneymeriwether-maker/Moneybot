@@ -1,5 +1,6 @@
 """V3 research-only paper decision gate. No broker imports or network access."""
 from dataclasses import dataclass
+from decimal import Decimal
 from datetime import datetime, timedelta, timezone
 from math import isfinite
 import re
@@ -182,6 +183,12 @@ def validate_paper_entry(candidate: Candidate, proposal: AIProposal,
     # actual fill prices, fees, cash and positions need atomic revalidation.
     if quantity > MAX_SHARES or notional > MAX_CENTS / 100:
         return Decision(False, 'Paper sizing exceeds ledger bounds')
+    # The local paper ledger stores prices in exact cents. Convert the
+    # readable decimal representation rather than multiplying the binary
+    # float, which would falsely reject ordinary prices such as $0.29.
+    price_in_cents = Decimal(str(candidate.price)) * 100
+    if price_in_cents != price_in_cents.to_integral_value():
+        return Decision(False, 'Paper price is not representable in ledger cents')
     return Decision(True, 'Approved for paper simulation only', quantity, stop, target)
 
 

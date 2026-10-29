@@ -1,5 +1,7 @@
 """The advisory gate must respect local ledger hard limits without placing orders."""
 from dataclasses import replace
+
+import pytest
 from datetime import datetime, timezone
 
 from paper_ledger import MAX_CENTS, MAX_SHARES
@@ -54,3 +56,17 @@ def test_accepts_notional_at_ledger_limit():
     )
     assert result.approved
     assert result.quantity == 1
+
+
+@pytest.mark.parametrize("price", [0.015, 0.001, 0.0100001, 1.234])
+def test_rejects_subcent_prices_that_paper_ledger_cannot_record(price):
+    result = _decision(price=price, atr=price / 4, equity=1000)
+    assert not result.approved
+    assert result.reason == "Paper price is not representable in ledger cents"
+
+
+@pytest.mark.parametrize("price", [0.01, 0.29, 1.25, 100.0])
+def test_accepts_exact_cent_prices_without_binary_float_false_positives(price):
+    result = _decision(price=price, atr=price / 4, equity=1000)
+    assert result.approved
+    assert result.quantity > 0
