@@ -92,17 +92,25 @@ def build_research_folds(
     if not bars:
         raise ValueError("No historical bars to split")
     sessions = {}
-    previous = None
+    previous_utc = None
     for bar in bars:
         stamp = getattr(bar, "timestamp", None)
         if (
             not isinstance(stamp, datetime)
             or stamp.tzinfo is None or stamp.utcoffset() is None
             or stamp.second != 0 or stamp.microsecond != 0
-            or (previous is not None and stamp <= previous)
         ):
             raise ValueError("Invalid or nonchronological research timestamp")
-        previous = stamp
+        # A locally minute-aligned timestamp with a seconds-bearing UTC
+        # offset can still represent a half-minute UTC instant. Validate
+        # direct in-memory tapes to the same standard as the CSV reader.
+        utc_stamp = stamp.astimezone(timezone.utc)
+        if (
+            utc_stamp.second != 0 or utc_stamp.microsecond != 0
+            or (previous_utc is not None and utc_stamp <= previous_utc)
+        ):
+            raise ValueError("Invalid or nonchronological research timestamp")
+        previous_utc = utc_stamp
         local = stamp.astimezone(_NEW_YORK)
         if local.weekday() >= 5 or not time(9, 30) <= local.time() < time(16, 0):
             raise ValueError("Research folds require regular weekday minutes only")
