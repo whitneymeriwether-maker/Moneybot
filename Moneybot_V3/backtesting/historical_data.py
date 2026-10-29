@@ -10,6 +10,10 @@ from pathlib import Path
 
 # Python's ISO parser accepts compact/week dates and nonstandard offsets.
 # Require an explicit canonical UTC offset for historical research tapes.
+# Whole-share counts above this bound lose integer precision in IEEE-754
+# calculations downstream (including opening-range VWAP).
+MAX_EXACT_SHARE_VOLUME = (1 << 53) - 1
+
 _RFC3339_MINUTE_BAR = re.compile(
     r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
     r"(?P<fraction>\.[0-9]{1,9})?(?:Z|[+-][0-9]{2}:[0-9]{2})"
@@ -89,13 +93,9 @@ def load_price_bars(filename, expected_symbol=None):
                 raise ValueError("High price is inconsistent")
             if low > min(opening, close, high):
                 raise ValueError("Low price is inconsistent")
-            # int() accepts arbitrarily large CSV integers, but such a
-            # volume cannot be used safely in floating-point VWAP math.
-            try:
-                valid_volume = volume >= 0 and isfinite(volume)
-            except OverflowError:
-                valid_volume = False
-            if not valid_volume:
+            # Validate the integer directly: isfinite(int) alone would
+            # accept counts that cannot be represented exactly as floats.
+            if not 0 <= volume <= MAX_EXACT_SHARE_VOLUME:
                 raise ValueError("Invalid historical volume")
 
             if timestamp.tzinfo is None or timestamp.utcoffset() is None:
