@@ -522,3 +522,13 @@ Short legacy direct-call tapes without the complete opening range retain their
 limited backward-compatible behavior; those tapes cannot authenticate the
 missing opening-range observations. This remains hypothetical, paper-only
 research and does not establish executable fills or market-data authenticity.
+
+### External signal session boundaries (offline research)
+
+The direct historical simulator now rejects externally supplied breakout
+signals outside 9:45 a.m.–3:59 p.m. New York time on weekdays. Previously,
+short legacy tapes could inject a premarket or unfinished-opening-range signal
+and simulate a next-minute entry even though the opening range had not closed.
+The final 3:59 p.m. signal remains valid scanner output but cannot fill after
+the 4:00 p.m. regular-session close. This guards signal chronology; it does
+not verify exchange holidays, market data, or executable orders.

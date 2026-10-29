@@ -191,6 +191,16 @@ def simulate_trades(
             raise ValueError("Signal timestamp must be timezone-aware")
         if timestamp.second or timestamp.microsecond:
             raise ValueError("Signal timestamp must be minute-aligned")
+        # An externally supplied breakout must be observed after the
+        # completed 9:30-9:44 NY opening range and during regular trading.
+        # Without this, short legacy tapes could inject a pre-open or
+        # opening-range signal and claim an impossible next-minute entry.
+        signal_local = timestamp.astimezone(NEW_YORK)
+        if (
+            signal_local.weekday() >= 5
+            or not (time(9, 45) <= signal_local.time() < time(16, 0))
+        ):
+            raise ValueError("Signal outside eligible breakout session")
         utc_timestamp = timestamp.astimezone(timezone.utc)
         if utc_timestamp.second or utc_timestamp.microsecond:
             raise ValueError("Signal timestamp must be UTC minute-aligned")
