@@ -530,6 +530,16 @@ winning trades), and reject malformed trade records instead of crashing on
 missing attributes. This is an accounting integrity check, not an intratrade
 mark-to-market risk limit, proof of executable fills, or a live-trading control.
 
+The lightweight `v3_evaluation.evaluate_closed_trades` comparator also rejects
+overlapping entry-to-exit intervals, including across different tickers, even
+when exit timestamps are strictly increasing. It has no entry notionals,
+reserved-cash history, or portfolio-level mark-to-market path with which to
+verify that simultaneous positions were funded. A new entry at the exact
+previous exit instant is allowed. This conservative single-position replay
+must not be used as evidence that a multi-position strategy is solvent;
+multi-position comparisons require an independently reconciled cash/position
+ledger and time-based portfolio equity evaluation.
+
 ## Zero-equity paper ledger reporting (offline research)
 
 The broker-disconnected SQLite paper ledger's read-only marked snapshot now
