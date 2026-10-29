@@ -27,8 +27,8 @@ EASTERN = ZoneInfo("America/New_York")
 def _csv(tmp_path, volume):
     filename = tmp_path / "history.csv"
     filename.write_text(
-        "timestamp,open,high,low,close,volume\\n"
-        f"2026-10-12T09:30:00-04:00,10,11,9,10,{volume}\\n",
+        "timestamp,open,high,low,close,volume\n"
+        f"2026-10-12T09:30:00-04:00,10,11,9,10,{volume}\n",
         encoding="utf-8",
     )
     return filename
