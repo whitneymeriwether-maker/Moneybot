@@ -2,7 +2,7 @@
 """Historical opening-range breakout signals for V3 research."""
 
 from dataclasses import dataclass
-from datetime import time
+from datetime import datetime, time, timezone
 from math import isfinite
 from zoneinfo import ZoneInfo
 
@@ -38,9 +38,31 @@ def generate_breakout_signals(bars):
     cumulative_price_volume = 0.0
     cumulative_volume = 0
     signaled_today = False
+    previous_timestamp = None
 
     for bar in bars:
-        local_time = bar.timestamp.astimezone(NEW_YORK)
+        # Direct scanner callers can bypass the CSV reader and simulator.
+        # Never calculate a VWAP or breakout from reversed, repeated, or
+        # non-minute-aligned observations: doing so leaks future information
+        # or counts a traded minute more than once.
+        timestamp = getattr(bar, "timestamp", None)
+        if (
+            not isinstance(timestamp, datetime)
+            or timestamp.tzinfo is None
+            or timestamp.utcoffset() is None
+        ):
+            raise ValueError("Signal scanner requires timezone-aware bar timestamps")
+        utc_timestamp = timestamp.astimezone(timezone.utc)
+        if (
+            timestamp.second or timestamp.microsecond
+            or utc_timestamp.second or utc_timestamp.microsecond
+        ):
+            raise ValueError("Signal scanner requires UTC minute-aligned bars")
+        if previous_timestamp is not None and timestamp <= previous_timestamp:
+            raise ValueError("Signal scanner requires strictly increasing bar timestamps")
+        previous_timestamp = timestamp
+
+        local_time = timestamp.astimezone(NEW_YORK)
         day = local_time.date()
         clock = local_time.time()
 
