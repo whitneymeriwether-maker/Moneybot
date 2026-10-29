@@ -202,7 +202,7 @@ def get_reported_shares_outstanding(symbol):
             continue
 
         candidates.append(
-            (observation_date, filed_date, float(shares))
+            (observation_date, filed_date, shares)
         )
 
     if not candidates:
@@ -229,7 +229,9 @@ def get_reported_shares_outstanding(symbol):
 
     return {
         "symbol": symbol.upper(),
-        "shares_outstanding": shares,
+        # Preserve the existing float output API only after comparing exact
+        # provider numbers; early conversion hides contradictory large ints.
+        "shares_outstanding": float(shares),
         "observation_date": observation_date.isoformat(),
         "filed_date": filed_date.isoformat(),
         "source": "SEC EDGAR",

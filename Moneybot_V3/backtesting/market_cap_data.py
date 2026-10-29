@@ -138,13 +138,15 @@ def get_market_cap(symbol):
             f"Conflicting market-cap record dates for {symbol}"
         )
 
-    values = {float(record["marketCap"]) for record in matching_records}
+    values = {record["marketCap"] for record in matching_records}
     if len(values) != 1:
         raise MarketCapDataError(
             f"Conflicting market capitalization records for {symbol}"
         )
 
-    return values.pop()
+    # Compare original numeric values before float conversion: distinct large
+    # integer observations can collapse to the same IEEE-754 float.
+    return float(values.pop())
 
 
 if __name__ == "__main__":
