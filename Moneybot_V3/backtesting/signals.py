@@ -6,6 +6,8 @@ from datetime import datetime, time, timezone
 from math import isfinite
 from zoneinfo import ZoneInfo
 
+from backtesting.historical_data import MAX_EXACT_SHARE_VOLUME
+
 NEW_YORK = ZoneInfo("America/New_York")
 
 
@@ -16,6 +18,16 @@ class BreakoutSignal:
     opening_range_high: float
     opening_range_low: float
     vwap: float
+
+
+def _valid_price(value):
+    """Require finite, strictly positive OHLC numbers, excluding booleans."""
+    if type(value) not in (int, float):
+        return False
+    try:
+        return isfinite(value) and value > 0
+    except (OverflowError, ValueError):
+        return False
 
 
 def generate_breakout_signals(bars):
@@ -64,6 +76,19 @@ def generate_breakout_signals(bars):
         if previous_utc_timestamp is not None and utc_timestamp <= previous_utc_timestamp:
             raise ValueError("Signal scanner requires strictly increasing bar timestamps")
         previous_utc_timestamp = utc_timestamp
+
+        # Direct callers can bypass both the CSV reader and the simulator.
+        # Invalid OHLCV must not establish a traded opening range or a
+        # breakout, even if the malformed bar is outside regular hours.
+        prices = tuple(getattr(bar, field, None) for field in ("open", "high", "low", "close"))
+        if not all(_valid_price(price) for price in prices):
+            raise ValueError("Invalid signal bar price")
+        opening, high, low, close = prices
+        if high < max(opening, low, close) or low > min(opening, high, close):
+            raise ValueError("Inconsistent signal OHLC bar")
+        volume = getattr(bar, "volume", None)
+        if type(volume) is not int or not 0 <= volume <= MAX_EXACT_SHARE_VOLUME:
+            raise ValueError("Invalid signal bar volume")
 
         local_time = timestamp.astimezone(NEW_YORK)
         day = local_time.date()
