@@ -5,6 +5,8 @@ from math import isfinite
 import re
 from typing import Literal
 
+from paper_ledger import MAX_CENTS, MAX_SHARES
+
 Action = Literal['BUY', 'WAIT', 'REJECT']
 _SYMBOL = re.compile(r'[A-Z][A-Z0-9.-]{0,9}')
 
@@ -175,6 +177,11 @@ def validate_paper_entry(candidate: Candidate, proposal: AIProposal,
         or notional > headroom
     ):
         return Decision(False, 'Non-finite paper sizing arithmetic')
+    # The advisory must not approve a hypothetical fill that the local
+    # paper ledger is guaranteed to reject. These are upper bounds only:
+    # actual fill prices, fees, cash and positions need atomic revalidation.
+    if quantity > MAX_SHARES or notional > MAX_CENTS / 100:
+        return Decision(False, 'Paper sizing exceeds ledger bounds')
     return Decision(True, 'Approved for paper simulation only', quantity, stop, target)
 
 
