@@ -47,4 +47,7 @@ def test_daily_volume_average_preserves_small_sessions_next_to_large_one(monkeyp
     )
     candidate = market_data.get_stock_candidate("TEST", 1_000_000_000)
     assert candidate.average_daily_volume == sum(volumes) / len(volumes)
-    assert candidate.average_daily_volume != sum(float(v) for v in volumes) / len(volumes)
+    naive_float_sum = 0.0
+    for volume in volumes:
+        naive_float_sum += float(volume)
+    assert candidate.average_daily_volume != naive_float_sum / len(volumes)
