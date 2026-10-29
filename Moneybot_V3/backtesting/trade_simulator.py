@@ -217,6 +217,19 @@ def simulate_trades(
         has_vwap = hasattr(signal, "vwap")
         if has_entry != has_vwap:
             raise ValueError("Incomplete signal price/VWAP metadata")
+
+        # Full opening-range tapes provide enough evidence to verify every
+        # supplied signal against the independent scanner. Do not let an
+        # external caller bypass that check by omitting optional metadata.
+        # Legacy short tapes still permit signals without these fields.
+        local_day = timestamp.astimezone(NEW_YORK).date()
+        complete_opening_range = (
+            len(opening_minutes_by_day.get(local_day, ())) == 15
+        )
+        if complete_opening_range and not has_entry:
+            raise ValueError(
+                "Complete opening range requires signal price/VWAP metadata"
+            )
         if has_entry:
             entry_price = signal.entry_price
             vwap = signal.vwap
@@ -235,8 +248,7 @@ def simulate_trades(
             # A fabricated opening range or understated VWAP can make a
             # non-breakout look profitable and alter stop sizing. Recompute
             # scanner provenance when all 15 traded opening minutes exist.
-            local_day = timestamp.astimezone(NEW_YORK).date()
-            if len(opening_minutes_by_day.get(local_day, ())) == 15:
+            if complete_opening_range:
                 if scanner_signals_by_time is None:
                     scanner_signals_by_time = {
                         candidate.timestamp: candidate

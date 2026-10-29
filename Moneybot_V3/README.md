@@ -511,3 +511,14 @@ A changed opening-range high/low, understated VWAP, fabricated breakout, or
 wrong signal minute fails validation instead of changing paper results.
 Short legacy direct-call tapes without the full opening range remain supported;
 this check does not authenticate the underlying historical data or fills.
+
+### Complete opening-range signal provenance
+
+When all 15 traded opening-range minutes are supplied, externally supplied
+signals must include both observed entry-price and VWAP metadata so the
+simulator can independently reconcile the signal with the historical scanner.
+Omitting those fields is no longer a way to bypass opening-range provenance.
+Short legacy direct-call tapes without the complete opening range retain their
+limited backward-compatible behavior; those tapes cannot authenticate the
+missing opening-range observations. This remains hypothetical, paper-only
+research and does not establish executable fills or market-data authenticity.

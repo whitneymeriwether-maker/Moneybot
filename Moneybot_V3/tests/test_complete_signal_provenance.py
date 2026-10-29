@@ -80,3 +80,43 @@ def test_short_legacy_tape_does_not_require_missing_opening_range():
     bars = complete_tape()[15:]
     signal = generate_breakout_signals(complete_tape())[0]
     assert len(simulate_trades(bars, [signal], slippage_pct=0)) == 1
+
+
+def test_complete_range_cannot_bypass_provenance_by_omitting_metadata():
+    from types import SimpleNamespace
+
+    bars = complete_tape()
+    expected = generate_breakout_signals(bars)[0]
+    legacy = SimpleNamespace(
+        timestamp=expected.timestamp,
+        opening_range_high=expected.opening_range_high,
+        opening_range_low=expected.opening_range_low,
+    )
+    with pytest.raises(ValueError, match="requires signal price/VWAP"):
+        simulate_trades(bars, [legacy], slippage_pct=0)
+
+
+def test_complete_nonbreakout_tape_rejects_legacy_fabricated_signal():
+    from types import SimpleNamespace
+
+    bars = complete_tape(breakout=False)
+    fabricated = SimpleNamespace(
+        timestamp=bars[15].timestamp,
+        opening_range_high=100.0,
+        opening_range_low=99.0,
+    )
+    with pytest.raises(ValueError, match="requires signal price/VWAP"):
+        simulate_trades(bars, [fabricated], slippage_pct=0)
+
+
+def test_short_tape_still_supports_genuine_legacy_signal_without_metadata():
+    from types import SimpleNamespace
+
+    full = complete_tape()
+    expected = generate_breakout_signals(full)[0]
+    legacy = SimpleNamespace(
+        timestamp=expected.timestamp,
+        opening_range_high=expected.opening_range_high,
+        opening_range_low=expected.opening_range_low,
+    )
+    assert len(simulate_trades(full[15:], [legacy], slippage_pct=0)) == 1
