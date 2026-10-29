@@ -1,5 +1,15 @@
 # Moneybot V3 — Phase 2 research prototype
 
+## Direct scanner chronology (offline research)
+
+The opening-range scanner now independently checks that every supplied bar
+has a timezone-aware, UTC-minute-aligned timestamp and that bar instants
+increase strictly. Duplicate and reversed minutes fail closed instead of
+double-counting traded volume in VWAP or introducing lookahead into a
+breakout signal. This applies even when callers bypass the CSV reader and
+simulator. These checks do **not** authenticate market-data provenance,
+validate an exchange holiday calendar, or establish executable fills.
+
 ## Historical signal-to-bar integrity
 
 The offline trade simulator now rejects externally supplied signals whose
