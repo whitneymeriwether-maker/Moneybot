@@ -1,5 +1,17 @@
 # Moneybot V3 — Phase 2 research prototype
 
+## Direct scanner OHLCV integrity (offline research)
+
+The opening-range signal scanner now independently validates every supplied
+bar's finite, positive, internally consistent OHLC prices and whole-share
+volume in the exact IEEE-754-safe range (0 through 9,007,199,254,740,991).
+Malformed off-hours bars also fail closed rather than disappearing through
+the session filter. Zero-volume exploratory bars remain allowed but cannot
+establish a traded opening-range minute or trigger a breakout. These checks
+apply when callers bypass the CSV reader and simulator; they do **not**
+authenticate vendor data, prove historical fill executability, or demonstrate
+strategy profitability.
+
 ## Direct scanner chronology (offline research)
 
 The opening-range scanner now independently checks that every supplied bar
