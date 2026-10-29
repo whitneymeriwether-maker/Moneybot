@@ -258,10 +258,13 @@ def _validate_daily_bars(bars, symbol):
 
     One traded IEX daily bar per weekday UTC date is expected. Weekend
     records and zero-volume synthetic bars cannot establish observed
-    trading prices, even when their OHLC fields look plausible.
+    trading prices, even when their OHLC fields look plausible. Require
+    strict chronology across the entire response, not only the latest
+    20 observations used by the screening calculation.
     """
 
     observed_dates = set()
+    previous_timestamp = None
     now = datetime.now(timezone.utc)
 
     for bar in bars:
@@ -286,10 +289,12 @@ def _validate_daily_bars(bars, symbol):
             or timestamp > now + timedelta(minutes=5)
             or timestamp.date().weekday() >= 5
             or timestamp.date() in observed_dates
+            or (previous_timestamp is not None and timestamp <= previous_timestamp)
         ):
             raise RuntimeError(f"Invalid daily bar for {symbol}")
 
         observed_dates.add(timestamp.date())
+        previous_timestamp = timestamp
 
 
 

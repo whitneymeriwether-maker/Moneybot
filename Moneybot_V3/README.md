@@ -532,3 +532,14 @@ and simulate a next-minute entry even though the opening range had not closed.
 The final 3:59 p.m. signal remains valid scanner output but cannot fill after
 the 4:00 p.m. regular-session close. This guards signal chronology; it does
 not verify exchange holidays, market data, or executable orders.
+
+### Complete daily-bar chronology (offline research)
+
+Before using IEX daily bars to screen a stock or to form a provisional
+SEC/Alpaca market-cap estimate, V3 now verifies that the **entire** supplied
+history is strictly chronological. An out-of-order older observation can no
+longer hide outside the latest 20-bar continuity sample and distort which
+sessions are used. The read-only downloader already sorts provider responses;
+this additionally protects direct callers and injected research datasets.
+It does not independently authenticate exchange timestamps, consolidated
+volume, historical prices, or the data provider.
