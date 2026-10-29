@@ -45,7 +45,7 @@ class ClosedTrade:
     exit_time: str
 
 
-def evaluate_closed_trades(trades: list[ClosedTrade], starting_capital: float) -> dict:
+def _evaluate_closed_trades_with_raw_pnl(trades: list[ClosedTrade], starting_capital: float):
     """Trade-sequence summary, not a substitute for time-based equity backtesting.
 
     The caller must use point-in-time data and independently model fees,
@@ -134,12 +134,24 @@ def evaluate_closed_trades(trades: list[ClosedTrade], starting_capital: float) -
         'expectancy_per_trade': round(mean(pnls), 2) if pnls else None,
         'max_closed_trade_drawdown_pct': round(max_drawdown*100, 3),
         'profit_factor': round(profit_factor, 3) if losses else None,
-    }
+    }, net_pnl
+
+
+def evaluate_closed_trades(trades: list[ClosedTrade], starting_capital: float) -> dict:
+    """Return the public, rounded single-strategy paper-trade summary."""
+    summary, _ = _evaluate_closed_trades_with_raw_pnl(trades, starting_capital)
+    return summary
 
 
 def compare_paper_strategies(baseline: list[ClosedTrade], ai: list[ClosedTrade],
                              starting_capital: float) -> dict:
     """Compare strategies using the same capital; does not claim statistical significance."""
-    a = evaluate_closed_trades(ai, starting_capital)
-    b = evaluate_closed_trades(baseline, starting_capital)
-    return {'baseline': b, 'ai': a, 'ai_minus_baseline_pnl': round(a['net_pnl']-b['net_pnl'], 2)}
+    a, ai_pnl = _evaluate_closed_trades_with_raw_pnl(ai, starting_capital)
+    b, baseline_pnl = _evaluate_closed_trades_with_raw_pnl(baseline, starting_capital)
+    # Subtract unrounded, validated PnL before rounding the comparison.
+    # Subtracting the two individually rounded reports can invent or hide
+    # a cent of apparent AI advantage near the half-cent boundaries.
+    advantage = ai_pnl - baseline_pnl
+    if not isfinite(advantage):
+        raise ValueError('Non-finite strategy PnL difference')
+    return {'baseline': b, 'ai': a, 'ai_minus_baseline_pnl': round(advantage, 2)}
