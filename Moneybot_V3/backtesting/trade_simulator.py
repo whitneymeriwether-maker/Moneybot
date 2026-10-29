@@ -13,6 +13,9 @@ from backtesting.signals import generate_breakout_signals
 
 
 NEW_YORK = ZoneInfo("America/New_York")
+# Match the historical CSV and walk-forward tape bounds. Larger whole-share
+# counts lose exact integer precision when multiplied by participation rates.
+MAX_EXACT_SHARE_VOLUME = (1 << 53) - 1
 
 
 def _finite_number(value):
@@ -154,7 +157,7 @@ def simulate_trades(
         if high < max(opening, close, low) or low > min(opening, close, high):
             raise ValueError("Inconsistent simulated OHLC bar")
         volume = getattr(bar, "volume", None)
-        if type(volume) is not int or volume < 0 or not _finite_number(volume):
+        if (type(volume) is not int or not 0 <= volume <= MAX_EXACT_SHARE_VOLUME):
             raise ValueError("Invalid simulated bar volume")
 
     # Bind every externally supplied signal to an observed bar. Otherwise a
