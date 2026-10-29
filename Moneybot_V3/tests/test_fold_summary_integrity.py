@@ -101,3 +101,17 @@ def test_tiny_positive_cash_balance_remains_valid():
     ))
     assert summary.trade_count == 1
     assert summary.worst_fold_return_pct > -100
+
+
+def test_summary_rejects_missing_fold_identifier():
+    # A filtered sequence (folds 1 and 3) must not masquerade as a complete
+    # walk-forward study after fold 2 was omitted.
+    first = result()
+    third = replace(result(first=date(2026, 10, 28), last=date(2026, 10, 29)), number=3)
+    with pytest.raises(ValueError, match="consecutive"):
+        summarize_fixed_baseline_folds((first, third))
+
+
+def test_summary_rejects_noninitial_fold_identifier():
+    with pytest.raises(ValueError, match="consecutive"):
+        summarize_fixed_baseline_folds((replace(result(), number=2),))

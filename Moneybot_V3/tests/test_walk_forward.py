@@ -387,3 +387,15 @@ def test_evaluator_rejects_seconds_bearing_offset_in_fold_tape(role):
     )
     with pytest.raises(ValueError, match=role):
         evaluate_fixed_baseline_folds((replace(fold, **{field: corrupted}),))
+
+
+def test_evaluator_rejects_omitted_or_noninitial_fold_identifiers():
+    # Public hand-built fold sequences must not silently omit a losing fold.
+    folds = build_research_folds(
+        make_bars(8), train_sessions=3, embargo_sessions=1, test_sessions=2
+    )
+    assert len(folds) == 2
+    with pytest.raises(ValueError, match="consecutive"):
+        evaluate_fixed_baseline_folds((replace(folds[0], number=2),))
+    with pytest.raises(ValueError, match="consecutive"):
+        evaluate_fixed_baseline_folds((folds[0], replace(folds[1], number=3)))

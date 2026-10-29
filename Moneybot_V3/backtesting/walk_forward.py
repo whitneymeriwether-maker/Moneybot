@@ -241,8 +241,8 @@ def evaluate_fixed_baseline_folds(
                 raise ValueError("Invalid research fold session dates")
         if not fold.test_dates:
             raise ValueError("Invalid research fold")
-        if type(fold.number) is not int or fold.number <= previous_number:
-            raise ValueError("Research fold numbers must increase")
+        if type(fold.number) is not int or fold.number != previous_number + 1:
+            raise ValueError("Research fold numbers must be consecutive from one")
         if (
             set(fold.test_dates) & (
                 set(fold.train_dates) | set(fold.embargo_dates) | seen_test_dates

@@ -56,8 +56,8 @@ def summarize_fixed_baseline_folds(results, *, starting_cash=1000.0):
     for result in results:
         if not isinstance(result, FixedBaselineFoldResult):
             raise ValueError("Invalid baseline fold result")
-        if type(result.number) is not int or result.number <= previous_number:
-            raise ValueError("Baseline fold numbers must increase")
+        if type(result.number) is not int or result.number != previous_number + 1:
+            raise ValueError("Baseline fold numbers must be consecutive from one")
         if (
             type(result.first_test_date) is not date
             or type(result.last_test_date) is not date
