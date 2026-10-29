@@ -21,6 +21,9 @@ from backtesting.trade_simulator import net_trade_profit, simulate_trades
 
 
 _NEW_YORK = ZoneInfo("America/New_York")
+# Keep direct in-memory fold tapes consistent with the historical CSV reader:
+# IEEE-754 floats cannot exactly represent larger whole-share counts.
+MAX_EXACT_SHARE_VOLUME = (1 << 53) - 1
 
 
 def _finite_real(value):
@@ -113,7 +116,12 @@ def build_research_folds(
         if high < max(opening, low, close) or low > min(opening, high, close):
             raise ValueError("Inconsistent research OHLC bar")
         volume = getattr(bar, "volume", None)
-        if type(volume) is not int or volume <= 0 or not _finite_real(volume):
+        if (
+            type(volume) is not int
+            or volume <= 0
+            or volume > MAX_EXACT_SHARE_VOLUME
+            or not _finite_real(volume)
+        ):
             raise ValueError("Research folds require traded minute volumes")
         sessions.setdefault(local.date(), []).append(bar)
 
@@ -189,7 +197,12 @@ def _validate_fold_session_bars(bars, dates, role):
         if high < max(opening, low, close) or low > min(opening, high, close):
             raise ValueError(f"Inconsistent research fold {role} OHLC bar")
         volume = getattr(bar, "volume", None)
-        if type(volume) is not int or volume <= 0 or not _finite_real(volume):
+        if (
+            type(volume) is not int
+            or volume <= 0
+            or volume > MAX_EXACT_SHARE_VOLUME
+            or not _finite_real(volume)
+        ):
             raise ValueError(f"Invalid research fold {role} volume")
 
 
