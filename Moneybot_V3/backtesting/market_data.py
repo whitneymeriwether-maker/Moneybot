@@ -24,6 +24,8 @@ DATA_BASE = "https://data.alpaca.markets/v2/stocks"
 ASSETS_BASE = "https://paper-api.alpaca.markets/v2/assets"
 
 MAX_QUOTE_AGE = timedelta(hours=72)
+# Above this bound, IEEE-754 doubles cannot represent every whole-share count.
+MAX_EXACT_SHARE_VOLUME = (1 << 53) - 1
 
 # Alpaca supplies RFC 3339 timestamps (including fractional nanoseconds).
 # datetime.fromisoformat also accepts compact and ISO week dates, spaces,
@@ -284,6 +286,7 @@ def _validate_daily_bars(bars, symbol):
             or low <= 0
             or volume <= 0  # A zero-volume bar cannot verify a trade price.
             or not volume.is_integer()  # Share counts cannot be fractional.
+            or volume > MAX_EXACT_SHARE_VOLUME  # No lossy whole-share counts.
             or not low <= min(open_price, close)
             or not max(open_price, close) <= high
             or timestamp > now + timedelta(minutes=5)
@@ -362,9 +365,10 @@ def get_stock_candidate(symbol, market_cap):
     if datetime.now(timezone.utc) - latest_bar > timedelta(days=7):
         raise RuntimeError(f"Stale daily bars for {symbol}")
 
-    # Individually finite daily volumes can overflow when summed.
-    # Such data is unverified, not a confirmed liquidity-screen failure.
-    total_volume = sum(float(bar["v"]) for bar in recent)
+    # Validated volumes are exact whole-share counts. Sum them as integers
+    # before computing the average; float accumulation loses low-order
+    # shares when one session has much larger volume than the others.
+    total_volume = sum(int(bar["v"]) for bar in recent)
     average_daily_volume = total_volume / len(recent)
     if not isfinite(average_daily_volume):
         raise RuntimeError(f"Invalid daily volume average for {symbol}")
