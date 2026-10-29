@@ -3,6 +3,7 @@
 
 from dataclasses import dataclass
 from datetime import time
+from math import isfinite
 from zoneinfo import ZoneInfo
 
 NEW_YORK = ZoneInfo("America/New_York")
@@ -57,9 +58,26 @@ def generate_breakout_signals(bars):
         if local_time.weekday() >= 5 or not (time(9, 30) <= clock < time(16, 0)):
             continue
 
-        typical_price = (bar.high + bar.low + bar.close) / 3
-        cumulative_price_volume += typical_price * bar.volume
-        cumulative_volume += bar.volume
+        # Finite input prices can overflow when added or multiplied by
+        # volume. Reject an unrepresentable VWAP rather than silently
+        # suppressing a breakout when the accumulator becomes infinity.
+        try:
+            typical_price = (
+                bar.high / 3 + bar.low / 3 + bar.close / 3
+            )
+            weighted_price_volume = typical_price * bar.volume
+            cumulative_price_volume += weighted_price_volume
+            cumulative_volume += bar.volume
+            if not (
+                isfinite(typical_price)
+                and isfinite(weighted_price_volume)
+                and isfinite(cumulative_price_volume)
+            ):
+                raise ValueError("Non-finite opening-range VWAP arithmetic")
+        except OverflowError as error:
+            raise ValueError(
+                "Non-finite opening-range VWAP arithmetic"
+            ) from error
 
         if time(9, 30) <= clock < time(9, 45):
             # A no-trade minute cannot establish a traded opening range.
@@ -87,7 +105,14 @@ def generate_breakout_signals(bars):
             and bar.volume > 0  # No fillable breakout without a trade.
             and not signaled_today
         ):
-            vwap = cumulative_price_volume / cumulative_volume
+            try:
+                vwap = cumulative_price_volume / cumulative_volume
+                if not isfinite(vwap):
+                    raise ValueError("Non-finite opening-range VWAP arithmetic")
+            except OverflowError as error:
+                raise ValueError(
+                    "Non-finite opening-range VWAP arithmetic"
+                ) from error
 
             if bar.close > opening_high and bar.close > vwap:
                 signals.append(
