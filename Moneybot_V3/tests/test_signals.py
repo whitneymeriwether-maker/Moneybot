@@ -2,6 +2,7 @@
 """Tests for Moneybot V3 opening-range breakout signals."""
 
 import sys
+import pytest
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -138,9 +139,8 @@ def test_duplicate_minute_does_not_replace_missing_minute():
     bars.sort(key=lambda bar: bar.timestamp)
     bars.append(make_bar(9, 45, 105))
 
-    signals = generate_breakout_signals(bars)
-
-    assert signals == []
+    with pytest.raises(ValueError, match="strictly increasing"):
+        generate_breakout_signals(bars)
 
 
 def test_weekend_opening_range_never_generates_signal():
