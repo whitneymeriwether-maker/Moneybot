@@ -7,7 +7,7 @@ Research only. Does not connect to a broker or place orders.
 from dataclasses import dataclass
 from decimal import Decimal
 from math import isfinite
-from datetime import date, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from backtesting.historical_data import load_price_bars
@@ -39,8 +39,28 @@ def validate_regular_session_gaps(bars, max_gap_minutes=1):
         raise ValueError("Invalid maximum regular-session gap")
 
     previous_regular = None
+    previous_utc = None
     for bar in bars:
-        local = bar.timestamp.astimezone(_NEW_YORK)
+        # This validator is public and can receive in-memory bars directly.
+        # Never interpret negative gaps or duplicate observations as valid
+        # coverage, even when exploratory callers permit larger gaps.
+        stamp = getattr(bar, "timestamp", None)
+        if (
+            not isinstance(stamp, datetime)
+            or stamp.tzinfo is None
+            or stamp.utcoffset() is None
+        ):
+            raise ValueError("Regular-session bars require timezone-aware timestamps")
+        utc_stamp = stamp.astimezone(timezone.utc)
+        if (
+            stamp.second or stamp.microsecond
+            or utc_stamp.second or utc_stamp.microsecond
+        ):
+            raise ValueError("Regular-session bars must be UTC minute-aligned")
+        if previous_utc is not None and utc_stamp <= previous_utc:
+            raise ValueError("Regular-session bars must be strictly chronological")
+        previous_utc = utc_stamp
+        local = stamp.astimezone(_NEW_YORK)
         if local.weekday() >= 5 or not (time(9, 30) <= local.time() < time(16, 0)):
             continue
         if previous_regular is not None:
