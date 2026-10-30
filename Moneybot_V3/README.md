@@ -1,3 +1,22 @@
+## Offline AI proposal JSON boundary (research only)
+
+`v3_proposal_adapter.parse_research_ai_proposal(json_text, trusted_evidence_ids=(...))`
+accepts a bounded JSON object with **exactly** `action`, `thesis`,
+`risks`, `evidence_ids`, and `confidence`. The only actions are
+`BUY`, `WAIT`, and `REJECT`; there is no sell/order instruction format.
+The parser rejects duplicate/unknown fields, non-finite or malformed numbers,
+unbounded text, and references not present in the caller-supplied allowlist.
+`BUY` must cite at least one allowlisted evidence ID. It returns the
+existing `AIProposal` value for the independent `validate_paper_entry`
+advisory gate; parsing alone never authorizes a trade.
+
+The allowlist must be assembled from independently verified, point-in-time
+research observations. **The parser cannot verify that the allowlist or its
+sources are authentic**, and an AI model's written thesis is not evidence.
+There is no LLM API call, credential handling, persistent Neon adapter,
+execution-time risk recheck, broker connection, live order, or demonstrated
+AI-versus-baseline improvement. All tests use synthetic offline data.
+
 ## Advisory paper-account cent precision (offline research)
 
 The paper entry and overnight-hold advisory gates now reject cash, initial
