@@ -174,6 +174,11 @@ def validate_paper_entry(candidate: Candidate, proposal: AIProposal,
     if not (candidate.opening_range_breakout is True and candidate.above_vwap is True and
             candidate.relative_volume >= 1.5 and candidate.ema9_above_ema20 is True):
         return Decision(False, 'Opening-range breakout criteria not satisfied')
+    # Direct callers can bypass the JSON adapter and construct AIProposal
+    # objects with arbitrary runtime action values. Reject unknown types and
+    # instructions before equality checks or reflecting them into audit logs.
+    if type(proposal.action) is not str or proposal.action not in ('BUY', 'WAIT', 'REJECT'):
+        return Decision(False, 'Invalid AI proposal action')
     if proposal.action != 'BUY':
         return Decision(False, f'AI decision: {proposal.action}')
     if not _valid_audit_text(proposal.thesis) or not _valid_audit_text(proposal.risks) or not _valid_evidence(proposal.evidence_ids):
