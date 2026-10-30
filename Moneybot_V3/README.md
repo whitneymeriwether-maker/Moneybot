@@ -1,3 +1,27 @@
+## Offline ledger-backed AI research review (read-only; no fills)
+
+`v3_ledger_advisory.review_ledger_research_proposal(...)` composes the
+existing strict AI JSON parser and independent paper-entry risk gate with a
+**read-only marked snapshot** from the local SQLite `PaperLedger`.
+It derives cash, marked equity, current market exposure, and starting capital
+from ledger accounting rather than accepting a separately fabricated
+`PaperAccount`. It requires fresh, exact-cent marks for every open position,
+a fresh account valuation not preceding the candidate observation, and a
+valid risk policy. Malformed/stale snapshots fail closed with a fixed denial.
+Even an approved BUY **never writes a hypothetical fill**.
+
+The ledger does not retain historical mark-to-market peaks or daily realized
+PnL. Therefore the caller **must supply** `peak_equity` and
+`realized_pnl_today` as exact decimal strings or `Decimal` values from an
+independently reconciled risk-history system. This adapter validates their
+format and that the peak is at least initial/current equity, but **cannot
+authenticate either value** or prevent a caller from understating historical
+drawdown or same-day losses. Likewise, caller-supplied market marks and
+evidence identifiers are not authenticated. This is a safer offline
+integration seam, **not** an execution-time atomic risk gate, Neon
+integration, actual AI model, or autonomous paper trader. No network,
+brokerage, order, or spending path is introduced.
+
 ## Offline JSON-to-paper research review (no execution)
 
 `v3_research_advisory.review_research_proposal(payload, trusted_evidence_ids=..., candidate=..., account=..., policy=...)`
