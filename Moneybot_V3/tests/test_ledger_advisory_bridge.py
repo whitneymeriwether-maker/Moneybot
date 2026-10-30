@@ -90,11 +90,11 @@ def test_daily_loss_context_still_triggers_independent_gate(tmp_path):
     now = datetime.now(timezone.utc)
     ledger = PaperLedger(tmp_path / "daily-loss.sqlite3")
     ledger.record_fill(
-        event_id="loss-buy", timestamp=now - timedelta(seconds=30),
+        event_id="loss-buy", timestamp=now,
         symbol="SPY", side="BUY", quantity=1, price="100.00",
     )
     ledger.record_fill(
-        event_id="loss-sell", timestamp=now - timedelta(seconds=20),
+        event_id="loss-sell", timestamp=now,
         symbol="SPY", side="SELL", quantity=1, price="70.00",
     )
     result = _review(tmp_path, ledger=ledger, realized_pnl_today="-30.00")

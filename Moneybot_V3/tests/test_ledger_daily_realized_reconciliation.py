@@ -56,7 +56,8 @@ def test_empty_ledger_rejects_unreconciled_daily_pnl(tmp_path, fabricated):
 def test_cannot_hide_a_recorded_same_day_loss(tmp_path):
     now = datetime.now(timezone.utc)
     ledger = PaperLedger(tmp_path / "loss.sqlite3")
-    _round_trip(ledger, now - timedelta(seconds=30), now - timedelta(seconds=20))
+    # Same-instant synthetic fills keep this day-boundary test deterministic.
+    _round_trip(ledger, now, now)
     result = _review(ledger, now, "0.00")
     assert not result.decision.approved
     assert result.proposal is None
