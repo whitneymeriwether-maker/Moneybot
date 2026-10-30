@@ -6,6 +6,10 @@ accepts a bounded JSON object with **exactly** `action`, `thesis`,
 `BUY`, `WAIT`, and `REJECT`; there is no sell/order instruction format.
 The parser rejects duplicate/unknown fields, non-finite or malformed numbers,
 unbounded text, and references not present in the caller-supplied allowlist.
+Confidence bounds are checked against exact JSON decimal values before
+conversion to the advisory gate's float type. Inputs that would underflow
+nonzero confidence to zero or round less-than-perfect confidence up to 1.0
+fail closed; these checks do not validate a model's calibration.
 `BUY` must cite at least one allowlisted evidence ID. It returns the
 existing `AIProposal` value for the independent `validate_paper_entry`
 advisory gate; parsing alone never authorizes a trade.

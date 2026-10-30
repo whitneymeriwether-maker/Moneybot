@@ -5,8 +5,8 @@ must come from an independently supplied allowlist, never from model claims.
 Passing this parser does NOT establish evidence authenticity or trading merit.
 """
 
+from decimal import Decimal, InvalidOperation
 import json
-from math import isfinite
 
 from v3_decision import AIProposal
 
@@ -79,8 +79,13 @@ def parse_research_ai_proposal(payload, *, trusted_evidence_ids):
             payload,
             object_pairs_hook=_unique_object,
             parse_constant=_reject_constant,
+            # Validate exact JSON numeric bounds before conversion to binary
+            # float. Otherwise 1.000...001 can round down to 1.0 and a
+            # tiny negative confidence can silently underflow to -0.0.
+            parse_float=Decimal,
+            parse_int=Decimal,
         )
-    except (ValueError, RecursionError):
+    except (ValueError, RecursionError, InvalidOperation):
         raise ValueError("Invalid AI proposal JSON") from None
     if type(proposal) is not dict or proposal.keys() != _REQUIRED_FIELDS:
         raise ValueError("AI proposal requires exactly the defined fields")
@@ -90,16 +95,20 @@ def parse_research_ai_proposal(payload, *, trusted_evidence_ids):
     if not _valid_reason(proposal["thesis"]) or not _valid_reason(proposal["risks"]):
         raise ValueError("AI proposal requires bounded auditable reasoning")
     confidence = proposal["confidence"]
-    try:
-        valid_confidence = (
-            type(confidence) in (int, float)
-            and isfinite(confidence)
-            and 0 <= confidence <= 1
-        )
-    except (OverflowError, ValueError):
-        valid_confidence = False
-    if not valid_confidence:
+    if (
+        type(confidence) is not Decimal
+        or not confidence.is_finite()
+        or not 0 <= confidence <= 1
+    ):
         raise ValueError("Invalid AI proposal confidence")
+    confidence_float = float(confidence)
+    # A nonzero confidence must not underflow to zero; likewise a
+    # sub-unit confidence must not round up to perfect certainty.
+    if (
+        (confidence != 0 and confidence_float == 0)
+        or (confidence != 1 and confidence_float == 1)
+    ):
+        raise ValueError("AI proposal confidence loses boundary precision")
     evidence = proposal["evidence_ids"]
     if (
         type(evidence) is not list
@@ -115,5 +124,5 @@ def parse_research_ai_proposal(payload, *, trusted_evidence_ids):
         thesis=proposal["thesis"],
         risks=proposal["risks"],
         evidence_ids=tuple(evidence),
-        confidence=float(confidence),
+        confidence=confidence_float,
     )
