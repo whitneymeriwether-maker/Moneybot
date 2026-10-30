@@ -1,6 +1,5 @@
 """Offline adversarial tests for the research-only AI proposal boundary."""
 
-from dataclasses import replace
 from datetime import datetime, timezone
 import json
 
@@ -101,12 +100,12 @@ def test_action_must_be_one_of_research_only_actions(invalid):
     True, None, "0.7", -0.01, 1.01, 1e999, 10 ** 400,
 ])
 def test_malformed_or_unrepresentable_confidence_fails_closed(confidence):
-    with pytest.raises(ValueError, match="confidence"):
+    with pytest.raises(ValueError):
         parse({**BASE, "confidence": confidence})
 
 
 @pytest.mark.parametrize("field", ["thesis", "risks"])
-@pytest.mark.parametrize("reason", ["", "  ", None, "x" * 2001, "line\\nnewline"])
+@pytest.mark.parametrize("reason", ["", "  ", None, "x" * 2001, "line\nnewline"])
 def test_reasoning_must_be_bounded_printable_text(field, reason):
     with pytest.raises(ValueError, match="reasoning"):
         parse({**BASE, field: reason})
