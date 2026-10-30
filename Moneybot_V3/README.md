@@ -7,7 +7,7 @@ It derives cash, marked equity, current market exposure, and starting capital
 from ledger accounting rather than accepting a separately fabricated
 `PaperAccount`. It requires fresh, exact-cent marks for every open position,
 a fresh account valuation not preceding the candidate observation, and a
-valid risk policy. Malformed/stale snapshots fail closed with a fixed denial.
+valid risk policy. It also replays the full local fill history using\n`ledger.audit_history()` before valuation, rejecting history/state mismatches.\nThis is an O(number of fills) read-only audit, not an atomic transaction\nspanning the subsequent snapshot. Malformed/stale snapshots fail closed\nwith a fixed denial.
 Even an approved BUY **never writes a hypothetical fill**.
 
 The ledger does not retain historical mark-to-market peaks or daily realized
