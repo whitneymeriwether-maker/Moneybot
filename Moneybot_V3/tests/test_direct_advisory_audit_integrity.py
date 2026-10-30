@@ -28,7 +28,7 @@ ACCOUNT = PaperAccount(1000, 1000, 200, 0)
     ("thesis", "x" * 2001),
     ("risks", "x" * 2001),
     ("thesis", "\ud800"),
-    ("risks", "Only\\nline break"),
+    ("risks", "Only\nline break"),
     ("thesis", "  "),
 ])
 def test_direct_entry_rejects_non_auditable_reasoning(field, bad):
@@ -63,7 +63,7 @@ def test_direct_entry_and_overnight_hold_reject_unreliable_evidence(ids):
 
 @pytest.mark.parametrize("bad", [
     "Thesis\u202eoverride", "Thesis\u200bhidden", "x" * 2001,
-    "New\\nline", "\ud800", "  ",
+    "New\nline", "\ud800", "  ",
 ])
 def test_direct_overnight_hold_rejects_non_auditable_thesis(bad):
     result = validate_overnight_hold(
