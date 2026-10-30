@@ -324,7 +324,8 @@ def test_history_audit_replays_partial_fills_and_same_timestamp(tmp_path):
     path = tmp_path / "paper.sqlite3"
     ledger = PaperLedger(path)
     assert ledger.audit_history() == {
-        "audited_fills": 0, "cash": "1000.00", "realized_pnl": "0.00"
+        "audited_fills": 0, "cash": "1000.00", "peak_cash": "1000.00",
+        "realized_pnl": "0.00"
     }
     fill(ledger, event_id="z-buy", quantity=3, price="10.00", fee="0.01")
     # An alphabetically earlier sell ID must not reorder same-time fills.
@@ -333,7 +334,8 @@ def test_history_audit_replays_partial_fills_and_same_timestamp(tmp_path):
     fill(ledger, event_id="other", symbol="QQQ", quantity=2,
          price="20.00", fee="0.00")
     assert PaperLedger(path).audit_history() == {
-        "audited_fills": 3, "cash": "941.97", "realized_pnl": "1.98"
+        "audited_fills": 3, "cash": "941.97", "peak_cash": "1000.00",
+        "realized_pnl": "1.98"
     }
 
 

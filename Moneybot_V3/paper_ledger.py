@@ -384,6 +384,8 @@ class PaperLedger:
         migrating the ledger; do not call on every fill in a large account.
         It is not cryptographic authentication or proof of market execution.
 
+        The peak_cash result is the largest observed cash balance, including
+        starting cash. It is only a lower bound on historical marked equity.
         Optionally replay realized SELL PnL from an aware UTC instant onward.
         This derives a daily risk figure from recorded hypothetical fills,
         not external marks or authenticated exchange executions.
@@ -409,6 +411,10 @@ class PaperLedger:
                        FROM paper_account WHERE id=1"""
                 ).fetchone()
                 cash, realized = start, 0
+                # Cash is a conservative lower bound on marked equity at
+                # every fill. A past cash high therefore proves a minimum
+                # historical peak even without archived market marks.
+                peak_cash = start
                 realized_since_cents = 0
                 positions = {}
                 previous_timestamp = None
@@ -486,6 +492,7 @@ class PaperLedger:
                             del positions[symbol]
                         else:
                             positions[symbol] = (held - quantity, basis - released)
+                    peak_cash = max(peak_cash, cash)
                     count += 1
 
                 stored_positions = {
@@ -506,6 +513,7 @@ class PaperLedger:
         result = {
             "audited_fills": count,
             "cash": _money(cash),
+            "peak_cash": _money(peak_cash),
             "realized_pnl": _money(realized),
         }
         if since_stamp is not None:

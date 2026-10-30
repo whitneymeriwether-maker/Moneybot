@@ -56,7 +56,8 @@ def review_ledger_research_proposal(
     Cash, starting capital, equity, exposure and today's realized PnL
     are reconciled to the local ledger. The risk day is midnight-to-midnight
     America/New_York (including daylight-saving transitions). Peak equity
-    remains caller-supplied and cannot be independently authenticated.
+    remains caller-supplied. The replayed maximum cash balance provides
+    only a verifiable lower bound on the true historical marked peak.
     Never use this advisory to execute or record a fill.
     """
     denied = ResearchReview(None, Decision(False, _UNVERIFIED))
@@ -146,6 +147,7 @@ def review_ledger_research_proposal(
         # separately fabricated PaperAccount.
         if (
             peak < start
+            or peak < Decimal(audit["peak_cash"])
             or peak < equity
             or cash + exposure != equity
             or equity <= 0

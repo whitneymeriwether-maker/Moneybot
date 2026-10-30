@@ -26,8 +26,11 @@ Even an approved BUY **never writes a hypothetical fill**.
 The ledger does not retain historical mark-to-market peaks. The caller
 **must supply** `peak_equity` as exact decimal money from an independently
 reconciled risk-history system. The adapter checks that it is at least
-initial/current equity, but **cannot authenticate peak equity** or prevent
-understated historical drawdown. In contrast, `realized_pnl_today` is now
+initial/current equity **and the highest replayed cash balance**. A prior
+cash high is a provable lower bound on historical marked equity, so the
+adapter now rejects a peak claim below that recorded cash high even if the
+account later loses the profit. This does **not** authenticate the actual
+historical mark-to-market peak or prevent all understated drawdown. In contrast, `realized_pnl_today` is now
 cross-checked against a full replay of hypothetical SELL fills since midnight
 **America/New_York** on the valuation date (including DST transitions).
 A missing or understated daily loss fails closed; the caller still supplies
