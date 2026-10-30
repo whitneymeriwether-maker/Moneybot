@@ -1,6 +1,7 @@
 """Offline tests: ledger-backed AI review is read-only and fails closed."""
 
 import json
+import sqlite3
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -153,3 +154,28 @@ def test_non_ledger_object_cannot_impersonate_a_paper_account(tmp_path):
     result = _review(tmp_path, ledger=FakeLedger())
     assert result.proposal is None
     assert not result.decision.approved
+
+
+def test_full_fill_history_audit_blocks_coordinated_snapshot_illusion(tmp_path):
+    now = datetime.now(timezone.utc)
+    ledger = PaperLedger(tmp_path / "tampered.sqlite3")
+    ledger.record_fill(
+        event_id="offline-buy", timestamp=now - timedelta(seconds=30),
+        symbol="SPY", side="BUY", quantity=1, price="100.00",
+    )
+    # The current cash + basis - realized invariant still balances, but
+    # the fill record no longer explains the stored position and cash.
+    with sqlite3.connect(ledger.db_path) as db:
+        db.execute(
+            "UPDATE paper_fills SET price_cents=10100 WHERE event_id='offline-buy'"
+        )
+    assert ledger.snapshot()["cash"] == "900.00"
+    result = review_ledger_research_proposal(
+        _payload(), ledger=ledger,
+        marks={"SPY": {"price": "100.00", "timestamp": now}},
+        as_of=now, peak_equity="1000.00", realized_pnl_today="0.00",
+        trusted_evidence_ids=TRUSTED, candidate=_candidate(now),
+    )
+    assert result.proposal is None
+    assert not result.decision.approved
+    assert result.decision.reason == "Unverified ledger snapshot or paper risk history"
