@@ -2,6 +2,7 @@
 
 No model, network, database, or brokerage integration. Evidence identifiers
 must come from an independently supplied allowlist, never from model claims.
+Unicode nonprinting/control characters are forbidden in audit text and IDs.
 Passing this parser does NOT establish evidence authenticity or trading merit.
 """
 
@@ -38,7 +39,7 @@ def _valid_evidence_id(value):
         type(value) is str
         and 0 < len(value) <= _MAX_EVIDENCE_ID_CHARS
         and value == value.strip()
-        and all(ord(char) >= 32 for char in value)
+        and value.isprintable()
     )
 
 
@@ -47,7 +48,7 @@ def _valid_reason(value):
         type(value) is str
         and 0 < len(value) <= _MAX_REASON_CHARS
         and bool(value.strip())
-        and all(ord(char) >= 32 for char in value)
+        and value.isprintable()
     )
 
 
