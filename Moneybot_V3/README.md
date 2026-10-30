@@ -1,3 +1,14 @@
+## Direct paper-advisory audit integrity (offline research)
+
+The entry and overnight-hold advisory gates independently enforce bounded,
+printable reasoning and unique, trimmed, printable evidence identifiers,
+including when callers construct `AIProposal` objects directly and bypass
+the strict JSON proposal adapter. They reject hidden Unicode controls,
+duplicate or oversized identifiers, and oversized or nonprinting reasoning.
+Readable international-language text remains valid. This is a structural
+audit safeguard, **not** authentication of cited research, proof of model
+quality, or permission to trade; no broker or network integration is added.
+
 ## Offline AI proposal JSON boundary (research only)
 
 `v3_proposal_adapter.parse_research_ai_proposal(json_text, trusted_evidence_ids=(...))`

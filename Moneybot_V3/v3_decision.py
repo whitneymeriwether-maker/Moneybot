@@ -88,11 +88,29 @@ def _valid_policy(policy):
     )
 
 
-def _valid_evidence(evidence_ids):
+def _valid_audit_text(value):
+    """Require bounded, visible reasoning even when callers bypass JSON parsing."""
     return (
-        isinstance(evidence_ids, tuple)
-        and bool(evidence_ids)
-        and all(isinstance(item, str) and bool(item.strip()) for item in evidence_ids)
+        type(value) is str
+        and 0 < len(value) <= 2000
+        and bool(value.strip())
+        and value.isprintable()
+    )
+
+
+def _valid_evidence(evidence_ids):
+    """Reject duplicate, hidden, or oversized evidence IDs at the advisory gate."""
+    return (
+        type(evidence_ids) is tuple
+        and 0 < len(evidence_ids) <= 16
+        and all(
+            type(item) is str
+            and 0 < len(item) <= 128
+            and item == item.strip()
+            and item.isprintable()
+            for item in evidence_ids
+        )
+        and len(set(evidence_ids)) == len(evidence_ids)
     )
 
 def _ledger_monetary_state(account):
@@ -158,7 +176,7 @@ def validate_paper_entry(candidate: Candidate, proposal: AIProposal,
         return Decision(False, 'Opening-range breakout criteria not satisfied')
     if proposal.action != 'BUY':
         return Decision(False, f'AI decision: {proposal.action}')
-    if not isinstance(proposal.thesis, str) or not proposal.thesis.strip() or not isinstance(proposal.risks, str) or not proposal.risks.strip() or not _valid_evidence(proposal.evidence_ids):
+    if not _valid_audit_text(proposal.thesis) or not _valid_audit_text(proposal.risks) or not _valid_evidence(proposal.evidence_ids):
         return Decision(False, 'Missing auditable reasoning or evidence')
     if not 0 <= proposal.confidence <= 1:
         return Decision(False, 'Invalid confidence')
@@ -231,7 +249,7 @@ def validate_overnight_hold(sessions_held: int, proposed_exposure: float,
         return Decision(False, 'Invalid paper account')
     if type(sessions_held) is not int or sessions_held < 1 or sessions_held >= policy.max_holding_sessions:
         return Decision(False, 'Maximum holding period reached')
-    if not isinstance(thesis, str) or not thesis.strip() or not _valid_evidence(evidence_ids):
+    if not _valid_audit_text(thesis) or not _valid_evidence(evidence_ids):
         return Decision(False, 'Overnight thesis and evidence required')
     # Apply the same account-integrity and daily-loss checks used for
     # entries. A hold must not bypass the paper account's risk stops.
