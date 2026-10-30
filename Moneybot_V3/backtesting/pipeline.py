@@ -251,6 +251,11 @@ def run_backtest(
     bars = load_price_bars(csv_filename, expected_symbol=expected_symbol)
     validate_regular_session_gaps(bars, max_regular_gap_minutes)
     if require_full_regular_sessions:
+        # Exploratory gap tolerance must never weaken a strict complete-
+        # session report. The boundary check alone cannot see missing
+        # interior minutes when a caller allows gaps longer than one minute.
+        if max_regular_gap_minutes != 1:
+            validate_regular_session_gaps(bars, max_gap_minutes=1)
         validate_regular_session_coverage(bars)
     if require_traded_regular_minutes:
         validate_traded_regular_minutes(bars)
