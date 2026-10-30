@@ -88,6 +88,11 @@ def review_ledger_research_proposal(
     try:
         peak = _risk_money(peak_equity, positive=True)
         daily = _risk_money(realized_pnl_today)
+        # A marked snapshot checks current balances, but a coordinated edit
+        # to cash and positions can preserve that simple invariant. Replay
+        # the complete hypothetical fill history before using the account.
+        # Both operations are read-only; no atomic execution is implied.
+        ledger.audit_history()
         snapshot = ledger.marked_snapshot(
             marks, as_of=as_of, max_age_seconds=policy.max_data_age_seconds,
         )
