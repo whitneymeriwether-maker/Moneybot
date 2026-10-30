@@ -92,10 +92,20 @@ def review_ledger_research_proposal(
         # to cash and positions can preserve that simple invariant. Replay
         # the complete hypothetical fill history before using the account.
         # Both operations are read-only; no atomic execution is implied.
-        ledger.audit_history()
+        audit = ledger.audit_history()
         snapshot = ledger.marked_snapshot(
             marks, as_of=as_of, max_age_seconds=policy.max_data_age_seconds,
         )
+        # Audit and marking use separate read transactions. Reject ordinary
+        # concurrent fill drift rather than approving an account state that
+        # was not the one just replayed. This is not an atomic snapshot:
+        # coordinated same-count tampering still requires stronger controls.
+        if (
+            audit["audited_fills"] != snapshot["fill_count"]
+            or audit["cash"] != snapshot["cash"]
+            or audit["realized_pnl"] != snapshot["realized_pnl"]
+        ):
+            return denied
         start = Decimal(snapshot["starting_cash"])
         equity = Decimal(snapshot["equity"])
         cash = Decimal(snapshot["cash"])

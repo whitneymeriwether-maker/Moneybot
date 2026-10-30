@@ -703,3 +703,16 @@ such as $0.29 without treating binary representation noise as fractional
 cents. The ledger still independently validates the actual fill price,
 fees, cash, and positions atomically. This is not a market-price feed,
 execution guarantee, or authorization to place live orders.
+
+## Audit-to-valuation drift detection (offline paper advisory)
+
+The read-only `v3_ledger_advisory.review_ledger_research_proposal` now
+compares audited fill count, cash, and cumulative realized PnL with the
+subsequent marked snapshot before evaluating an AI BUY proposal. If a second
+paper worker records a hypothetical fill between those two reads, including
+a buy/sell round trip that restores cash and realized PnL, the advisory fails
+closed rather than relying on a stale audit. These are still **two separate
+SQLite read transactions**, not an atomic audit-and-valuation snapshot; a
+coordinated rewrite preserving these fields can evade the check. No order or
+fill is executed by the advisory. A future paper engine must use an atomic,
+execution-time risk check and independently authenticated risk history.
