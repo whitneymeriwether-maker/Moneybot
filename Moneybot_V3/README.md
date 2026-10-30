@@ -7,7 +7,12 @@ It derives cash, marked equity, current market exposure, and starting capital
 from ledger accounting rather than accepting a separately fabricated
 `PaperAccount`. It requires fresh, exact-cent marks for every open position,
 a fresh account valuation not preceding the candidate observation, and a
-valid risk policy. It also replays the full local fill history using
+valid risk policy. **Every open-position mark must also be no more than five
+seconds older than the candidate signal timestamp**, even if the mark is
+otherwise within the general market-data freshness window. This prevents
+a recent signal from being reviewed against materially older paper exposure
+or drawdown valuations; five seconds accommodates minor feed timestamp skew,
+not unverified quotes or actual price movement. It also replays the full local fill history using
 `ledger.audit_history()` before valuation, rejecting history/state mismatches.
 This is an O(number of fills) read-only audit. A short-lived SQLite
 `BEGIN IMMEDIATE` reservation prevents ordinary concurrent fill writers from
