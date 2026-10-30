@@ -10,7 +10,7 @@ from math import isfinite
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from backtesting.historical_data import load_price_bars
+from backtesting.historical_data import MAX_EXACT_SHARE_VOLUME, load_price_bars
 from backtesting.ledger_reconciliation import reconcile_closed_simulation
 from backtesting.signals import generate_breakout_signals
 from backtesting.trade_simulator import net_trade_profit, simulate_trades
@@ -86,7 +86,13 @@ def validate_traded_regular_minutes(bars):
     for bar in bars:
         local = bar.timestamp.astimezone(_NEW_YORK)
         if local.weekday() < 5 and time(9, 30) <= local.time() < time(16, 0):
-            if bar.volume == 0:
+            # Direct callers can bypass the CSV reader. A negative,
+            # fractional, boolean or inexactly representable share count
+            # cannot establish that a minute contains actual trades.
+            volume = getattr(bar, "volume", None)
+            if type(volume) is not int or not 0 <= volume <= MAX_EXACT_SHARE_VOLUME:
+                raise ValueError("Invalid regular-session share volume")
+            if volume == 0:
                 raise ValueError(
                     "Zero-volume regular-session minute bar: "
                     f"{bar.timestamp.isoformat()}"

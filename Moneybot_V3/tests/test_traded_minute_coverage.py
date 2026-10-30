@@ -104,3 +104,22 @@ def test_six_month_runner_enables_strict_traded_minutes(tmp_path, monkeypatch):
         runner.main()
     assert seen["require_full_regular_sessions"] is True
     assert seen["require_traded_regular_minutes"] is True
+
+
+@pytest.mark.parametrize("invalid_volume", [
+    -1, 1.5, 1.0, True, "100", None,
+    float("nan"), float("inf"), (1 << 53),
+])
+def test_direct_traded_minute_check_rejects_invalid_share_counts(invalid_volume):
+    # Direct callers must not certify malformed in-memory volumes as traded.
+    with pytest.raises(ValueError, match="Invalid regular-session share volume"):
+        validate_traded_regular_minutes([
+            _bar(2026, 10, 12, 9, 30, invalid_volume)
+        ])
+
+
+@pytest.mark.parametrize("valid_volume", [1, (1 << 53) - 1])
+def test_direct_traded_minute_check_accepts_exact_positive_share_bounds(valid_volume):
+    validate_traded_regular_minutes([
+        _bar(2026, 10, 12, 9, 30, valid_volume)
+    ])
