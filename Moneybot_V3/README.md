@@ -1,3 +1,20 @@
+## Offline JSON-to-paper research review (no execution)
+
+`v3_research_advisory.review_research_proposal(payload, trusted_evidence_ids=..., candidate=..., account=..., policy=...)`
+connects the strict AI JSON parser to the independent paper-entry risk gate.
+It returns a frozen `ResearchReview` with the validated proposal (or
+`None` for malformed JSON/evidence) and a `Decision`. Malformed or
+untrusted input receives a fixed denial without echoing model content.
+Valid `WAIT` and `REJECT` proposals are preserved for local research
+audit but cannot approve an entry. A valid `BUY` still must pass timestamp,
+breakout, account, sizing, and risk-policy checks.
+
+The caller **must** construct the trusted evidence allowlist from
+independently verified point-in-time data; model-supplied IDs do not establish
+authenticity. The result is **only an offline advisory**: it never calls an
+LLM, writes a ledger, connects to Neon or a broker, or creates a paper/live
+fill. No actual AI model or performance improvement has been validated.
+
 ## Direct AI action schema integrity (offline research)
 
 The paper-entry advisory now independently requires an exact plain-string
