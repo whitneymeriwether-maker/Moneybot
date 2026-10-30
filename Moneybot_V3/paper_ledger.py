@@ -375,7 +375,7 @@ class PaperLedger:
             "fill_count": count,
         }
 
-    def audit_history(self):
+    def audit_history(self, *, realized_since=None):
         """Explicitly replay all hypothetical fills and reconcile final state.
 
         This independent O(number of fills) check detects changes to fill
@@ -383,7 +383,23 @@ class PaperLedger:
         invariant cannot detect. Run before trusting research reports or
         migrating the ledger; do not call on every fill in a large account.
         It is not cryptographic authentication or proof of market execution.
+
+        Optionally replay realized SELL PnL from an aware UTC instant onward.
+        This derives a daily risk figure from recorded hypothetical fills,
+        not external marks or authenticated exchange executions.
         """
+        if realized_since is not None:
+            if (
+                type(realized_since) is not datetime
+                or realized_since.tzinfo is None
+                or realized_since.utcoffset() is None
+            ):
+                raise ValueError("Realized PnL start must be timezone-aware")
+            since_stamp = realized_since.astimezone(timezone.utc).isoformat(
+                timespec="microseconds"
+            )
+        else:
+            since_stamp = None
         with closing(self._connect()) as db:
             try:
                 db.execute("BEGIN")
@@ -393,6 +409,7 @@ class PaperLedger:
                        FROM paper_account WHERE id=1"""
                 ).fetchone()
                 cash, realized = start, 0
+                realized_since_cents = 0
                 positions = {}
                 previous_timestamp = None
                 count = 0
@@ -456,8 +473,14 @@ class PaperLedger:
                             (2 * basis * quantity + held) // (2 * held)
                         )
                         cash += proceeds
-                        realized += proceeds - released
-                        if abs(realized) > MAX_CENTS:
+                        realized_change = proceeds - released
+                        realized += realized_change
+                        if since_stamp is not None and stamp >= since_stamp:
+                            realized_since_cents += realized_change
+                        if (
+                            abs(realized) > MAX_CENTS
+                            or abs(realized_since_cents) > MAX_CENTS
+                        ):
                             raise ValueError("Corrupt paper fill history: realized PnL")
                         if quantity == held:
                             del positions[symbol]
@@ -480,11 +503,14 @@ class PaperLedger:
             except Exception:
                 db.rollback()
                 raise
-        return {
+        result = {
             "audited_fills": count,
             "cash": _money(cash),
             "realized_pnl": _money(realized),
         }
+        if since_stamp is not None:
+            result["realized_since"] = _money(realized_since_cents)
+        return result
 
     def marked_snapshot(self, marks, *, as_of, max_age_seconds=720):
         """Read-only, point-in-time *hypothetical* equity and exposure estimate.

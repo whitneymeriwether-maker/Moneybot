@@ -8,6 +8,7 @@ A successful decision is not execution authorization.
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
+from zoneinfo import ZoneInfo
 
 from paper_ledger import MAX_CENTS, PaperLedger
 from v3_decision import Candidate, Decision, PaperAccount, RiskPolicy, _valid_policy
@@ -51,10 +52,10 @@ def review_ledger_research_proposal(
 ) -> ResearchReview:
     """Review AI JSON using a fresh, read-only marked SQLite paper account.
 
-    Only cash, starting capital, current equity and exposure come from the
-    local ledger. Peak equity and today's realized PnL are supplied by the
-    caller because the ledger does not persist historical daily risk/marks.
-    These two inputs are NOT independently authenticated by this adapter.
+    Cash, starting capital, equity, exposure and today's realized PnL
+    are reconciled to the local ledger. The risk day is midnight-to-midnight
+    America/New_York (including daylight-saving transitions). Peak equity
+    remains caller-supplied and cannot be independently authenticated.
     Never use this advisory to execute or record a fill.
     """
     denied = ResearchReview(None, Decision(False, _UNVERIFIED))
@@ -88,11 +89,18 @@ def review_ledger_research_proposal(
     try:
         peak = _risk_money(peak_equity, positive=True)
         daily = _risk_money(realized_pnl_today)
+        # Reconstruct the New York trading-day realized PnL from SELL fills.
+        # This rejects caller-supplied daily-loss figures that understate
+        # recorded paper losses, without claiming market-data authenticity.
+        ny_time = as_of.astimezone(ZoneInfo("America/New_York"))
+        day_start = ny_time.replace(
+            hour=0, minute=0, second=0, microsecond=0,
+        ).astimezone(timezone.utc)
         # A writer reservation prevents ordinary SQLite fill writers from
         # changing the ledger between the full replay audit and valuation.
         # Neither operation writes a fill. This is not an execution-time gate.
         with ledger.consistent_advisory_read():
-            audit = ledger.audit_history()
+            audit = ledger.audit_history(realized_since=day_start)
             snapshot = ledger.marked_snapshot(
                 marks, as_of=as_of, max_age_seconds=policy.max_data_age_seconds,
             )
@@ -102,6 +110,7 @@ def review_ledger_research_proposal(
             audit["audited_fills"] != snapshot["fill_count"]
             or audit["cash"] != snapshot["cash"]
             or audit["realized_pnl"] != snapshot["realized_pnl"]
+            or daily != Decimal(audit["realized_since"])
         ):
             return denied
         start = Decimal(snapshot["starting_cash"])

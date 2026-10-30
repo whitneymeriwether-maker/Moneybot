@@ -87,7 +87,17 @@ def test_malformed_or_understated_risk_history_denies_without_a_fill(tmp_path, f
 
 
 def test_daily_loss_context_still_triggers_independent_gate(tmp_path):
-    result = _review(tmp_path, realized_pnl_today="-30.00")
+    now = datetime.now(timezone.utc)
+    ledger = PaperLedger(tmp_path / "daily-loss.sqlite3")
+    ledger.record_fill(
+        event_id="loss-buy", timestamp=now - timedelta(seconds=30),
+        symbol="SPY", side="BUY", quantity=1, price="100.00",
+    )
+    ledger.record_fill(
+        event_id="loss-sell", timestamp=now - timedelta(seconds=20),
+        symbol="SPY", side="SELL", quantity=1, price="70.00",
+    )
+    result = _review(tmp_path, ledger=ledger, realized_pnl_today="-30.00")
     assert result.proposal is not None
     assert not result.decision.approved
     assert result.decision.reason == "Daily realized-loss circuit breaker"

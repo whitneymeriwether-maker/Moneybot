@@ -18,17 +18,21 @@ database-file tampering. Malformed/stale snapshots fail closed
 with a fixed denial.
 Even an approved BUY **never writes a hypothetical fill**.
 
-The ledger does not retain historical mark-to-market peaks or daily realized
-PnL. Therefore the caller **must supply** `peak_equity` and
-`realized_pnl_today` as exact decimal strings or `Decimal` values from an
-independently reconciled risk-history system. This adapter validates their
-format and that the peak is at least initial/current equity, but **cannot
-authenticate either value** or prevent a caller from understating historical
-drawdown or same-day losses. Likewise, caller-supplied market marks and
-evidence identifiers are not authenticated. This is a safer offline
-integration seam, **not** an execution-time atomic risk gate, Neon
-integration, actual AI model, or autonomous paper trader. No network,
-brokerage, order, or spending path is introduced.
+The ledger does not retain historical mark-to-market peaks. The caller
+**must supply** `peak_equity` as exact decimal money from an independently
+reconciled risk-history system. The adapter checks that it is at least
+initial/current equity, but **cannot authenticate peak equity** or prevent
+understated historical drawdown. In contrast, `realized_pnl_today` is now
+cross-checked against a full replay of hypothetical SELL fills since midnight
+**America/New_York** on the valuation date (including DST transitions).
+A missing or understated daily loss fails closed; the caller still supplies
+the exact-cent value for compatibility. The ledger-derived value reflects
+only locally recorded paper fills, not unrecorded fees, external accounts,
+intraday unrealized losses, or verified exchange executions. Likewise,
+caller-supplied market marks and evidence identifiers are not authenticated.
+This is a safer offline integration seam, **not** an execution-time atomic
+risk gate, Neon integration, actual AI model, or autonomous paper trader.
+No network, brokerage, order, or spending path is introduced.
 
 ## Offline JSON-to-paper research review (no execution)
 
