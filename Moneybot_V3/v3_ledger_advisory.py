@@ -104,6 +104,17 @@ def review_ledger_research_proposal(
             snapshot = ledger.marked_snapshot(
                 marks, as_of=as_of, max_age_seconds=policy.max_data_age_seconds,
             )
+        # Account marks must be contemporaneous with the candidate signal.
+        # A mark can satisfy the general freshness window yet predate the
+        # signal by minutes, understating exposure or an intraday drawdown.
+        # Permit only five seconds of cross-feed timestamp skew. Read the
+        # canonical, ledger-validated marks rather than untrusted input.
+        earliest_mark = candidate_utc - timedelta(seconds=5)
+        if any(
+            datetime.fromisoformat(position["mark_timestamp_utc"]) < earliest_mark
+            for position in snapshot["positions"].values()
+        ):
+            return denied
         # Independently reject discrepancies even if a caller bypasses the
         # reservation or a storage anomaly yields inconsistent reads.
         if (
