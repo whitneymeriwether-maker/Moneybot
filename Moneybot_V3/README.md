@@ -1,3 +1,13 @@
+## Direct AI action schema integrity (offline research)
+
+The paper-entry advisory now independently requires an exact plain-string
+`BUY`, `WAIT`, or `REJECT` action, even when a caller bypasses the JSON
+adapter and constructs an `AIProposal` directly. Unknown, non-string, or
+string-subclass actions fail closed without being interpolated into audit
+reasons; legitimate `WAIT` and `REJECT` still produce ordinary denials.
+This is a local audit/control-flow safeguard, not model validation,
+evidence authentication, or authorization to trade.
+
 ## Direct paper-advisory audit integrity (offline research)
 
 The entry and overnight-hold advisory gates independently enforce bounded,
