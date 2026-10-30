@@ -745,3 +745,18 @@ not require an existing position mark. This deliberately conservative check
 may reject legitimate price changes between feeds; callers must obtain a
 synchronized, independently verified mark and signal before reviewing again.
 It does not authenticate prices, authorize hypothetical fills, or place orders.
+
+## Signal-to-ledger chronology for offline paper advisory
+
+The read-only SQLite-backed research advisory now refuses to evaluate a
+candidate signal if **any** recorded hypothetical fill occurred after that
+signal's observation timestamp, even when the later fill was for another
+symbol or the resulting account has no open positions. The marked snapshot
+exposes the ledger's latest canonical UTC fill timestamp so the advisory can
+compare it with the signal while its existing SQLite writer reservation is
+held. A signal observed at the exact instant of the latest fill is allowed;
+normal data-freshness, market-mark, audit, and risk checks still apply.
+This closes a point-in-time account-state mismatch, **not** an execution-time
+risk check. Market timestamps, fills, and source authenticity remain
+unverified, and no paper orders, broker connection, deployment, or spending
+are introduced by this change.

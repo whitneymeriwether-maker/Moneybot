@@ -25,7 +25,7 @@ def _review(ledger, now, daily):
         peak_equity="1000.00", realized_pnl_today=daily,
         trusted_evidence_ids=("bar:SPY:1",),
         candidate=Candidate(
-            "SPY", now - timedelta(seconds=1), 100.0,
+            "SPY", now, 100.0,
             True, True, 2.0, True, 1.0, 1,
         ),
     )

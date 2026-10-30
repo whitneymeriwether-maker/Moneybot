@@ -106,6 +106,14 @@ def review_ledger_research_proposal(
             snapshot = ledger.marked_snapshot(
                 marks, as_of=as_of, max_age_seconds=policy.max_data_age_seconds,
             )
+        # A signal must not be reviewed against a ledger that has already
+        # changed after the signal was observed. Such a stale signal could
+        # authorize a new paper entry using an unrelated, later account
+        # state. The audit validates the stored fill chronology, while the
+        # SQLite writer reservation keeps this comparison atomic with marks.
+        last_fill = snapshot["last_fill_timestamp_utc"]
+        if last_fill is not None and candidate_utc < datetime.fromisoformat(last_fill):
+            return denied
         # Account marks must be contemporaneous with the candidate signal.
         # A mark can satisfy the general freshness window yet predate the
         # signal by minutes, understating exposure or an intraday drawdown.

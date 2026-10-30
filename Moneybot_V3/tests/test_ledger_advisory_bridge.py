@@ -97,7 +97,10 @@ def test_daily_loss_context_still_triggers_independent_gate(tmp_path):
         event_id="loss-sell", timestamp=now,
         symbol="SPY", side="SELL", quantity=1, price="70.00",
     )
-    result = _review(tmp_path, ledger=ledger, realized_pnl_today="-30.00")
+    result = _review(
+        tmp_path, ledger=ledger, realized_pnl_today="-30.00",
+        candidate=_candidate(now),
+    )
     assert result.proposal is not None
     assert not result.decision.approved
     assert result.decision.reason == "Daily realized-loss circuit breaker"

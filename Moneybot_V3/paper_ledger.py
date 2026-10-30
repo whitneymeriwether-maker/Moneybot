@@ -646,4 +646,7 @@ class PaperLedger:
             "gross_exposure_pct": str(exposure_pct),
             "positions": positions,
             "fill_count": count,
+            # A caller reviewing a signal must not use account state changed
+            # by a hypothetical fill that occurred after that signal.
+            "last_fill_timestamp_utc": last_fill,
         }
