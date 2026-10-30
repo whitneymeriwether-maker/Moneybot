@@ -9,7 +9,7 @@ market timestamps, risk gates, and execution semantics before calling this.
 
 import re
 import sqlite3
-from contextlib import closing
+from contextlib import closing, contextmanager
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -316,6 +316,26 @@ class PaperLedger:
                 db.commit()
                 return True
             except Exception:
+                db.rollback()
+                raise
+
+    @contextmanager
+    def consistent_advisory_read(self):
+        """Hold a SQLite writer reservation while auditing and marking.
+
+        This context performs no database writes. BEGIN IMMEDIATE prevents
+        ordinary concurrent SQLite fill writers from changing the ledger
+        between separate read transactions. Keep the protected work short:
+        the O(number of fills) audit can delay other paper workers. This
+        does not authenticate data or authorize any execution.
+        """
+        with closing(self._connect()) as db:
+            try:
+                db.execute("BEGIN IMMEDIATE")
+                self._assert_consistent(db)
+                yield
+                db.commit()
+            except BaseException:
                 db.rollback()
                 raise
 

@@ -1,6 +1,7 @@
-"""Offline regressions: ledger audit/mark drift must deny paper advisories."""
+"""Offline regressions: a read-only ledger advisory must exclude fill drift."""
 
 import json
+import sqlite3
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -10,37 +11,7 @@ from v3_decision import Candidate
 from v3_ledger_advisory import review_ledger_research_proposal
 
 
-@pytest.mark.parametrize("round_trip", [False, True])
-def test_intervening_hypothetical_fills_cannot_pass_a_previous_audit(
-    tmp_path, monkeypatch, round_trip,
-):
-    now = datetime.now(timezone.utc)
-    ledger = PaperLedger(tmp_path / "intervening.sqlite3")
-    marks = {} if round_trip else {
-        "SPY": {"price": "100.00", "timestamp": now}
-    }
-    original_marked_snapshot = PaperLedger.marked_snapshot
-
-    def intervening_marked_snapshot(self, *args, **kwargs):
-        # Deterministically simulate another paper worker recording fills
-        # after audit_history() and before the marked account is read.
-        stamp = now - timedelta(seconds=2)
-        self.record_fill(
-            event_id="concurrent-buy", timestamp=stamp,
-            symbol="SPY", side="BUY", quantity=1, price="100.00",
-        )
-        if round_trip:
-            # Cash and realized PnL return to their audited values; only
-            # the fill count changes, so comparing balances alone fails.
-            self.record_fill(
-                event_id="concurrent-sell", timestamp=stamp,
-                symbol="SPY", side="SELL", quantity=1, price="100.00",
-            )
-        return original_marked_snapshot(self, *args, **kwargs)
-
-    monkeypatch.setattr(
-        PaperLedger, "marked_snapshot", intervening_marked_snapshot,
-    )
+def _review(ledger, now):
     payload = json.dumps({
         "action": "BUY", "thesis": "Synthetic research breakout",
         "risks": "Gap and slippage", "evidence_ids": ["bar:SPY:1"],
@@ -50,17 +21,57 @@ def test_intervening_hypothetical_fills_cannot_pass_a_previous_audit(
         "SPY", now - timedelta(seconds=1), 100.0,
         True, True, 2.0, True, 1.0, 1,
     )
-    result = review_ledger_research_proposal(
-        payload, ledger=ledger, marks=marks, as_of=now,
+    return review_ledger_research_proposal(
+        payload, ledger=ledger, marks={}, as_of=now,
         peak_equity="1000.00", realized_pnl_today="0.00",
         trusted_evidence_ids=("bar:SPY:1",), candidate=candidate,
     )
-    assert not result.decision.approved
-    assert result.proposal is None
-    assert result.decision.reason == (
-        "Unverified ledger snapshot or paper risk history"
+
+
+@pytest.mark.parametrize("attempted_writes", [1, 2])
+def test_competing_sqlite_writer_cannot_interleave_audit_and_marks(
+    tmp_path, monkeypatch, attempted_writes,
+):
+    now = datetime.now(timezone.utc)
+    ledger = PaperLedger(tmp_path / "intervening.sqlite3")
+    original_marked_snapshot = PaperLedger.marked_snapshot
+    observed = []
+
+    def competing_marked_snapshot(self, *args, **kwargs):
+        # This callback runs after audit_history() but before the mark read.
+        # A separate SQLite connection must not acquire a write reservation.
+        for _ in range(attempted_writes):
+            with sqlite3.connect(self.db_path, timeout=0, isolation_level=None) as db:
+                with pytest.raises(sqlite3.OperationalError, match="locked"):
+                    db.execute("BEGIN IMMEDIATE")
+                observed.append("writer blocked")
+        return original_marked_snapshot(self, *args, **kwargs)
+
+    monkeypatch.setattr(
+        PaperLedger, "marked_snapshot", competing_marked_snapshot,
     )
-    assert ledger.audit_history()["audited_fills"] == (2 if round_trip else 1)
-    if round_trip:
-        assert ledger.snapshot()["cash"] == "1000.00"
-        assert ledger.snapshot()["realized_pnl"] == "0.00"
+    result = _review(ledger, now)
+    assert observed == ["writer blocked"] * attempted_writes
+    assert result.decision.approved
+    assert result.proposal.action == "BUY"
+    assert ledger.audit_history()["audited_fills"] == 0
+
+    # The reservation is released after review, without writing a fill.
+    ledger.record_fill(
+        event_id="post-review", timestamp=now - timedelta(seconds=1),
+        symbol="SPY", side="BUY", quantity=1, price="100.00",
+    )
+    assert ledger.audit_history()["audited_fills"] == 1
+
+
+def test_advisory_read_reservation_releases_on_exception(tmp_path):
+    ledger = PaperLedger(tmp_path / "release.sqlite3")
+    with pytest.raises(RuntimeError, match="test failure"):
+        with ledger.consistent_advisory_read():
+            raise RuntimeError("test failure")
+    assert ledger.snapshot()["fill_count"] == 0
+    ledger.record_fill(
+        event_id="after-exception", timestamp=datetime.now(timezone.utc),
+        symbol="SPY", side="BUY", quantity=1, price="100.00",
+    )
+    assert ledger.audit_history()["audited_fills"] == 1

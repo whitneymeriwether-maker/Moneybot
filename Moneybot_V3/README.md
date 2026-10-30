@@ -9,8 +9,12 @@ from ledger accounting rather than accepting a separately fabricated
 a fresh account valuation not preceding the candidate observation, and a
 valid risk policy. It also replays the full local fill history using
 `ledger.audit_history()` before valuation, rejecting history/state mismatches.
-This is an O(number of fills) read-only audit, not an atomic transaction
-spanning the subsequent snapshot. Malformed/stale snapshots fail closed
+This is an O(number of fills) read-only audit. A short-lived SQLite
+`BEGIN IMMEDIATE` reservation prevents ordinary concurrent fill writers from
+changing the database between the audit and marked snapshot; it performs no
+writes but can delay other paper workers while replaying a long history.
+This is not an atomic execution-time decision or a defense against direct
+database-file tampering. Malformed/stale snapshots fail closed
 with a fixed denial.
 Even an approved BUY **never writes a hypothetical fill**.
 

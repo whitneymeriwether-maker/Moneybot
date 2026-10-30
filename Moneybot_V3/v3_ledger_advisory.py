@@ -88,18 +88,16 @@ def review_ledger_research_proposal(
     try:
         peak = _risk_money(peak_equity, positive=True)
         daily = _risk_money(realized_pnl_today)
-        # A marked snapshot checks current balances, but a coordinated edit
-        # to cash and positions can preserve that simple invariant. Replay
-        # the complete hypothetical fill history before using the account.
-        # Both operations are read-only; no atomic execution is implied.
-        audit = ledger.audit_history()
-        snapshot = ledger.marked_snapshot(
-            marks, as_of=as_of, max_age_seconds=policy.max_data_age_seconds,
-        )
-        # Audit and marking use separate read transactions. Reject ordinary
-        # concurrent fill drift rather than approving an account state that
-        # was not the one just replayed. This is not an atomic snapshot:
-        # coordinated same-count tampering still requires stronger controls.
+        # A writer reservation prevents ordinary SQLite fill writers from
+        # changing the ledger between the full replay audit and valuation.
+        # Neither operation writes a fill. This is not an execution-time gate.
+        with ledger.consistent_advisory_read():
+            audit = ledger.audit_history()
+            snapshot = ledger.marked_snapshot(
+                marks, as_of=as_of, max_age_seconds=policy.max_data_age_seconds,
+            )
+        # Independently reject discrepancies even if a caller bypasses the
+        # reservation or a storage anomaly yields inconsistent reads.
         if (
             audit["audited_fills"] != snapshot["fill_count"]
             or audit["cash"] != snapshot["cash"]
