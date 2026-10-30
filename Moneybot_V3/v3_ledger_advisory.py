@@ -8,6 +8,7 @@ A successful decision is not execution authorization.
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
+from math import isfinite
 from zoneinfo import ZoneInfo
 
 from paper_ledger import MAX_CENTS, PaperLedger
@@ -113,6 +114,18 @@ def review_ledger_research_proposal(
         if any(
             datetime.fromisoformat(position["mark_timestamp_utc"]) < earliest_mark
             for position in snapshot["positions"].values()
+        ):
+            return denied
+        # If the candidate ticker is already held, its signal price must
+        # reconcile to the same exact-cent price used to mark that position.
+        # Otherwise a low mark understates exposure, while a high mark can
+        # overstate equity and inflate the paper risk budget. Do not guess
+        # which independently supplied price is correct: fail closed.
+        held_mark = snapshot["positions"].get(candidate.symbol)
+        if held_mark is not None and (
+            type(candidate.price) not in (int, float)
+            or not isfinite(candidate.price)
+            or Decimal(str(candidate.price)) != Decimal(held_mark["mark_price"])
         ):
             return denied
         # Independently reject discrepancies even if a caller bypasses the

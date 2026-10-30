@@ -729,3 +729,16 @@ SQLite read transactions**, not an atomic audit-and-valuation snapshot; a
 coordinated rewrite preserving these fields can evade the check. No order or
 fill is executed by the advisory. A future paper engine must use an atomic,
 execution-time risk check and independently authenticated risk history.
+
+## Held-symbol signal and valuation price reconciliation (offline paper advisory)
+
+When a candidate ticker already has an open SQLite paper position, the
+read-only AI advisory now requires the candidate's exact-cent signal price to
+match the price used for that position's marked account valuation. A lower
+position mark can understate exposure; a higher mark can inflate marked equity
+and the paper risk budget. The advisory rejects either discrepancy instead of
+choosing which caller-supplied price to trust. Signals for unheld tickers do
+not require an existing position mark. This deliberately conservative check
+may reject legitimate price changes between feeds; callers must obtain a
+synchronized, independently verified mark and signal before reviewing again.
+It does not authenticate prices, authorize hypothetical fills, or place orders.
