@@ -74,7 +74,7 @@ def test_nonbuy_json_is_retained_for_audit_but_never_approved(action):
     payload(evidence=["invented:1"]),
     payload(evidence=[]),
     payload(confidence=-0.1),
-    payload(thesis="Hidden\\u202eoverride"),
+    payload(thesis="Hidden" + chr(0x202e) + "override"),
 ])
 def test_invalid_model_payload_fails_closed_without_echo(raw):
     result = review(raw)
@@ -88,7 +88,7 @@ def test_invalid_model_payload_fails_closed_without_echo(raw):
     None,
     ["bar:SPY:1"],
     ("bar:SPY:1", "bar:SPY:1"),
-    ("bar:SPY:1\\u200b",),
+    ("bar:SPY:1" + chr(0x200b),),
     tuple(f"source:{i}" for i in range(129)),
 ])
 def test_untrusted_or_malformed_allowlist_fails_closed(allowlist):
