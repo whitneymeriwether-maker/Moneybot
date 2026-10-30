@@ -90,11 +90,15 @@ def parse_research_ai_proposal(payload, *, trusted_evidence_ids):
     if not _valid_reason(proposal["thesis"]) or not _valid_reason(proposal["risks"]):
         raise ValueError("AI proposal requires bounded auditable reasoning")
     confidence = proposal["confidence"]
-    if (
-        type(confidence) not in (int, float)
-        or not isfinite(confidence)
-        or not 0 <= confidence <= 1
-    ):
+    try:
+        valid_confidence = (
+            type(confidence) in (int, float)
+            and isfinite(confidence)
+            and 0 <= confidence <= 1
+        )
+    except (OverflowError, ValueError):
+        valid_confidence = False
+    if not valid_confidence:
         raise ValueError("Invalid AI proposal confidence")
     evidence = proposal["evidence_ids"]
     if (
