@@ -18,7 +18,11 @@ cannot distinguish a fabricated observation from a genuine one.
   silently initialized as an observation journal.
 - Each feed, uppercase symbol, and UTC minute is unique. Identical retries
   return False, including after later minutes. Conflicting or out-of-order
-  observations fail closed under a SQLite writer reservation.
+  observations fail closed under a SQLite writer reservation. New observations
+  must have nondecreasing declared receipt timestamps; equal receipts allow
+  batched arrivals. The latest reader also checks the immediately preceding
+  row for reversed or corrupt receipt chronology. This is not a full-history
+  audit and does not authenticate the provider or receipt clock.
 - Only completed 9:30–15:59 New York weekday minutes may be inserted, with
   a caller-declared receipt timestamp 1–3 minutes after the minute starts.
   Holidays and early closes are **not** checked. Missing minutes are not
