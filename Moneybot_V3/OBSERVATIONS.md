@@ -33,6 +33,7 @@ cannot distinguish a fabricated observation from a genuine one.
 - OHLC prices must be finite, positive, decimal strings or Decimal values
   with at most six fractional digits. Volume must be a bounded nonnegative
   whole-share integer. Zero volume does not establish executable liquidity.
+- An optional `audited_latest()` read checks **every** stored observation in the requested feed/symbol partition and receipt chronology within a single SQLite read snapshot before returning the latest fresh row. Unlike the fast two-row `latest()` check, this detects corrupt older rows. It is O(number of observations), may delay concurrent writers, does not check other symbols, and cannot protect against coordinated tampering or changes after the read transaction. Neither read authorizes a simulated fill.
 - The latest() reader requires an explicit aware as_of timestamp and rejects
   observations not yet received or more than three minutes old. That clock
   is caller-supplied and unauthenticated.

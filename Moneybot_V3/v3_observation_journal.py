@@ -235,3 +235,47 @@ class PaperObservationJournal:
         return {"feed": feed, "symbol": symbol, "minute_utc": minute,
                 "open": opening, "high": high, "low": low, "close": close,
                 "volume": volume, "received_utc": received}
+
+    def audited_latest(self, *, feed, symbol, as_of):
+        """Read the latest observation after validating the entire symbol history.
+
+        Unlike latest(), this scans every recorded row for this feed/symbol in
+        one consistent SQLite read snapshot. It detects corrupt older rows and
+        receipt reversals beyond the fast reader's two-row window. It is
+        intentionally O(history size), read-only, and unsuitable as an atomic
+        execution-time risk decision or proof of provider authenticity.
+        """
+        if type(feed) is not str or feed != "alpaca-iex":
+            raise ValueError("Unsupported declared research feed")
+        if type(symbol) is not str or not _SYMBOL.fullmatch(symbol):
+            raise ValueError("Invalid observation symbol")
+        as_of_utc = _utc_stamp(as_of)
+        previous_minute = previous_receipt = None
+        last = None
+        with closing(self._connect()) as db:
+            try:
+                db.execute("BEGIN")
+                for row in db.execute(
+                    """SELECT minute_utc, open, high, low, close, volume, received_utc
+                       FROM paper_observations WHERE feed=? AND symbol=?
+                       ORDER BY minute_utc ASC""", (feed, symbol)
+                ):
+                    instant, receipt = _validate_stored_row(row)
+                    if previous_minute is not None and (
+                        instant <= previous_minute or receipt < previous_receipt
+                    ):
+                        raise ValueError("Corrupt observation journal chronology")
+                    previous_minute, previous_receipt = instant, receipt
+                    last = row
+                db.commit()
+            except BaseException:
+                db.rollback()
+                raise
+        if last is None:
+            return None
+        if not previous_receipt <= as_of_utc <= previous_minute + timedelta(minutes=3):
+            raise ValueError("Stale or future observation snapshot")
+        minute, opening, high, low, close, volume, received = last
+        return {"feed": feed, "symbol": symbol, "minute_utc": minute,
+                "open": opening, "high": high, "low": low, "close": close,
+                "volume": volume, "received_utc": received}
