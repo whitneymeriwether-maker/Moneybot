@@ -156,12 +156,14 @@ class PaperObservationJournal:
             try:
                 db.execute("BEGIN IMMEDIATE")
                 row = db.execute(
-                    """SELECT open, high, low, close, volume FROM paper_observations
+                    """SELECT minute_utc, open, high, low, close, volume, received_utc
+                       FROM paper_observations
                        WHERE feed=? AND symbol=? AND minute_utc=?""",
                     (feed, symbol, stamp),
                 ).fetchone()
                 if row is not None:
-                    if row != payload:
+                    _validate_stored_row(row)
+                    if row[1:6] != payload:
                         raise ValueError("Conflicting observation replay")
                     db.commit()
                     return False
