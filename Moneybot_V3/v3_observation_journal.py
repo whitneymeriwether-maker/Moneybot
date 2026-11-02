@@ -46,6 +46,39 @@ def _price(value):
     return format(number.normalize(), "f")
 
 
+
+def _validate_stored_row(row):
+    """Validate one complete stored observation; return its UTC instants.
+
+    This checks structural and declared temporal consistency, not provider
+    authenticity or protection against coordinated SQLite-file tampering.
+    """
+    try:
+        minute, opening, highest, lowest, closing, volume, received = row
+        if type(minute) is not str or type(received) is not str:
+            raise ValueError("Invalid stored timestamps")
+        instant = datetime.fromisoformat(minute)
+        receipt = datetime.fromisoformat(received)
+        local = instant.astimezone(_NEW_YORK)
+        if (_utc_stamp(instant).isoformat(timespec="microseconds") != minute
+                or _utc_stamp(receipt).isoformat(timespec="microseconds") != received
+                or instant.second or instant.microsecond
+                or local.weekday() >= 5
+                or not time(9, 30) <= local.time() < time(16, 0)
+                or not instant + timedelta(minutes=1) <= receipt <= instant + timedelta(minutes=3)
+                or type(volume) is not int or not 0 <= volume <= _MAX_VOLUME):
+            raise ValueError("Invalid stored observation timing or volume")
+        values = tuple(_price(value) for value in (opening, highest, lowest, closing))
+        if values != (opening, highest, lowest, closing):
+            raise ValueError("Noncanonical stored observation price")
+        o, h, l, c = (Decimal(value) for value in values)
+        if h < max(o, l, c) or l > min(o, h, c):
+            raise ValueError("Inconsistent stored observation OHLC")
+        return instant, receipt
+    except (TypeError, AttributeError, ValueError, OverflowError) as error:
+        raise ValueError("Corrupt observation journal row") from error
+
+
 class PaperObservationJournal:
     """Durable research observations, without fills, credentials, or orders.
 
@@ -137,23 +170,20 @@ class PaperObservationJournal:
                 if not (minute_utc + timedelta(minutes=1) <= received_utc
                         <= minute_utc + timedelta(minutes=3)):
                     raise ValueError("Incomplete or stale observation")
+
                 latest = db.execute(
-                    """SELECT minute_utc, received_utc FROM paper_observations
-                       WHERE feed=? AND symbol=?
+                    """SELECT minute_utc, open, high, low, close, volume, received_utc
+                       FROM paper_observations WHERE feed=? AND symbol=?
                        ORDER BY minute_utc DESC LIMIT 1""", (feed, symbol)
                 ).fetchone()
                 if latest is not None:
+                    try:
+                        _, previous_receipt = _validate_stored_row(latest)
+                    except ValueError as error:
+                        raise ValueError("Corrupt prior observation receipt or row") from error
                     if stamp <= latest[0]:
                         raise ValueError("Out-of-order observation")
-                    # A later completed minute cannot have been received
-                    # before an earlier one in this append-only feed.
-                    try:
-                        previous_receipt = datetime.fromisoformat(latest[1])
-                        if (_utc_stamp(previous_receipt).isoformat(timespec="microseconds")
-                                != latest[1]):
-                            raise ValueError("Corrupt prior observation receipt")
-                    except (TypeError, ValueError, OverflowError) as error:
-                        raise ValueError("Corrupt prior observation receipt") from error
+                    # Declared receipt instants must not reverse across rows.
                     if received_utc < previous_receipt:
                         raise ValueError("Observation receipt chronology reversal")
                 db.execute(
@@ -187,37 +217,17 @@ class PaperObservationJournal:
             ).fetchall()
         if not rows:
             return None
+
         row = rows[0]
-        minute, opening, high, low, close, volume, received = row
         try:
-            instant = datetime.fromisoformat(minute)
-            receipt = datetime.fromisoformat(received)
-            if (instant.astimezone(timezone.utc).isoformat(timespec="microseconds") != minute
-                    or receipt.astimezone(timezone.utc).isoformat(timespec="microseconds") != received
-                    or instant.second or instant.microsecond
-                    or instant.astimezone(_NEW_YORK).weekday() >= 5
-                    or not time(9, 30) <= instant.astimezone(_NEW_YORK).time() < time(16, 0)
-                    or not instant + timedelta(minutes=1) <= receipt <= instant + timedelta(minutes=3)
-                    or type(volume) is not int or not 0 <= volume <= _MAX_VOLUME):
-                raise ValueError("Corrupt observation journal row")
-            values = tuple(_price(value) for value in (opening, high, low, close))
-            if values != (opening, high, low, close):
-                raise ValueError("Corrupt observation journal row")
-            o, h, l, c = (Decimal(value) for value in values)
-            if h < max(o, l, c) or l > min(o, h, c):
-                raise ValueError("Corrupt observation journal row")
+            instant, receipt = _validate_stored_row(row)
             if len(rows) == 2:
-                previous_minute = datetime.fromisoformat(rows[1][0])
-                previous_receipt = datetime.fromisoformat(rows[1][-1])
-                if (previous_minute.astimezone(timezone.utc).isoformat(timespec="microseconds")
-                        != rows[1][0]
-                        or previous_receipt.astimezone(timezone.utc).isoformat(timespec="microseconds")
-                        != rows[1][-1]
-                        or previous_minute >= instant
-                        or previous_receipt > receipt):
+                previous_minute, previous_receipt = _validate_stored_row(rows[1])
+                if previous_minute >= instant or previous_receipt > receipt:
                     raise ValueError("Corrupt observation receipt chronology")
-        except (TypeError, AttributeError, ValueError, OverflowError) as error:
+        except ValueError as error:
             raise ValueError("Corrupt observation journal row") from error
+        minute, opening, high, low, close, volume, received = row
         if not receipt <= as_of_utc <= instant + timedelta(minutes=3):
             raise ValueError("Stale or future observation snapshot")
         return {"feed": feed, "symbol": symbol, "minute_utc": minute,
