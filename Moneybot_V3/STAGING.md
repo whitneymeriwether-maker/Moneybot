@@ -34,6 +34,23 @@ trading or as evidence of strategy profitability.
 `python -m pytest -q tests/test_paper_status_server.py` checks these
 properties locally. The main V3 CI suite also runs these tests.
 
+## Independent read-only deployment verification
+
+After each manually approved staging deployment, run:
+
+```sh
+python Moneybot_V3/staging_smoke_check.py
+```
+
+The checker contacts only `https://moneybot-v3-staging.onrender.com`,
+using **GET and HEAD only**. It rejects redirects and unexpected hosts,
+confirms the health endpoint responds, and **requires** the readiness endpoint
+to return HTTP 503 with paper trading disabled. An exit status of zero means
+only that the staging service is reachable and still fail-closed; it is not
+proof of strategy performance or execution readiness. The checker does not
+submit orders, create simulated fills, or access V2. Its local-server regression
+tests run in the V3 CI suite.
+
 ## Conditions before automatic paper-trading activation
 
 Use a separate, durable paper-only database and an authenticated,
