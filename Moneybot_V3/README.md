@@ -1,3 +1,7 @@
+## Offline minute-observation journal (not a live feed)
+
+The new [research observation journal](OBSERVATIONS.md) records completed, immutable declared IEX minute bars in a separate local SQLite database, rejects conflicting/out-of-order replays, and requires fresh as-of snapshots. It has no network client, provider authentication, paper fills, broker orders, or Render integration; automatic paper trading remains **NOT ACTIVATED**.
+
 ## Offline ledger-backed AI research review (read-only; no fills)
 
 `v3_ledger_advisory.review_ledger_research_proposal(...)` composes the
