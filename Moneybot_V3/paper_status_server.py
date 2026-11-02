@@ -56,7 +56,18 @@ class StatusHandler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
-        self.wfile.write(payload)
+        if not getattr(self, "_head_only", False):
+            self.wfile.write(payload)
+
+    def do_HEAD(self):
+        """Expose the same status as GET without a response body.
+
+        Render and other uptime probes may issue HEAD before GET. A HEAD
+        request must not make the staging service appear unhealthy, and
+        /readyz must remain 503 even when probed with HEAD.
+        """
+        self._head_only = True
+        self.do_GET()
 
     def do_GET(self):
         path = self.path.split("?", 1)[0]
