@@ -138,11 +138,24 @@ class PaperObservationJournal:
                         <= minute_utc + timedelta(minutes=3)):
                     raise ValueError("Incomplete or stale observation")
                 latest = db.execute(
-                    """SELECT MAX(minute_utc) FROM paper_observations
-                       WHERE feed=? AND symbol=?""", (feed, symbol)
-                ).fetchone()[0]
-                if latest is not None and stamp <= latest:
-                    raise ValueError("Out-of-order observation")
+                    """SELECT minute_utc, received_utc FROM paper_observations
+                       WHERE feed=? AND symbol=?
+                       ORDER BY minute_utc DESC LIMIT 1""", (feed, symbol)
+                ).fetchone()
+                if latest is not None:
+                    if stamp <= latest[0]:
+                        raise ValueError("Out-of-order observation")
+                    # A later completed minute cannot have been received
+                    # before an earlier one in this append-only feed.
+                    try:
+                        previous_receipt = datetime.fromisoformat(latest[1])
+                        if (_utc_stamp(previous_receipt).isoformat(timespec="microseconds")
+                                != latest[1]):
+                            raise ValueError("Corrupt prior observation receipt")
+                    except (TypeError, ValueError, OverflowError) as error:
+                        raise ValueError("Corrupt prior observation receipt") from error
+                    if received_utc < previous_receipt:
+                        raise ValueError("Observation receipt chronology reversal")
                 db.execute(
                     """INSERT INTO paper_observations
                        (feed, symbol, minute_utc, open, high, low, close,
@@ -167,13 +180,14 @@ class PaperObservationJournal:
             raise ValueError("Invalid observation symbol")
         as_of_utc = _utc_stamp(as_of)
         with closing(self._connect()) as db:
-            row = db.execute(
+            rows = db.execute(
                 """SELECT minute_utc, open, high, low, close, volume, received_utc
                    FROM paper_observations WHERE feed=? AND symbol=?
-                   ORDER BY minute_utc DESC LIMIT 1""", (feed, symbol)
-            ).fetchone()
-        if row is None:
+                   ORDER BY minute_utc DESC LIMIT 2""", (feed, symbol)
+            ).fetchall()
+        if not rows:
             return None
+        row = rows[0]
         minute, opening, high, low, close, volume, received = row
         try:
             instant = datetime.fromisoformat(minute)
@@ -192,6 +206,16 @@ class PaperObservationJournal:
             o, h, l, c = (Decimal(value) for value in values)
             if h < max(o, l, c) or l > min(o, h, c):
                 raise ValueError("Corrupt observation journal row")
+            if len(rows) == 2:
+                previous_minute = datetime.fromisoformat(rows[1][0])
+                previous_receipt = datetime.fromisoformat(rows[1][-1])
+                if (previous_minute.astimezone(timezone.utc).isoformat(timespec="microseconds")
+                        != rows[1][0]
+                        or previous_receipt.astimezone(timezone.utc).isoformat(timespec="microseconds")
+                        != rows[1][-1]
+                        or previous_minute >= instant
+                        or previous_receipt > receipt):
+                    raise ValueError("Corrupt observation receipt chronology")
         except (TypeError, AttributeError, ValueError, OverflowError) as error:
             raise ValueError("Corrupt observation journal row") from error
         if not receipt <= as_of_utc <= instant + timedelta(minutes=3):
