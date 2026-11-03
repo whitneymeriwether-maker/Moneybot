@@ -24,8 +24,9 @@ cannot distinguish a fabricated observation from a genuine one.
   preceding row (including its OHLC, volume, session minute, and receipt
   timestamp), not just receipt ordering. New appends also validate the latest
   stored row, and an identical retry cannot silently accept a corrupted
-  stored record. These are local consistency checks, **not** a full-history
-  audit or authentication of the provider, receipt clock, or database.
+  stored record. These are local consistency checks, **not** authentication of the provider,
+  receipt clock, or database. Use `audited_latest()` for an optional
+  full-history consistency scan of the selected feed/symbol partition.
 - Only completed 9:30–15:59 New York weekday minutes may be inserted, with
   a caller-declared receipt timestamp 1–3 minutes after the minute starts.
   Even identical retries must not claim receipt before the minute closes;
