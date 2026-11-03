@@ -89,10 +89,11 @@ def test_concurrent_distinct_symbols_remain_independent(tmp_path):
         assert db.execute("SELECT COUNT(*) FROM paper_observations").fetchone()[0] == len(symbols)
 
 
-def test_concurrent_distinct_feeds_same_symbol_remain_independent(tmp_path):
+def test_concurrent_unsupported_feeds_fail_without_persisting(tmp_path):
     path = tmp_path / "observations.sqlite"
     minute = datetime(2026, 11, 2, 14, 30, tzinfo=timezone.utc)
-    feeds = ("alpaca-iex", "research-synthetic")
+    PaperObservationJournal(path)
+    feeds = ("research-synthetic", "unknown-provider")
 
     def write_feed(feed):
         return PaperObservationJournal(path).record(
@@ -103,13 +104,10 @@ def test_concurrent_distinct_feeds_same_symbol_remain_independent(tmp_path):
         )
 
     with ThreadPoolExecutor(max_workers=2) as pool:
-        assert list(pool.map(write_feed, feeds)) == [True, True]
-    for feed in feeds:
-        latest = PaperObservationJournal(path).audited_latest(
-            feed=feed, symbol="SPY",
-            as_of=minute + timedelta(seconds=80),
-        )
-        assert latest["feed"] == feed
+        futures = [pool.submit(write_feed, feed) for feed in feeds]
+        for future in futures:
+            with pytest.raises(ValueError, match="Unsupported declared research feed"):
+                future.result()
     import sqlite3
     with sqlite3.connect(path) as db:
-        assert db.execute("SELECT COUNT(*) FROM paper_observations").fetchone()[0] == 2
+        assert db.execute("SELECT COUNT(*) FROM paper_observations").fetchone()[0] == 0
