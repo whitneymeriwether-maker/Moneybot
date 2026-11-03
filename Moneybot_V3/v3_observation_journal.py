@@ -113,6 +113,10 @@ class PaperObservationJournal:
                 schema = list(db.execute("PRAGMA table_info(paper_observations)"))
                 columns = tuple(row[1] for row in schema)
                 if (columns != _COLUMNS
+                        or tuple(row[2] for row in schema) != (
+                            "TEXT", "TEXT", "TEXT", "TEXT", "TEXT",
+                            "TEXT", "TEXT", "INTEGER", "TEXT"
+                        )
                         or tuple(row[5] for row in schema) != (1, 2, 3, 0, 0, 0, 0, 0, 0)
                         or any(row[3] != 1 for row in schema)):
                     raise ValueError("Unsupported observation journal schema")
