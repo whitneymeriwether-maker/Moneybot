@@ -3,7 +3,7 @@
 Synthetic observations only: no network, broker, or paper-fill integration.
 """
 
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -227,3 +227,25 @@ def test_concurrent_stale_new_minute_cannot_displace_fresh_minute(tmp_path):
     assert latest["received_utc"] == (
         minute + timedelta(seconds=70)
     ).isoformat(timespec="microseconds")
+
+
+def test_separate_processes_share_initialized_journal_safely(tmp_path):
+    """Independent Python processes must serialize writes to one SQLite key."""
+    path = tmp_path / "multiprocess.sqlite"
+    minute = datetime(2026, 11, 2, 14, 30, tzinfo=timezone.utc)
+    # Provision first: this isolates cross-process writes from the still
+    # unverified cross-process cold-start initialization race.
+    PaperObservationJournal(path)
+    with ProcessPoolExecutor(max_workers=4) as pool:
+        results = list(pool.map(_write_process, [(str(path), minute)] * 8))
+    assert results.count(True) == 1
+    assert results.count(False) == 7
+    assert PaperObservationJournal(path).audited_latest(
+        feed="alpaca-iex", symbol="SPY",
+        as_of=minute + timedelta(seconds=80),
+    )["close"] == "500.02"
+
+
+def _write_process(args):
+    path, minute = args
+    return _write(path, minute)
