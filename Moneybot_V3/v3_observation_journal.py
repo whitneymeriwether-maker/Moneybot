@@ -8,6 +8,7 @@ minute bars may be inserted; an immutable SQLite key makes retries harmless.
 
 import re
 import sqlite3
+import threading
 from contextlib import closing
 from datetime import datetime, time, timedelta, timezone
 from decimal import Decimal, InvalidOperation
@@ -18,6 +19,9 @@ from zoneinfo import ZoneInfo
 _SYMBOL = re.compile(r"[A-Z][A-Z0-9.-]{0,9}")
 _DECIMAL_TEXT = re.compile(r"(?:0|[1-9][0-9]*)(?:\.[0-9]{1,6})?")
 _NEW_YORK = ZoneInfo("America/New_York")
+# Serialize schema creation within this process; SQLite serializes the writes.
+# Separate processes must coordinate their initial journal provisioning.
+_INITIALIZE_LOCK = threading.Lock()
 _MAX_VOLUME = (1 << 53) - 1
 _MAX_PRICE = Decimal("1000000000")
 _PRICE_TICK = Decimal("0.000001")
@@ -93,38 +97,39 @@ class PaperObservationJournal:
                 or str(db_path) == ":memory:"):
             raise ValueError("A persistent observation SQLite path is required")
         self.db_path = str(db_path)
-        existed = Path(self.db_path).exists()
-        with closing(self._connect()) as db:
-            try:
-                db.execute("BEGIN IMMEDIATE")
-                tables = {name for (name,) in db.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table' AND name='paper_observations'"
-                )}
-                if existed and not tables:
-                    raise ValueError("Existing file is not an observation journal")
-                db.execute("""CREATE TABLE IF NOT EXISTS paper_observations (
-                    feed TEXT NOT NULL, symbol TEXT NOT NULL,
-                    minute_utc TEXT NOT NULL, open TEXT NOT NULL,
-                    high TEXT NOT NULL, low TEXT NOT NULL,
-                    close TEXT NOT NULL, volume INTEGER NOT NULL,
-                    received_utc TEXT NOT NULL,
-                    PRIMARY KEY(feed, symbol, minute_utc)
-                )""")
-                schema = list(db.execute("PRAGMA table_info(paper_observations)"))
-                columns = tuple(row[1] for row in schema)
-                if (columns != _COLUMNS
-                        or tuple(row[2] for row in schema) != (
-                            "TEXT", "TEXT", "TEXT", "TEXT", "TEXT",
-                            "TEXT", "TEXT", "INTEGER", "TEXT"
-                        )
-                        or tuple(row[5] for row in schema) != (1, 2, 3, 0, 0, 0, 0, 0, 0)
-                        or any(row[3] != 1 for row in schema)):
-                    raise ValueError("Unsupported observation journal schema")
-                db.commit()
-            except BaseException:
-                db.rollback()
-                raise
-
+        with _INITIALIZE_LOCK:
+            existed = Path(self.db_path).exists()
+            with closing(self._connect()) as db:
+                try:
+                    db.execute("BEGIN IMMEDIATE")
+                    tables = {name for (name,) in db.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table' AND name='paper_observations'"
+                    )}
+                    if existed and not tables:
+                        raise ValueError("Existing file is not an observation journal")
+                    db.execute("""CREATE TABLE IF NOT EXISTS paper_observations (
+                        feed TEXT NOT NULL, symbol TEXT NOT NULL,
+                        minute_utc TEXT NOT NULL, open TEXT NOT NULL,
+                        high TEXT NOT NULL, low TEXT NOT NULL,
+                        close TEXT NOT NULL, volume INTEGER NOT NULL,
+                        received_utc TEXT NOT NULL,
+                        PRIMARY KEY(feed, symbol, minute_utc)
+                    )""")
+                    schema = list(db.execute("PRAGMA table_info(paper_observations)"))
+                    columns = tuple(row[1] for row in schema)
+                    if (columns != _COLUMNS
+                            or tuple(row[2] for row in schema) != (
+                                "TEXT", "TEXT", "TEXT", "TEXT", "TEXT",
+                                "TEXT", "TEXT", "INTEGER", "TEXT"
+                            )
+                            or tuple(row[5] for row in schema) != (1, 2, 3, 0, 0, 0, 0, 0, 0)
+                            or any(row[3] != 1 for row in schema)):
+                        raise ValueError("Unsupported observation journal schema")
+                    db.commit()
+                except BaseException:
+                    db.rollback()
+                    raise
+    
     def _connect(self):
         db = sqlite3.connect(self.db_path, timeout=10, isolation_level=None)
         db.execute("PRAGMA busy_timeout=10000")
