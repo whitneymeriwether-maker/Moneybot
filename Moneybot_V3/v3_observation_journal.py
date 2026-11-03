@@ -34,7 +34,7 @@ def _utc_stamp(value):
 def _price(value):
     if type(value) not in (str, Decimal):
         raise ValueError("Observation prices require decimal text or Decimal")
-    if type(value) is str and not _DECIMAL_TEXT.fullmatch(value):
+    if type(value) is str and (len(value) > 17 or not _DECIMAL_TEXT.fullmatch(value)):
         raise ValueError("Invalid observation price")
     try:
         number = Decimal(value)
@@ -150,6 +150,10 @@ class PaperObservationJournal:
         opening, highest, lowest, closing_price = (Decimal(value) for value in prices)
         if highest < max(opening, lowest, closing_price) or lowest > min(opening, highest, closing_price):
             raise ValueError("Inconsistent observation OHLC")
+        # Even an identical retry must not claim an impossible pre-close receipt.
+        # Delayed retries remain valid because their receipt is not stored.
+        if received_utc < minute_utc + timedelta(minutes=1):
+            raise ValueError("Observation receipt precedes minute completion")
         stamp = minute_utc.isoformat(timespec="microseconds")
         payload = (*prices, volume)
         with closing(self._connect()) as db:
