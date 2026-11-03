@@ -61,3 +61,29 @@ def test_concurrent_conflicting_writers_cannot_overwrite(tmp_path):
                 outcomes.append(str(error))
     assert outcomes.count(True) == 1
     assert sum("Conflicting observation replay" in str(x) for x in outcomes) == 1
+
+
+def test_concurrent_distinct_symbols_remain_independent(tmp_path):
+    path = tmp_path / "observations.sqlite"
+    minute = datetime(2026, 11, 2, 14, 30, tzinfo=timezone.utc)
+    symbols = ("SPY", "QQQ", "IWM", "DIA")
+
+    def write_symbol(symbol):
+        return PaperObservationJournal(path).record(
+            feed="alpaca-iex", symbol=symbol, minute=minute,
+            received_at=minute + timedelta(seconds=70),
+            open="500.01", high="500.03", low="500.00",
+            close="500.02", volume=100,
+        )
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        assert list(pool.map(write_symbol, symbols)) == [True] * len(symbols)
+    for symbol in symbols:
+        latest = PaperObservationJournal(path).audited_latest(
+            feed="alpaca-iex", symbol=symbol,
+            as_of=minute + timedelta(seconds=80),
+        )
+        assert latest["symbol"] == symbol
+    import sqlite3
+    with sqlite3.connect(path) as db:
+        assert db.execute("SELECT COUNT(*) FROM paper_observations").fetchone()[0] == len(symbols)
