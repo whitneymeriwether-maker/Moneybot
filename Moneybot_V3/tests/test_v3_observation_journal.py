@@ -129,3 +129,28 @@ def test_latest_rejects_stale_or_pre_receipt_snapshots(tmp_path):
             journal.latest(feed="alpaca-iex", symbol="SPY", as_of=as_of)
     with pytest.raises(ValueError, match="timezone-aware"):
         journal.latest(feed="alpaca-iex", symbol="SPY", as_of=datetime(2026, 11, 2))
+
+
+@pytest.mark.parametrize("wrong_column, wrong_type", [
+    ("volume", "TEXT"),
+    ("close", "INTEGER"),
+    ("received_utc", "BLOB"),
+])
+def test_existing_journal_rejects_incompatible_declared_column_types(tmp_path, wrong_column, wrong_type):
+    path = tmp_path / "journal.sqlite"
+    columns = [
+        ("feed", "TEXT"), ("symbol", "TEXT"), ("minute_utc", "TEXT"),
+        ("open", "TEXT"), ("high", "TEXT"), ("low", "TEXT"),
+        ("close", "TEXT"), ("volume", "INTEGER"), ("received_utc", "TEXT"),
+    ]
+    declarations = ", ".join(
+        f"{name} {wrong_type if name == wrong_column else kind} NOT NULL"
+        for name, kind in columns
+    )
+    with sqlite3.connect(path) as db:
+        db.execute(
+            f"CREATE TABLE paper_observations ({declarations}, "
+            "PRIMARY KEY(feed, symbol, minute_utc))"
+        )
+    with pytest.raises(ValueError, match="schema"):
+        PaperObservationJournal(path)
