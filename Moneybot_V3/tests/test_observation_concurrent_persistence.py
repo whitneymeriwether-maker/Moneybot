@@ -249,3 +249,27 @@ def test_separate_processes_share_initialized_journal_safely(tmp_path):
 def _write_process(args):
     path, minute = args
     return _write(path, minute)
+
+
+def test_separate_processes_reject_conflicting_replay(tmp_path):
+    """A competing process cannot silently replace an immutable observation."""
+    path = tmp_path / "multiprocess_conflict.sqlite"
+    minute = datetime(2026, 11, 2, 14, 30, tzinfo=timezone.utc)
+    PaperObservationJournal(path)
+    # Commit the valid row first, then race independent conflicting replays.
+    assert _write(path, minute) is True
+    with ProcessPoolExecutor(max_workers=4) as pool:
+        futures = [pool.submit(_write_process_conflict, (str(path), minute))
+                   for _ in range(8)]
+        for future in futures:
+            with pytest.raises(ValueError, match="Conflicting observation replay"):
+                future.result()
+    assert PaperObservationJournal(path).audited_latest(
+        feed="alpaca-iex", symbol="SPY",
+        as_of=minute + timedelta(seconds=80),
+    )["close"] == "500.02"
+
+
+def _write_process_conflict(args):
+    path, minute = args
+    return _write(path, minute, close="500.03")
