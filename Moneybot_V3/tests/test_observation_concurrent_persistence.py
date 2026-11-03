@@ -87,3 +87,29 @@ def test_concurrent_distinct_symbols_remain_independent(tmp_path):
     import sqlite3
     with sqlite3.connect(path) as db:
         assert db.execute("SELECT COUNT(*) FROM paper_observations").fetchone()[0] == len(symbols)
+
+
+def test_concurrent_distinct_feeds_same_symbol_remain_independent(tmp_path):
+    path = tmp_path / "observations.sqlite"
+    minute = datetime(2026, 11, 2, 14, 30, tzinfo=timezone.utc)
+    feeds = ("alpaca-iex", "research-synthetic")
+
+    def write_feed(feed):
+        return PaperObservationJournal(path).record(
+            feed=feed, symbol="SPY", minute=minute,
+            received_at=minute + timedelta(seconds=70),
+            open="500.01", high="500.03", low="500.00",
+            close="500.02", volume=100,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        assert list(pool.map(write_feed, feeds)) == [True, True]
+    for feed in feeds:
+        latest = PaperObservationJournal(path).audited_latest(
+            feed=feed, symbol="SPY",
+            as_of=minute + timedelta(seconds=80),
+        )
+        assert latest["feed"] == feed
+    import sqlite3
+    with sqlite3.connect(path) as db:
+        assert db.execute("SELECT COUNT(*) FROM paper_observations").fetchone()[0] == 2
