@@ -37,6 +37,8 @@ def test_reopen_preserves_immutable_observation(tmp_path):
 
 def test_concurrent_identical_writers_create_only_one_row(tmp_path):
     path = tmp_path / "observations.sqlite"
+    # Initialize the schema before testing concurrent record writes.
+    PaperObservationJournal(path)
     minute = datetime(2026, 11, 2, 14, 30, tzinfo=timezone.utc)
     with ThreadPoolExecutor(max_workers=6) as pool:
         results = list(pool.map(lambda _: _write(path, minute), range(12)))
@@ -49,6 +51,8 @@ def test_concurrent_identical_writers_create_only_one_row(tmp_path):
 
 def test_concurrent_conflicting_writers_cannot_overwrite(tmp_path):
     path = tmp_path / "observations.sqlite"
+    # Initialize the schema before testing concurrent record writes.
+    PaperObservationJournal(path)
     minute = datetime(2026, 11, 2, 14, 30, tzinfo=timezone.utc)
     with ThreadPoolExecutor(max_workers=2) as pool:
         futures = [pool.submit(_write, path, minute, close=value)
@@ -65,6 +69,8 @@ def test_concurrent_conflicting_writers_cannot_overwrite(tmp_path):
 
 def test_concurrent_distinct_symbols_remain_independent(tmp_path):
     path = tmp_path / "observations.sqlite"
+    # Initialize the schema before testing concurrent record writes.
+    PaperObservationJournal(path)
     minute = datetime(2026, 11, 2, 14, 30, tzinfo=timezone.utc)
     symbols = ("SPY", "QQQ", "IWM", "DIA")
 
