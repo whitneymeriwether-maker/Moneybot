@@ -153,7 +153,7 @@ class PaperObservationJournal:
         # Even an identical retry must not claim an impossible pre-close receipt.
         # Delayed retries remain valid because their receipt is not stored.
         if received_utc < minute_utc + timedelta(minutes=1):
-            raise ValueError("Observation receipt precedes minute completion")
+            raise ValueError("Incomplete observation: receipt precedes minute completion")
         stamp = minute_utc.isoformat(timespec="microseconds")
         payload = (*prices, volume)
         with closing(self._connect()) as db:
