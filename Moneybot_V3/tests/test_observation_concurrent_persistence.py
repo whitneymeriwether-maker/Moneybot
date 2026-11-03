@@ -111,3 +111,34 @@ def test_concurrent_unsupported_feeds_fail_without_persisting(tmp_path):
     import sqlite3
     with sqlite3.connect(path) as db:
         assert db.execute("SELECT COUNT(*) FROM paper_observations").fetchone()[0] == 0
+
+
+def test_concurrent_supported_and_unsupported_feeds_are_isolated(tmp_path):
+    """A rejected provider cannot suppress a valid independent observation."""
+    path = tmp_path / "observations.sqlite"
+    minute = datetime(2026, 11, 2, 14, 30, tzinfo=timezone.utc)
+    PaperObservationJournal(path)
+
+    def write_feed(feed):
+        return PaperObservationJournal(path).record(
+            feed=feed, symbol="SPY", minute=minute,
+            received_at=minute + timedelta(seconds=70),
+            open="500.01", high="500.03", low="500.00",
+            close="500.02", volume=100,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        accepted = pool.submit(write_feed, "alpaca-iex")
+        rejected = pool.submit(write_feed, "unknown-provider")
+        assert accepted.result() is True
+        with pytest.raises(ValueError, match="Unsupported declared research feed"):
+            rejected.result()
+
+    latest = PaperObservationJournal(path).audited_latest(
+        feed="alpaca-iex", symbol="SPY",
+        as_of=minute + timedelta(seconds=80),
+    )
+    assert latest["close"] == "500.02"
+    import sqlite3
+    with sqlite3.connect(path) as db:
+        assert db.execute("SELECT COUNT(*) FROM paper_observations").fetchone()[0] == 1
