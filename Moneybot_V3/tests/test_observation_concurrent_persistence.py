@@ -142,3 +142,69 @@ def test_concurrent_supported_and_unsupported_feeds_are_isolated(tmp_path):
     import sqlite3
     with sqlite3.connect(path) as db:
         assert db.execute("SELECT COUNT(*) FROM paper_observations").fetchone()[0] == 1
+
+
+
+def test_concurrent_preclose_retry_cannot_replace_valid_observation(tmp_path):
+    """A racing impossible receipt cannot win or mutate an immutable minute."""
+    path = tmp_path / "observations.sqlite"
+    minute = datetime(2026, 11, 2, 14, 30, tzinfo=timezone.utc)
+    PaperObservationJournal(path)
+
+    def write_with_receipt(delay):
+        return PaperObservationJournal(path).record(
+            feed="alpaca-iex", symbol="SPY", minute=minute,
+            received_at=minute + timedelta(seconds=delay),
+            open="500.01", high="500.03", low="500.00",
+            close="500.02", volume=100,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        good = pool.submit(write_with_receipt, 70)
+        bad = pool.submit(write_with_receipt, 59)
+        assert good.result() is True
+        with pytest.raises(ValueError, match="receipt precedes minute completion"):
+            bad.result()
+
+    assert write_with_receipt(80) is False
+    latest = PaperObservationJournal(path).audited_latest(
+        feed="alpaca-iex", symbol="SPY",
+        as_of=minute + timedelta(seconds=90),
+    )
+    assert latest["received_utc"] == (
+        minute + timedelta(seconds=70)
+    ).isoformat(timespec="microseconds")
+
+
+def test_concurrent_stale_new_minute_cannot_displace_fresh_minute(tmp_path):
+    """Stale first inserts must fail even when a fresh minute is racing."""
+    path = tmp_path / "observations.sqlite"
+    minute = datetime(2026, 11, 2, 14, 30, tzinfo=timezone.utc)
+    PaperObservationJournal(path)
+
+    def write_with_receipt(delay):
+        return PaperObservationJournal(path).record(
+            feed="alpaca-iex", symbol="SPY", minute=minute,
+            received_at=minute + timedelta(seconds=delay),
+            open="500.01", high="500.03", low="500.00",
+            close="500.02", volume=100,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        fresh = pool.submit(write_with_receipt, 70)
+        stale = pool.submit(write_with_receipt, 190)
+        assert fresh.result() is True
+        # If stale arrives after the fresh insert, it is an identical retry;
+        # if it arrives first, it must be rejected. Neither can rewrite data.
+        try:
+            assert stale.result() is False
+        except ValueError as error:
+            assert "Incomplete or stale observation" in str(error)
+
+    latest = PaperObservationJournal(path).audited_latest(
+        feed="alpaca-iex", symbol="SPY",
+        as_of=minute + timedelta(seconds=90),
+    )
+    assert latest["received_utc"] == (
+        minute + timedelta(seconds=70)
+    ).isoformat(timespec="microseconds")
