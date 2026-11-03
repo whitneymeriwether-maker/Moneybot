@@ -28,10 +28,13 @@ cannot distinguish a fabricated observation from a genuine one.
   audit or authentication of the provider, receipt clock, or database.
 - Only completed 9:30–15:59 New York weekday minutes may be inserted, with
   a caller-declared receipt timestamp 1–3 minutes after the minute starts.
-  Holidays and early closes are **not** checked. Missing minutes are not
+  Even identical retries must not claim receipt before the minute closes;
+  delayed identical retries remain allowed without replacing the original
+  receipt timestamp. Holidays and early closes are **not** checked. Missing minutes are not
   reconstructed.
 - OHLC prices must be finite, positive, decimal strings or Decimal values
-  with at most six fractional digits. Volume must be a bounded nonnegative
+  with at most six fractional digits. Untrusted price text is length-bounded
+  before decimal parsing. Volume must be a bounded nonnegative
   whole-share integer. Zero volume does not establish executable liquidity.
 - An optional `audited_latest()` read checks **every** stored observation in the requested feed/symbol partition and receipt chronology within a single SQLite read snapshot before returning the latest fresh row. Unlike the fast two-row `latest()` check, this detects corrupt older rows. It is O(number of observations), may delay concurrent writers, does not check other symbols, and cannot protect against coordinated tampering or changes after the read transaction. Neither read authorizes a simulated fill.
 - The latest() reader requires an explicit aware as_of timestamp and rejects
