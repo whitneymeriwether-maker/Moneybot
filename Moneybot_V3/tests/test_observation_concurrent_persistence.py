@@ -35,6 +35,19 @@ def test_reopen_preserves_immutable_observation(tmp_path):
         _write(path, minute, close="500.03")
 
 
+def test_concurrent_cold_start_initialization_is_safe(tmp_path):
+    """Multiple threads may initialize one previously nonexistent journal."""
+    path = tmp_path / "cold_start.sqlite"
+    minute = datetime(2026, 11, 2, 14, 30, tzinfo=timezone.utc)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(lambda _: _write(path, minute), range(16)))
+    assert results.count(True) == 1
+    assert results.count(False) == 15
+    assert PaperObservationJournal(path).audited_latest(
+        feed="alpaca-iex", symbol="SPY",
+        as_of=minute + timedelta(seconds=80),
+    )["close"] == "500.02"
+
 def test_concurrent_identical_writers_create_only_one_row(tmp_path):
     path = tmp_path / "observations.sqlite"
     # Initialize the schema before testing concurrent record writes.
