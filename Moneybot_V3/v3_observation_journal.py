@@ -6,6 +6,7 @@ It never sends orders or records paper fills. Only completed regular-session
 minute bars may be inserted; an immutable SQLite key makes retries harmless.
 """
 
+import fcntl
 import os
 import re
 import sqlite3
@@ -21,7 +22,7 @@ _SYMBOL = re.compile(r"[A-Z][A-Z0-9.-]{0,9}")
 _DECIMAL_TEXT = re.compile(r"(?:0|[1-9][0-9]*)(?:\.[0-9]{1,6})?")
 _NEW_YORK = ZoneInfo("America/New_York")
 # Serialize schema creation within this process; SQLite serializes the writes.
-# An atomic exclusive file creation below elects one initializer across processes.
+# A separate advisory file lock coordinates initialization across Linux processes.
 _INITIALIZE_LOCK = threading.Lock()
 _MAX_VOLUME = (1 << 53) - 1
 _MAX_PRICE = Decimal("1000000000")
@@ -99,46 +100,49 @@ class PaperObservationJournal:
             raise ValueError("A persistent observation SQLite path is required")
         self.db_path = str(db_path)
         with _INITIALIZE_LOCK:
-            # Atomic creation distinguishes the first initializer from processes
-            # that observe its file before the schema transaction commits.
-            # A crashed first initializer leaves an empty file, which fails closed.
-            try:
-                fd = os.open(self.db_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-            except FileExistsError:
-                existed = True
-            else:
-                existed = False
-                os.close(fd)
-            with closing(self._connect()) as db:
+            # Lock a persistent sidecar, not the SQLite inode: flock locks are
+            # released automatically if an initializer crashes. This closes
+            # the gap between existence checks and BEGIN IMMEDIATE.
+            lock_path = self.db_path + ".init.lock"
+            with open(lock_path, "a+b") as lock_file:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
                 try:
-                    db.execute("BEGIN IMMEDIATE")
-                    tables = {name for (name,) in db.execute(
-                        "SELECT name FROM sqlite_master WHERE type='table' AND name='paper_observations'"
-                    )}
-                    if existed and not tables:
-                        raise ValueError("Existing file is not an observation journal")
-                    db.execute("""CREATE TABLE IF NOT EXISTS paper_observations (
-                        feed TEXT NOT NULL, symbol TEXT NOT NULL,
-                        minute_utc TEXT NOT NULL, open TEXT NOT NULL,
-                        high TEXT NOT NULL, low TEXT NOT NULL,
-                        close TEXT NOT NULL, volume INTEGER NOT NULL,
-                        received_utc TEXT NOT NULL,
-                        PRIMARY KEY(feed, symbol, minute_utc)
-                    )""")
-                    schema = list(db.execute("PRAGMA table_info(paper_observations)"))
-                    columns = tuple(row[1] for row in schema)
-                    if (columns != _COLUMNS
-                            or tuple(row[2] for row in schema) != (
-                                "TEXT", "TEXT", "TEXT", "TEXT", "TEXT",
-                                "TEXT", "TEXT", "INTEGER", "TEXT"
-                            )
-                            or tuple(row[5] for row in schema) != (1, 2, 3, 0, 0, 0, 0, 0, 0)
-                            or any(row[3] != 1 for row in schema)):
-                        raise ValueError("Unsupported observation journal schema")
-                    db.commit()
-                except BaseException:
-                    db.rollback()
-                    raise
+                    self._initialize_locked()
+                finally:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+    def _initialize_locked(self):
+        existed = Path(self.db_path).exists()
+        with closing(self._connect()) as db:
+            try:
+                db.execute("BEGIN IMMEDIATE")
+                tables = {name for (name,) in db.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='paper_observations'"
+                )}
+                if existed and not tables:
+                    raise ValueError("Existing file is not an observation journal")
+                db.execute("""CREATE TABLE IF NOT EXISTS paper_observations (
+                    feed TEXT NOT NULL, symbol TEXT NOT NULL,
+                    minute_utc TEXT NOT NULL, open TEXT NOT NULL,
+                    high TEXT NOT NULL, low TEXT NOT NULL,
+                    close TEXT NOT NULL, volume INTEGER NOT NULL,
+                    received_utc TEXT NOT NULL,
+                    PRIMARY KEY(feed, symbol, minute_utc)
+                )""")
+                schema = list(db.execute("PRAGMA table_info(paper_observations)"))
+                columns = tuple(row[1] for row in schema)
+                if (columns != _COLUMNS
+                        or tuple(row[2] for row in schema) != (
+                            "TEXT", "TEXT", "TEXT", "TEXT", "TEXT",
+                            "TEXT", "TEXT", "INTEGER", "TEXT"
+                        )
+                        or tuple(row[5] for row in schema) != (1, 2, 3, 0, 0, 0, 0, 0, 0)
+                        or any(row[3] != 1 for row in schema)):
+                    raise ValueError("Unsupported observation journal schema")
+                db.commit()
+            except BaseException:
+                db.rollback()
+                raise
     
     def _connect(self):
         db = sqlite3.connect(self.db_path, timeout=10, isolation_level=None)
