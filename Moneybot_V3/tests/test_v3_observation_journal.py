@@ -1,7 +1,7 @@
 """Research-only observation persistence, ordering, and fail-closed replay."""
 
 import sqlite3
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -153,4 +153,25 @@ def test_existing_journal_rejects_incompatible_declared_column_types(tmp_path, w
             "PRIMARY KEY(feed, symbol, minute_utc))"
         )
     with pytest.raises(ValueError, match="schema"):
+        PaperObservationJournal(path)
+
+
+def _open_journal_in_child(path):
+    journal = PaperObservationJournal(path)
+    return journal.db_path
+
+
+def test_independent_processes_can_initialize_same_cold_journal(tmp_path):
+    path = tmp_path / "multiprocess.sqlite"
+    with ProcessPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(_open_journal_in_child, [str(path)] * 24))
+    assert results == [str(path)] * 24
+    with sqlite3.connect(path) as db:
+        assert db.execute("SELECT COUNT(*) FROM paper_observations").fetchone() == (0,)
+
+
+def test_empty_preexisting_file_is_not_silently_provisioned(tmp_path):
+    path = tmp_path / "empty.sqlite"
+    path.touch()
+    with pytest.raises(ValueError, match="Existing file"):
         PaperObservationJournal(path)
