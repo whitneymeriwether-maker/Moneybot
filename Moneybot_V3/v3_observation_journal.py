@@ -6,6 +6,7 @@ It never sends orders or records paper fills. Only completed regular-session
 minute bars may be inserted; an immutable SQLite key makes retries harmless.
 """
 
+import os
 import re
 import sqlite3
 import threading
@@ -20,7 +21,7 @@ _SYMBOL = re.compile(r"[A-Z][A-Z0-9.-]{0,9}")
 _DECIMAL_TEXT = re.compile(r"(?:0|[1-9][0-9]*)(?:\.[0-9]{1,6})?")
 _NEW_YORK = ZoneInfo("America/New_York")
 # Serialize schema creation within this process; SQLite serializes the writes.
-# Separate processes must coordinate their initial journal provisioning.
+# An atomic exclusive file creation below elects one initializer across processes.
 _INITIALIZE_LOCK = threading.Lock()
 _MAX_VOLUME = (1 << 53) - 1
 _MAX_PRICE = Decimal("1000000000")
@@ -98,7 +99,16 @@ class PaperObservationJournal:
             raise ValueError("A persistent observation SQLite path is required")
         self.db_path = str(db_path)
         with _INITIALIZE_LOCK:
-            existed = Path(self.db_path).exists()
+            # Atomic creation distinguishes the first initializer from processes
+            # that observe its file before the schema transaction commits.
+            # A crashed first initializer leaves an empty file, which fails closed.
+            try:
+                fd = os.open(self.db_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            except FileExistsError:
+                existed = True
+            else:
+                existed = False
+                os.close(fd)
             with closing(self._connect()) as db:
                 try:
                     db.execute("BEGIN IMMEDIATE")
