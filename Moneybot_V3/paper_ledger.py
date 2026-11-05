@@ -7,8 +7,10 @@ atomic. A real paper broker integration must independently verify fills,
 market timestamps, risk gates, and execution semantics before calling this.
 """
 
+import fcntl
 import re
 import sqlite3
+import threading
 from contextlib import closing, contextmanager
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
@@ -17,6 +19,7 @@ from pathlib import Path
 
 MAX_CENTS = 10**14  # Reject SQLite integer overflow and implausible balances.
 MAX_SHARES = 10**7
+_INITIALIZE_LOCK = threading.Lock()
 _CENT = Decimal("0.01")
 _EVENT_ID = re.compile(r"[A-Za-z0-9_.:-]{1,128}")
 _SYMBOL = re.compile(r"[A-Z][A-Z0-9.-]{0,9}")
@@ -59,82 +62,94 @@ class PaperLedger:
         self.db_path = str(db_path)
         if self.db_path == ":memory:":
             raise ValueError("In-memory databases are not persistent")
-        # sqlite3.connect() creates a missing file. Capture whether a file
-        # existed *before* connecting: an empty or unrelated pre-existing DB
-        # must not silently become a new $1,000 paper account after ledger
-        # data was lost or the path was accidentally reused.
-        existed_before_connect = Path(self.db_path).exists()
-        initial = _cents(starting_cash)
-        with closing(self._connect()) as db:
-            try:
-                db.execute("BEGIN IMMEDIATE")
-                # Existing ledger files must not be silently repaired by
-                # CREATE TABLE or reseeded if their account row was deleted.
-                # A partial schema is evidence of corruption or an
-                # unsupported migration, not a fresh empty account.
-                existing_tables = {
-                    name for (name,) in db.execute(
-                        """SELECT name FROM sqlite_master
-                           WHERE type='table' AND name IN
-                           ('paper_account', 'paper_positions', 'paper_fills')"""
-                    )
-                }
-                if existing_tables and existing_tables != {
-                    "paper_account", "paper_positions", "paper_fills"
-                }:
-                    raise ValueError("Incomplete existing paper ledger schema")
-                if existed_before_connect and not existing_tables:
-                    raise ValueError(
-                        "Existing SQLite file has no paper ledger schema; "
-                        "refusing to initialize a potentially lost account"
-                    )
-                db.execute(
-                    """CREATE TABLE IF NOT EXISTS paper_account (
-                        id INTEGER PRIMARY KEY CHECK (id = 1),
-                        starting_cash_cents INTEGER NOT NULL,
-                        cash_cents INTEGER NOT NULL,
-                        realized_pnl_cents INTEGER NOT NULL
-                    )"""
-                )
-                db.execute(
-                    """CREATE TABLE IF NOT EXISTS paper_positions (
-                        symbol TEXT PRIMARY KEY,
-                        quantity INTEGER NOT NULL CHECK (quantity > 0),
-                        cost_basis_cents INTEGER NOT NULL CHECK (cost_basis_cents >= 0)
-                    )"""
-                )
-                db.execute(
-                    """CREATE TABLE IF NOT EXISTS paper_fills (
-                        event_id TEXT PRIMARY KEY,
-                        timestamp_utc TEXT NOT NULL,
-                        symbol TEXT NOT NULL,
-                        side TEXT NOT NULL,
-                        quantity INTEGER NOT NULL,
-                        price_cents INTEGER NOT NULL,
-                        fee_cents INTEGER NOT NULL
-                    )"""
-                )
-                row = db.execute(
-                    "SELECT starting_cash_cents FROM paper_account WHERE id=1"
-                ).fetchone()
-                if row is None:
-                    if existing_tables:
+        # Coordinate the existence check and first SQLite transaction across
+        # processes. The persistent sidecar is never unlinked: removing it
+        # could permit two processes to lock different inodes.
+        with _INITIALIZE_LOCK:
+            with open(self.db_path + ".init.lock", "a+b") as lock_file:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+                try:
+                    self._initialize_locked(starting_cash)
+                finally:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+    def _initialize_locked(self, starting_cash):
+            # sqlite3.connect() creates a missing file. Capture whether a file
+            # existed *before* connecting: an empty or unrelated pre-existing DB
+            # must not silently become a new $1,000 paper account after ledger
+            # data was lost or the path was accidentally reused.
+            existed_before_connect = Path(self.db_path).exists()
+            initial = _cents(starting_cash)
+            with closing(self._connect()) as db:
+                try:
+                    db.execute("BEGIN IMMEDIATE")
+                    # Existing ledger files must not be silently repaired by
+                    # CREATE TABLE or reseeded if their account row was deleted.
+                    # A partial schema is evidence of corruption or an
+                    # unsupported migration, not a fresh empty account.
+                    existing_tables = {
+                        name for (name,) in db.execute(
+                            """SELECT name FROM sqlite_master
+                               WHERE type='table' AND name IN
+                               ('paper_account', 'paper_positions', 'paper_fills')"""
+                        )
+                    }
+                    if existing_tables and existing_tables != {
+                        "paper_account", "paper_positions", "paper_fills"
+                    }:
+                        raise ValueError("Incomplete existing paper ledger schema")
+                    if existed_before_connect and not existing_tables:
                         raise ValueError(
-                            "Missing existing paper account row; refusing to reinitialize"
+                            "Existing SQLite file has no paper ledger schema; "
+                            "refusing to initialize a potentially lost account"
                         )
                     db.execute(
-                        """INSERT INTO paper_account
-                        (id, starting_cash_cents, cash_cents, realized_pnl_cents)
-                        VALUES (1, ?, ?, 0)""",
-                        (initial, initial),
+                        """CREATE TABLE IF NOT EXISTS paper_account (
+                            id INTEGER PRIMARY KEY CHECK (id = 1),
+                            starting_cash_cents INTEGER NOT NULL,
+                            cash_cents INTEGER NOT NULL,
+                            realized_pnl_cents INTEGER NOT NULL
+                        )"""
                     )
-                elif row[0] != initial:
-                    raise ValueError("Existing paper account has different starting cash")
-                self._assert_consistent(db)
-                db.commit()
-            except Exception:
-                db.rollback()
-                raise
+                    db.execute(
+                        """CREATE TABLE IF NOT EXISTS paper_positions (
+                            symbol TEXT PRIMARY KEY,
+                            quantity INTEGER NOT NULL CHECK (quantity > 0),
+                            cost_basis_cents INTEGER NOT NULL CHECK (cost_basis_cents >= 0)
+                        )"""
+                    )
+                    db.execute(
+                        """CREATE TABLE IF NOT EXISTS paper_fills (
+                            event_id TEXT PRIMARY KEY,
+                            timestamp_utc TEXT NOT NULL,
+                            symbol TEXT NOT NULL,
+                            side TEXT NOT NULL,
+                            quantity INTEGER NOT NULL,
+                            price_cents INTEGER NOT NULL,
+                            fee_cents INTEGER NOT NULL
+                        )"""
+                    )
+                    row = db.execute(
+                        "SELECT starting_cash_cents FROM paper_account WHERE id=1"
+                    ).fetchone()
+                    if row is None:
+                        if existing_tables:
+                            raise ValueError(
+                                "Missing existing paper account row; refusing to reinitialize"
+                            )
+                        db.execute(
+                            """INSERT INTO paper_account
+                            (id, starting_cash_cents, cash_cents, realized_pnl_cents)
+                            VALUES (1, ?, ?, 0)""",
+                            (initial, initial),
+                        )
+                    elif row[0] != initial:
+                        raise ValueError("Existing paper account has different starting cash")
+                    self._assert_consistent(db)
+                    db.commit()
+                except Exception:
+                    db.rollback()
+                    raise
 
     def _connect(self):
         db = sqlite3.connect(self.db_path, timeout=10, isolation_level=None)
