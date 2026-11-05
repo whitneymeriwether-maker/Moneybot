@@ -67,7 +67,11 @@ class StatusHandler(BaseHTTPRequestHandler):
         /readyz must remain 503 even when probed with HEAD.
         """
         self._head_only = True
-        self.do_GET()
+        try:
+            self.do_GET()
+        finally:
+            # HEAD must not suppress a subsequent GET on a reused connection.
+            self._head_only = False
 
     def do_GET(self):
         path = self.path.split("?", 1)[0]
