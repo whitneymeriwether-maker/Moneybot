@@ -83,3 +83,32 @@ def test_unknown_route_is_not_a_trading_endpoint():
         code, _, body = get_response(url + "/api/broker/orders")
     assert code == 404
     assert json.loads(body)["error"] == "not found"
+
+
+def test_head_then_get_on_reused_http_connection():
+    """A HEAD request must not suppress the next GET response body."""
+    import http.client
+
+    class KeepAliveStatusHandler(StatusHandler):
+        protocol_version = "HTTP/1.1"
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), KeepAliveStatusHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=3)
+    try:
+        connection.request("HEAD", "/readyz")
+        head = connection.getresponse()
+        assert head.status == 503
+        assert head.read() == b""
+        connection.request("GET", "/status")
+        response = connection.getresponse()
+        assert response.status == 200
+        payload = response.read()
+        assert json.loads(payload)["trading_state"] == "NOT_ACTIVATED"
+        assert len(payload) == int(response.getheader("Content-Length"))
+    finally:
+        connection.close()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=3)
