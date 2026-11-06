@@ -67,7 +67,7 @@ def test_home_page_explicitly_disclaims_performance():
     assert code == 200
     assert headers.get_content_type() == "text/html"
     assert "NOT ACTIVATED" in body
-    assert "does not report" in body
+    assert "No verified realized P&amp;L" in body
     assert "No live-money or paper orders" in body
 
 
@@ -122,3 +122,20 @@ def test_head_then_get_on_reused_http_connection():
         server.shutdown()
         server.server_close()
         thread.join(timeout=3)
+
+
+def test_dashboard_is_explicit_about_missing_actual_data_and_risk():
+    with staging_server() as url:
+        code, headers, body = get_response(url + "/")
+    assert code == 200
+    assert headers["Cache-Control"] == "no-store"
+    for section in ("System health", "Account state", "Paper trades",
+                    "Risk limits", "Performance", "Integration status"):
+        assert section in body
+    assert "Trade count unknown, not zero" in body
+    assert "No demo values" in body
+    assert "Execution gate unavailable" in body
+    assert "No profitability claim" in body
+    assert "NOT READY" in body
+    assert 'href="/status"' in body
+    assert 'href="/readyz"' in body
