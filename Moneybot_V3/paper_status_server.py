@@ -100,6 +100,12 @@ class StatusHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         self._send(405, '{"error":"read-only service"}', "application/json; charset=utf-8")
 
+    # Explicitly reject every state-changing HTTP method with the same
+    # fail-closed response, including on order-like paths.
+    do_PUT = do_POST
+    do_PATCH = do_POST
+    do_DELETE = do_POST
+
 
 def main():
     raw_port = os.environ.get("PORT", "10000")
