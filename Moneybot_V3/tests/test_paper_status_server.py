@@ -139,3 +139,16 @@ def test_dashboard_is_explicit_about_missing_actual_data_and_risk():
     assert "NOT READY" in body
     assert 'href="/status"' in body
     assert 'href="/readyz"' in body
+
+
+def test_dashboard_health_indicator_is_live_and_fail_closed():
+    with staging_server() as url:
+        code, _, body = get_response(url + "/")
+    assert code == 200
+    assert 'id="service-health"' in body
+    assert 'aria-live="polite"' in body
+    assert 'fetch("/healthz", {cache: "no-store"})' in body
+    assert 'data.trading_state === "NOT_ACTIVATED"' in body
+    assert "Service health unavailable · trading unverified" in body
+    assert "setInterval(refreshHealth, 30000)" in body
+    assert "innerHTML" not in body
