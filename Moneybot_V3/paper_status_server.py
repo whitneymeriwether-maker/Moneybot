@@ -24,25 +24,37 @@ _STATUS = {
 }
 
 _HTML = """<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport"
-content="width=device-width, initial-scale=1">
-<title>Moneybot V3 — staging</title>
-<style>body{font:16px/1.6 system-ui,sans-serif;max-width:700px;margin:7vh auto;
-padding:0 20px;color:#202833;background:#f8fafc}main{background:white;
-padding:32px;border:1px solid #e0e6ed;border-radius:12px}
-h1{margin-top:0}strong{color:#92400e}code{background:#f1f5f9;
-padding:2px 5px;border-radius:4px}</style></head>
-<body><main><h1>Moneybot V3</h1>
-<p><strong>NOT ACTIVATED — staging only</strong></p>
-<p>This page confirms the separate V3 web service is reachable. It is not
-automatic paper trading, does not generate signals, and does not report
-trading performance.</p>
-<p>Market data, persistent paper ledger, and execution-time risk controls
-must be connected and validated before activation.</p>
-<p>Diagnostic endpoints: <code>/healthz</code>, <code>/status</code>,
-<code>/readyz</code>.</p>
-<p>No live-money or paper orders can be submitted by this service.</p>
-</main></body></html>"""
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Moneybot V3 | Paper Research Dashboard</title>
+<style>
+:root{font-family:system-ui,-apple-system,sans-serif;color:#e6edf5;background:#0d1522}
+*{box-sizing:border-box}body{max-width:1120px;margin:auto;padding:30px 18px}
+header{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
+h1{margin:0;font-size:1.7rem}h2{font-size:1rem;margin:0 0 14px}p{line-height:1.5}
+.tag{background:#382f17;color:#ffdb87;padding:8px 12px;border-radius:20px;font-weight:700}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px;margin-top:22px}
+section{background:#172338;border:1px solid #33445d;border-radius:12px;padding:20px}
+.value{font-size:1.25rem;font-weight:700}.muted{color:#a9bad0}.warn{color:#ffdb87}
+table{width:100%;border-collapse:collapse;text-align:left}td,th{padding:10px 4px;border-bottom:1px solid #33445d}
+.full{grid-column:1/-1}code{color:#c8d9f2}a{color:#a5ceff}
+</style></head><body>
+<header><div><h1>Moneybot V3</h1><p class="muted">Isolated staging · research &amp; paper-only</p></div>
+<span class="tag">NOT ACTIVATED</span></header>
+<p class="warn"><strong>Actual state only — no demo balances, fabricated trades, or simulated performance are shown.</strong>
+This dashboard is a read-only staging diagnostic, not an operating paper trader.</p>
+<div class="grid">
+<section><h2>System health</h2><div class="value">Service reachable</div><p class="muted">HTTP liveness only; trading readiness is unavailable.</p><p><a href="/healthz">Liveness JSON</a> · <a href="/readyz">Readiness JSON</a></p></section>
+<section><h2>Account state</h2><div class="value">Not connected</div><p class="muted">Actual paper cash, equity, buying power, and positions: unavailable. No demo values.</p></section>
+<section><h2>Paper trades</h2><div class="value">Not connected</div><p class="muted">No verified trade feed or persisted paper execution attached to this service. Trade count unknown, not zero.</p></section>
+<section><h2>Risk limits</h2><div class="value warn">Execution gate unavailable</div><p class="muted">Research policy targets (not enforced here): 1.5% risk/trade, 3% daily loss, 50% exposure, 10% drawdown pause, 25% overnight exposure.</p></section>
+<section><h2>Performance</h2><div class="value">Unavailable</div><p class="muted">No verified realized P&amp;L, return, drawdown, or equity curve. No profitability claim.</p></section>
+<section><h2>Integration status</h2><table><tr><th>Component</th><th>Actual state</th></tr>
+<tr><td>Market data</td><td>Not connected</td></tr><tr><td>Durable paper ledger</td><td>Not connected</td></tr>
+<tr><td>Automatic paper execution</td><td>Disabled</td></tr><tr><td>Live orders</td><td>Disabled</td></tr></table></section>
+<section class="full"><h2>Operational status</h2><p>Trading readiness: <strong class="warn">NOT READY</strong>.
+No live-money or paper orders can be submitted by this service. Check <a href="/status">machine-readable status</a>.
+This page deliberately does not equate a green health check with trading readiness.</p></section>
+</div></body></html>"""
 
 
 class StatusHandler(BaseHTTPRequestHandler):
