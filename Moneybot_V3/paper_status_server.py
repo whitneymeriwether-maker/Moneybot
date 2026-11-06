@@ -43,7 +43,7 @@ table{width:100%;border-collapse:collapse;text-align:left}td,th{padding:10px 4px
 <p class="warn"><strong>Actual state only — no demo balances, fabricated trades, or simulated performance are shown.</strong>
 This dashboard is a read-only staging diagnostic, not an operating paper trader.</p>
 <div class="grid">
-<section><h2>System health</h2><div class="value">Service reachable</div><p class="muted">HTTP liveness only; trading readiness is unavailable.</p><p><a href="/healthz">Liveness JSON</a> · <a href="/readyz">Readiness JSON</a></p></section>
+<section><h2>System health</h2><div class="value" id="service-health" role="status" aria-live="polite">Checking service…</div><p class="muted">Live liveness check; trading readiness is separately verified and remains unavailable.</p><p><a href="/healthz">Liveness JSON</a> · <a href="/readyz">Readiness JSON</a></p></section>
 <section><h2>Account state</h2><div class="value">Not connected</div><p class="muted">Actual paper cash, equity, buying power, and positions: unavailable. No demo values.</p></section>
 <section><h2>Paper trades</h2><div class="value">Not connected</div><p class="muted">No verified trade feed or persisted paper execution attached to this service. Trade count unknown, not zero.</p></section>
 <section><h2>Risk limits</h2><div class="value warn">Execution gate unavailable</div><p class="muted">Research policy targets (not enforced here): 1.5% risk/trade, 3% daily loss, 50% exposure, 10% drawdown pause, 25% overnight exposure.</p></section>
@@ -54,7 +54,25 @@ This dashboard is a read-only staging diagnostic, not an operating paper trader.
 <section class="full"><h2>Operational status</h2><p>Trading readiness: <strong class="warn">NOT READY</strong>.
 No live-money or paper orders can be submitted by this service. Check <a href="/status">machine-readable status</a>.
 This page deliberately does not equate a green health check with trading readiness.</p></section>
-</div></body></html>"""
+</div>
+<script>
+"use strict";
+const health = document.getElementById("service-health");
+async function refreshHealth() {
+  try {
+    const response = await fetch("/healthz", {cache: "no-store"});
+    if (!response.ok) throw new Error("Health endpoint unavailable");
+    const data = await response.json();
+    health.textContent = data.service === "up" && data.trading_state === "NOT_ACTIVATED"
+      ? "Service reachable · trading disabled"
+      : "Unexpected health response · trading unverified";
+  } catch (_) {
+    health.textContent = "Service health unavailable · trading unverified";
+  }
+}
+refreshHealth();
+setInterval(refreshHealth, 30000);
+</script></body></html>"""
 
 
 class StatusHandler(BaseHTTPRequestHandler):
