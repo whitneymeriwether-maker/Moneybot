@@ -127,6 +127,15 @@ def smoke_check(url=DEFAULT_URL, *, allow_loopback=False, timeout=10):
         or ready.get("ready_for_automatic_paper_trading") is not False
         or b"NOT ACTIVATED" not in homepage
         or b"No live-money or paper orders" not in homepage
+        or any(marker not in homepage for marker in (
+            b"System health", b"Account state", b"Paper trades",
+            b"Risk limits", b"Performance", b"Integration status",
+            b"Trade count unknown, not zero", b"No demo values",
+            b"Execution gate unavailable", b"No profitability claim",
+            b'id="service-health"', b'fetch("/healthz", {cache: "no-store"})',
+            b"setInterval(refreshHealth, 30000)",
+            b"Service health unavailable", b"NOT READY",
+        ))
     ):
         raise RuntimeError("Staging safety assertions failed")
     return {"staging_reachable": True, "trading_state": "NOT_ACTIVATED",
