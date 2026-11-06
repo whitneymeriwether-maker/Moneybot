@@ -43,7 +43,7 @@ table{width:100%;border-collapse:collapse;text-align:left}td,th{padding:10px 4px
 <p class="warn"><strong>Actual state only — no demo balances, fabricated trades, or simulated performance are shown.</strong>
 This dashboard is a read-only staging diagnostic, not an operating paper trader.</p>
 <div class="grid">
-<section><h2>System health</h2><div class="value" id="service-health" role="status" aria-live="polite">Checking service…</div><p class="muted">Live liveness check; trading readiness is separately verified and remains unavailable.</p><p><a href="/healthz">Liveness JSON</a> · <a href="/readyz">Readiness JSON</a></p></section>
+<section><h2>System health</h2><div class="value" id="service-health" role="status" aria-live="polite">Checking service…</div><p id="readiness-health" class="warn" role="status" aria-live="polite">Trading readiness unverified</p><p class="muted">Live liveness check; trading readiness is separately verified and remains unavailable.</p><p><a href="/healthz">Liveness JSON</a> · <a href="/readyz">Readiness JSON</a></p></section>
 <section><h2>Account state</h2><div class="value">Not connected</div><p class="muted">Actual paper cash, equity, buying power, and positions: unavailable. No demo values.</p></section>
 <section><h2>Paper trades</h2><div class="value">Not connected</div><p class="muted">No verified trade feed or persisted paper execution attached to this service. Trade count unknown, not zero.</p></section>
 <section><h2>Risk limits</h2><div class="value warn">Execution gate unavailable</div><p class="muted">Research policy targets (not enforced here): 1.5% risk/trade, 3% daily loss, 50% exposure, 10% drawdown pause, 25% overnight exposure.</p></section>
@@ -58,6 +58,7 @@ This page deliberately does not equate a green health check with trading readine
 <script>
 "use strict";
 const health = document.getElementById("service-health");
+const readiness = document.getElementById("readiness-health");
 async function refreshHealth() {
   try {
     const response = await fetch("/healthz", {cache: "no-store"});
@@ -68,6 +69,17 @@ async function refreshHealth() {
       : "Unexpected health response · trading unverified";
   } catch (_) {
     health.textContent = "Service health unavailable · trading unverified";
+  }
+  // Readiness is separate from liveness. Never present an unexpected 200,
+  // invalid JSON, or network failure as permission to trade.
+  try {
+    const response = await fetch("/readyz", {cache: "no-store"});
+    const data = await response.json();
+    readiness.textContent = response.status === 503 && data.ready_for_automatic_paper_trading === false
+      ? "Paper execution NOT READY · safeguards unvalidated"
+      : "Unexpected readiness response · trading unverified";
+  } catch (_) {
+    readiness.textContent = "Trading readiness unavailable · trading unverified";
   }
 }
 refreshHealth();
