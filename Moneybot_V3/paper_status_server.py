@@ -105,6 +105,9 @@ class StatusHandler(BaseHTTPRequestHandler):
     do_PUT = do_POST
     do_PATCH = do_POST
     do_DELETE = do_POST
+    # Do not advertise alternate methods or expose request reflection.
+    do_OPTIONS = do_POST
+    do_TRACE = do_POST
 
 
 def main():
