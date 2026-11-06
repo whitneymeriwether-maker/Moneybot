@@ -134,6 +134,8 @@ def smoke_check(url=DEFAULT_URL, *, allow_loopback=False, timeout=10):
             b"Execution gate unavailable", b"No profitability claim",
             b'id="service-health"', b'fetch("/healthz", {cache: "no-store"})',
             b"setInterval(refreshHealth, 30000)",
+            b'id="readiness-health"', b'fetch("/readyz", {cache: "no-store"})',
+            b"response.status === 503", b"Trading readiness unavailable",
             b"Service health unavailable", b"NOT READY",
         ))
     ):
