@@ -80,7 +80,7 @@ def test_order_like_post_is_rejected():
 
 def test_all_mutating_methods_fail_closed_on_order_path():
     with staging_server() as url:
-        for method in ("POST", "PUT", "PATCH", "DELETE"):
+        for method in ("POST", "PUT", "PATCH", "DELETE", "OPTIONS", "TRACE"):
             code, headers, body = get_response(url + "/api/broker/orders", method=method)
             assert code == 405, method
             assert headers["Cache-Control"] == "no-store"
