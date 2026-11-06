@@ -151,4 +151,10 @@ def test_dashboard_health_indicator_is_live_and_fail_closed():
     assert 'data.trading_state === "NOT_ACTIVATED"' in body
     assert "Service health unavailable · trading unverified" in body
     assert "setInterval(refreshHealth, 30000)" in body
+    assert 'id="readiness-health"' in body
+    assert 'fetch("/readyz", {cache: "no-store"})' in body
+    assert "response.status === 503" in body
+    assert "data.ready_for_automatic_paper_trading === false" in body
+    assert "Unexpected readiness response · trading unverified" in body
+    assert "Trading readiness unavailable · trading unverified" in body
     assert "innerHTML" not in body
