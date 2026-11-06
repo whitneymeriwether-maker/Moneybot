@@ -78,6 +78,16 @@ def test_order_like_post_is_rejected():
     assert json.loads(body)["error"] == "read-only service"
 
 
+def test_all_mutating_methods_fail_closed_on_order_path():
+    with staging_server() as url:
+        for method in ("POST", "PUT", "PATCH", "DELETE"):
+            code, headers, body = get_response(url + "/api/broker/orders", method=method)
+            assert code == 405, method
+            assert headers["Cache-Control"] == "no-store"
+            assert headers["X-Content-Type-Options"] == "nosniff"
+            assert json.loads(body) == {"error": "read-only service"}
+
+
 def test_unknown_route_is_not_a_trading_endpoint():
     with staging_server() as url:
         code, _, body = get_response(url + "/api/broker/orders")
