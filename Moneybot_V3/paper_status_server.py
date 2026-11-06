@@ -108,6 +108,7 @@ class StatusHandler(BaseHTTPRequestHandler):
     # Do not advertise alternate methods or expose request reflection.
     do_OPTIONS = do_POST
     do_TRACE = do_POST
+    do_CONNECT = do_POST
 
 
 def main():
