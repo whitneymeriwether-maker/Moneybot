@@ -60,3 +60,25 @@ def test_staging_readiness_cannot_silently_flip_to_200(monkeypatch):
 def test_cli_does_not_permit_loopback_or_other_services(capsys):
     assert main(["--url", "http://127.0.0.1:8000"]) == 1
     assert "FAILED" in capsys.readouterr().err
+
+
+def test_smoke_rejects_dashboard_missing_paper_data_disclosure(monkeypatch):
+    original = paper_status_server._HTML
+    monkeypatch.setattr(
+        paper_status_server, "_HTML",
+        original.replace("Trade count unknown, not zero", "Trade count: 0"),
+    )
+    with staging_server() as url:
+        with pytest.raises(RuntimeError, match="safety assertions"):
+            smoke_check(url, allow_loopback=True)
+
+
+def test_smoke_rejects_dashboard_without_live_health_polling(monkeypatch):
+    original = paper_status_server._HTML
+    monkeypatch.setattr(
+        paper_status_server, "_HTML",
+        original.replace("setInterval(refreshHealth, 30000)", ""),
+    )
+    with staging_server() as url:
+        with pytest.raises(RuntimeError, match="safety assertions"):
+            smoke_check(url, allow_loopback=True)
