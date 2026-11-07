@@ -158,3 +158,18 @@ def test_dashboard_health_indicator_is_live_and_fail_closed():
     assert "Unexpected readiness response · trading unverified" in body
     assert "Trading readiness unavailable · trading unverified" in body
     assert "innerHTML" not in body
+
+
+def test_dashboard_integration_poll_is_independent_and_fail_closed():
+    with staging_server() as url:
+        code, _, body = get_response(url + "/")
+    assert code == 200
+    assert 'id="integration-health"' in body
+    assert 'fetch("/status", {cache: "no-store"})' in body
+    for field in ("market_data", "persistent_paper_ledger", "execution_time_risk_gate",
+                  "automatic_paper_trading", "real_money_trading"):
+        assert "data." + field in body
+    assert "Unexpected status response · integrations unverified" in body
+    assert "Integration status unavailable · trading unverified" in body
+    assert "Verified snapshot: integrations NOT CONNECTED" in body
+    assert "innerHTML" not in body
