@@ -33,3 +33,53 @@ jobs:
           PYTHONPATH: .
           MONEYBOT_V3_ACTIVATION: 'false'
         run: python -m pytest -q tests
+      - name: Operational HTTP smoke test (paper execution disabled)
+        env:
+          PYTHONPATH: .
+          MONEYBOT_V3_ACTIVATION: 'false'
+          PORT: '18943'
+        run: |
+          python paper_status_server.py > /tmp/moneybot-v3-smoke.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          python - <<'PY'
+          import json
+          import time
+          from urllib.error import HTTPError, URLError
+          from urllib.request import Request, urlopen
+
+          base = "http://127.0.0.1:18943"
+          def request(path, method="GET"):
+              try:
+                  with urlopen(Request(base + path, method=method), timeout=2) as response:
+                      return response.status, response.read().decode()
+              except HTTPError as error:
+                  return error.code, error.read().decode()
+
+          for attempt in range(30):
+              try:
+                  status, body = request("/healthz")
+                  if status == 200:
+                      break
+              except (URLError, TimeoutError):
+                  pass
+              time.sleep(0.2)
+          else:
+              raise AssertionError("staging server failed to start")
+          status, body = request("/")
+          assert status == 200 and all(section in body for section in (
+              "System health", "Account state", "Paper trades",
+              "Risk limits", "Performance", "Integration status"))
+          status, body = request("/status")
+          state = json.loads(body)
+          assert status == 200
+          assert state["automatic_paper_trading"] is False
+          assert state["real_money_trading"] is False
+          status, body = request("/readyz")
+          assert status == 503 and json.loads(body)["ready_for_automatic_paper_trading"] is False
+          status, body = request("/paper-account")
+          assert status == 503 and json.loads(body)["available"] is False
+          status, body = request("/orders", "POST")
+          assert status == 405 and json.loads(body)["error"] == "read-only service"
+          print("Operational HTTP smoke passed: dashboard reachable, trading disabled")
+          PY
