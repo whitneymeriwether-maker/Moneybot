@@ -119,6 +119,8 @@ async function refreshHealth() {
       && amountIsValid(data.cash)
       && amountIsValid(data.deposits)
       && amountIsValid(data.withdrawals)
+      // Never display a contradictory cash projection even when metadata looks valid.
+      && (BigInt(data.deposits.replace(".", "")) - BigInt(data.withdrawals.replace(".", "")) === BigInt(data.cash.replace(".", "")))
       && Number.isSafeInteger(data.event_count) && data.event_count >= 0
       && data.paper_trades === null && data.performance === null;
     account.textContent = valid
