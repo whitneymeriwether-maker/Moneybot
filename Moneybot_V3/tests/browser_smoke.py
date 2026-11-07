@@ -40,6 +40,20 @@ try:
                         "Risk limits", "Performance", "Integration status"):
             assert page.get_by_role("heading", name=heading).count() == 1
         assert page.get_by_text("No verified realized P&L", exact=False).count() == 1
+        # A compromised or misconfigured upstream must not appear trade-ready.
+        # Browser assertions exercise the actual JavaScript fail-closed branch.
+        page.route("**/readyz", lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body='{"ready_for_automatic_paper_trading":true}'))
+        page.route("**/paper-account", lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body='{"available":true,"source":"demo","cash":"999999"}'))
+        page.reload(wait_until="networkidle")
+        page.locator("#readiness-health").get_by_text(
+            "Unexpected readiness response · trading unverified").wait_for()
+        page.locator("#paper-account-state").get_by_text(
+            "Paper account unverified").wait_for()
+        assert page.get_by_text("Journal-only cash:", exact=False).count() == 0
         browser.close()
     print("Headless browser smoke passed: real JS fetches and fail-closed labels")
 finally:
