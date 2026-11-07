@@ -54,6 +54,21 @@ try:
         page.locator("#paper-account-state").get_by_text(
             "Paper account unverified").wait_for()
         assert page.get_by_text("Journal-only cash:", exact=False).count() == 0
+        # Even a healthy liveness probe must not override a contradictory
+        # integration snapshot. No "connected" or ready state may leak through.
+        page.route("**/status", lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body='{"application":"Moneybot V3","trading_state":"ACTIVE",'
+                 '"automatic_paper_trading":true,"real_money_trading":false,'
+                 '"market_data":"CONNECTED","persistent_paper_ledger":"CONNECTED",'
+                 '"execution_time_risk_gate":"CONNECTED"}'))
+        page.reload(wait_until="networkidle")
+        page.locator("#service-health").get_by_text(
+            "Service reachable · trading disabled").wait_for()
+        page.locator("#integration-health").get_by_text(
+            "Unexpected status response · integrations unverified").wait_for()
+        page.locator("#readiness-health").get_by_text(
+            "Unexpected readiness response · trading unverified").wait_for()
         browser.close()
     print("Headless browser smoke passed: real JS fetches and fail-closed labels")
 finally:
