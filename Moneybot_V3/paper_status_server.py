@@ -54,7 +54,7 @@ This dashboard is a read-only staging diagnostic, not an operating paper trader.
 <section><h2>Integration status</h2><p id="integration-health" class="warn" role="status" aria-live="polite">Checking actual integration status…</p><table><tr><th>Component</th><th>Actual state</th></tr>
 <tr><td>Market data</td><td>Not connected</td></tr><tr><td>Durable paper ledger</td><td>Not connected</td></tr>
 <tr><td>Automatic paper execution</td><td>Disabled</td></tr><tr><td>Live orders</td><td>Disabled</td></tr></table></section>
-<section class="full"><h2>Operational status</h2><p>Trading readiness: <strong class="warn">NOT READY</strong>.
+<section class="full"><h2>Operational status</h2><p id="deployed-revision" class="muted">Deployment revision: checking…</p><p>Trading readiness: <strong class="warn">NOT READY</strong>.
 No live-money or paper orders can be submitted by this service. Check <a href="/status">machine-readable status</a>.
 This page deliberately does not equate a green health check with trading readiness.</p></section>
 </div>
@@ -65,7 +65,18 @@ const readiness = document.getElementById("readiness-health");
 const integration = document.getElementById("integration-health");
 const account = document.getElementById("paper-account-state");
 const movements = document.getElementById("paper-account-movements");
+const revision = document.getElementById("deployed-revision");
 async function refreshHealth() {
+  try {
+    const response = await fetch("/version", {cache: "no-store"});
+    if (!response.ok) throw new Error("version unavailable");
+    const data = await response.json();
+    revision.textContent = typeof data.git_commit === "string" && /^[0-9a-f]{40}$/.test(data.git_commit)
+      ? "Deployed Git revision: " + data.git_commit
+      : "Deployment revision unavailable · cannot establish code provenance";
+  } catch (_) {
+    revision.textContent = "Deployment revision unavailable · cannot establish code provenance";
+  }
   try {
     const response = await fetch("/healthz", {cache: "no-store"});
     if (!response.ok) throw new Error("Health endpoint unavailable");
@@ -173,6 +184,9 @@ class StatusHandler(BaseHTTPRequestHandler):
                 json.dumps({"service": "up", "trading_state": "NOT_ACTIVATED"}),
                 "application/json; charset=utf-8",
             )
+        elif path == "/version":
+            revision = os.environ.get("RENDER_GIT_COMMIT", "")
+            self._send(200, json.dumps({"git_commit": revision if len(revision) == 40 and all(ch in "0123456789abcdef" for ch in revision) else None}), "application/json; charset=utf-8")
         elif path == "/status":
             self._send(200, json.dumps(_STATUS), "application/json; charset=utf-8")
         elif path == "/paper-account":
