@@ -246,8 +246,9 @@ def test_dashboard_journal_movements_are_labeled_and_fail_closed():
         code, _, body = get_response(url + "/")
     assert code == 200
     assert 'id="paper-account-movements"' in body
-    assert 'data.deposits === "string"' in body
-    assert 'data.withdrawals === "string"' in body
+    assert "amountIsValid(data.deposits)" in body
+    assert "amountIsValid(data.withdrawals)" in body
+    assert 'BigInt(data.deposits.replace(".", "")) - BigInt(data.withdrawals.replace(".", ""))' in body
     assert 'Number.isSafeInteger(data.event_count)' in body
     assert 'data.paper_trades === null && data.performance === null' in body
     assert "NOT verified fills" in body
