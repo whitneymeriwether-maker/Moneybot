@@ -85,3 +85,12 @@ jobs:
           assert status == 405 and json.loads(body)["error"] == "read-only service"
           print("Operational HTTP smoke passed: dashboard reachable, trading disabled")
           PY
+      - name: Install headless browser test dependencies
+        run: |
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
+      - name: Exercise dashboard in Chromium (real JavaScript)
+        env:
+          PYTHONPATH: .
+          MONEYBOT_V3_ACTIVATION: 'false'
+        run: python tests/browser_smoke.py
