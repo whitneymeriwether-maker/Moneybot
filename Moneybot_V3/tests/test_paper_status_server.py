@@ -173,3 +173,34 @@ def test_dashboard_integration_poll_is_independent_and_fail_closed():
     assert "Integration status unavailable · trading unverified" in body
     assert "Verified snapshot: integrations NOT CONNECTED" in body
     assert "innerHTML" not in body
+
+
+def test_paper_account_fails_closed_without_config(monkeypatch):
+    monkeypatch.delenv("MONEYBOT_V3_PAPER_JOURNAL_PATH", raising=False)
+    with staging_server() as url:
+        code, _, body = get_response(url + "/paper-account")
+    assert code == 503
+    assert json.loads(body)["available"] is False
+
+
+def test_paper_account_fails_closed_for_missing_or_corrupt_journal(monkeypatch, tmp_path):
+    journal = tmp_path / "missing.db"
+    monkeypatch.setenv("MONEYBOT_V3_PAPER_JOURNAL_PATH", str(journal))
+    with staging_server() as url:
+        code, _, body = get_response(url + "/paper-account")
+        assert code == 503
+        assert json.loads(body)["available"] is False
+        journal.write_text("not sqlite")
+        code, _, body = get_response(url + "/paper-account")
+        assert code == 503
+        assert json.loads(body)["available"] is False
+
+
+def test_paper_account_dashboard_requires_explicit_journal_verification():
+    with staging_server() as url:
+        code, _, body = get_response(url)
+    assert code == 200
+    assert 'fetch("/paper-account", {cache: "no-store"})' in body
+    assert "journal_only_not_broker_or_market_verified" in body
+    assert "Paper account unavailable" in body
+    assert "NOT broker verified" in body
