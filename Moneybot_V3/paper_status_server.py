@@ -7,6 +7,7 @@ It stays disabled even if an activation-looking environment variable is set.
 
 import json
 import os
+import sqlite3
 from pathlib import Path
 from paper_snapshot import paper_cash_snapshot
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -171,7 +172,7 @@ class StatusHandler(BaseHTTPRequestHandler):
                 if not Path(journal_path).is_file():
                     raise ValueError("missing journal")
                 snapshot = paper_cash_snapshot(journal_path)
-            except (ValueError, OSError, RuntimeError, KeyError, TypeError):
+            except (ValueError, OSError, RuntimeError, KeyError, TypeError, sqlite3.DatabaseError):
                 self._send(503, json.dumps({"available": False, "reason": "journal invalid or unavailable"}), "application/json; charset=utf-8")
                 return
             self._send(200, json.dumps({"available": True, **snapshot}), "application/json; charset=utf-8")
