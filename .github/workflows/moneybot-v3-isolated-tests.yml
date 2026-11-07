@@ -70,6 +70,8 @@ jobs:
           assert status == 200 and all(section in body for section in (
               "System health", "Account state", "Paper trades",
               "Risk limits", "Performance", "Integration status"))
+          status, body = request("/version")
+          assert status == 200 and json.loads(body)["git_commit"] is None
           status, body = request("/status")
           state = json.loads(body)
           assert status == 200
