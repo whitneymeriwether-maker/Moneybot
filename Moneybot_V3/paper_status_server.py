@@ -47,7 +47,7 @@ table{width:100%;border-collapse:collapse;text-align:left}td,th{padding:10px 4px
 This dashboard is a read-only staging diagnostic, not an operating paper trader.</p>
 <div class="grid">
 <section><h2>System health</h2><div class="value" id="service-health" role="status" aria-live="polite">Checking service…</div><p id="readiness-health" class="warn" role="status" aria-live="polite">Trading readiness unverified</p><p class="muted">Live liveness check; trading readiness is separately verified and remains unavailable.</p><p><a href="/healthz">Liveness JSON</a> · <a href="/readyz">Readiness JSON</a></p></section>
-<section><h2>Account state</h2><div class="value" id="paper-account-state">Not connected</div><p class="muted">Journal-derived cash is shown above only when a valid isolated journal is configured. Broker-verified cash, equity, buying power, and positions remain unavailable. No demo values.</p></section>
+<section><h2>Account state</h2><div class="value" id="paper-account-state">Not connected</div><p id="paper-account-movements" class="muted">Recorded cash movements unavailable.</p><p class="muted">Journal-derived cash is shown above only when a valid isolated journal is configured. Broker-verified cash, equity, buying power, and positions remain unavailable. No demo values.</p></section>
 <section><h2>Paper trades</h2><div class="value">Not connected</div><p class="muted">No verified trade feed or persisted paper execution attached to this service. Trade count unknown, not zero.</p></section>
 <section><h2>Risk limits</h2><div class="value warn">Execution gate unavailable</div><p class="muted">Research policy targets (not enforced here): 1.5% risk/trade, 3% daily loss, 50% exposure, 10% drawdown pause, 25% overnight exposure.</p></section>
 <section><h2>Performance</h2><div class="value">Unavailable</div><p class="muted">No verified realized P&amp;L, return, drawdown, or equity curve. No profitability claim.</p></section>
@@ -64,6 +64,7 @@ const health = document.getElementById("service-health");
 const readiness = document.getElementById("readiness-health");
 const integration = document.getElementById("integration-health");
 const account = document.getElementById("paper-account-state");
+const movements = document.getElementById("paper-account-movements");
 async function refreshHealth() {
   try {
     const response = await fetch("/healthz", {cache: "no-store"});
@@ -97,14 +98,25 @@ async function refreshHealth() {
     const response = await fetch("/paper-account", {cache: "no-store"});
     if (!response.ok) throw new Error("journal unavailable");
     const data = await response.json();
-    account.textContent = data.available === true
+    const valid = data.available === true
       && data.source === "isolated_paper_journal"
       && data.verification === "journal_only_not_broker_or_market_verified"
-      && data.trading_ready === false && typeof data.cash === "string"
+      && data.trading_ready === false
+      && typeof data.cash === "string"
+      && typeof data.deposits === "string"
+      && typeof data.withdrawals === "string"
+      && Number.isSafeInteger(data.event_count) && data.event_count >= 0
+      && data.paper_trades === null && data.performance === null;
+    account.textContent = valid
       ? "Journal-only cash: " + data.cash + " · NOT broker verified"
       : "Paper account unverified";
+    movements.textContent = valid
+      ? "Journal-only deposits: " + data.deposits + " · withdrawals: " + data.withdrawals
+        + " · recorded events: " + data.event_count + " · NOT verified fills"
+      : "Recorded cash movements unavailable · no verified fills";
   } catch (_) {
     account.textContent = "Paper account unavailable · no verified balance";
+    movements.textContent = "Recorded cash movements unavailable · no verified fills";
   }
   // Readiness is separate from liveness. Never present an unexpected 200,
   // invalid JSON, or network failure as permission to trade.
