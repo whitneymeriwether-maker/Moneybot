@@ -204,3 +204,38 @@ def test_paper_account_dashboard_requires_explicit_journal_verification():
     assert "journal_only_not_broker_or_market_verified" in body
     assert "Paper account unavailable" in body
     assert "NOT broker verified" in body
+
+
+
+def test_paper_account_reads_persisted_journal_without_enabling_trading(monkeypatch, tmp_path):
+    """HTTP projection must survive reopening and never imply broker verification."""
+    from paper_journal import PaperJournal
+
+    journal_path = tmp_path / "paper-only.db"
+    journal = PaperJournal(journal_path)
+    assert journal.record("seed-1", "paper_deposit", "1000.25", {}) is True
+    assert journal.record("draw-1", "paper_withdrawal", "75.10", {}) is True
+    monkeypatch.setenv("MONEYBOT_V3_PAPER_JOURNAL_PATH", str(journal_path))
+
+    with staging_server() as url:
+        code, headers, body = get_response(url + "/paper-account")
+        ready_code, _, ready_body = get_response(url + "/readyz")
+        status_code, _, status_body = get_response(url + "/status")
+
+    assert code == 200
+    assert headers["Cache-Control"] == "no-store"
+    data = json.loads(body)
+    assert data["available"] is True
+    assert data["source"] == "isolated_paper_journal"
+    assert data["verification"] == "journal_only_not_broker_or_market_verified"
+    assert data["cash"] == "925.15"
+    assert data["deposits"] == "1000.25"
+    assert data["withdrawals"] == "75.10"
+    assert data["event_count"] == 2
+    assert data["paper_trades"] is None
+    assert data["performance"] is None
+    assert data["trading_ready"] is False
+    assert ready_code == 503
+    assert json.loads(ready_body)["ready_for_automatic_paper_trading"] is False
+    assert status_code == 200
+    assert json.loads(status_body)["automatic_paper_trading"] is False
