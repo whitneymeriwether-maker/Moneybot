@@ -66,6 +66,17 @@ try:
         page.reload(wait_until="networkidle")
         page.locator("#paper-account-state").get_by_text("Paper account unverified").wait_for()
         assert page.get_by_text("Journal-only cash:", exact=False).count() == 0
+        # A plausible but internally inconsistent journal must not be shown.
+        page.route("**/paper-account", lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body='{"available":true,"source":"isolated_paper_journal",'
+                 '"verification":"journal_only_not_broker_or_market_verified",'
+                 '"trading_ready":false,"cash":"1201.00","deposits":"1250.00",'
+                 '"withdrawals":"50.00","event_count":2,'
+                 '"paper_trades":null,"performance":null}'))
+        page.reload(wait_until="networkidle")
+        page.locator("#paper-account-state").get_by_text("Paper account unverified").wait_for()
+        assert page.get_by_text("Journal-only cash:", exact=False).count() == 0
         # Even a healthy liveness probe must not override a contradictory
         # integration snapshot. No "connected" or ready state may leak through.
         page.route("**/status", lambda route: route.fulfill(
