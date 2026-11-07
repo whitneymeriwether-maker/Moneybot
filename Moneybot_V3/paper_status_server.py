@@ -110,7 +110,7 @@ async function refreshHealth() {
     if (!response.ok) throw new Error("journal unavailable");
     const data = await response.json();
     const amountIsValid = value => typeof value === "string"
-      && /^(0|[1-9][0-9]*)(\\.[0-9]{2})$/.test(value)
+      && /^(0|[1-9][0-9]*)(\.[0-9]{2})$/.test(value)
       && value.length <= 32;
     const valid = data.available === true
       && data.source === "isolated_paper_journal"
