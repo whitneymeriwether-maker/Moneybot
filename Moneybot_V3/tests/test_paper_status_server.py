@@ -239,3 +239,16 @@ def test_paper_account_reads_persisted_journal_without_enabling_trading(monkeypa
     assert json.loads(ready_body)["ready_for_automatic_paper_trading"] is False
     assert status_code == 200
     assert json.loads(status_body)["automatic_paper_trading"] is False
+
+
+def test_dashboard_journal_movements_are_labeled_and_fail_closed():
+    with staging_server() as url:
+        code, _, body = get_response(url + "/")
+    assert code == 200
+    assert 'id="paper-account-movements"' in body
+    assert 'data.deposits === "string"' in body
+    assert 'data.withdrawals === "string"' in body
+    assert 'Number.isSafeInteger(data.event_count)' in body
+    assert 'data.paper_trades === null && data.performance === null' in body
+    assert "NOT verified fills" in body
+    assert "Recorded cash movements unavailable · no verified fills" in body
