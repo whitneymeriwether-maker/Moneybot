@@ -94,3 +94,9 @@ jobs:
           PYTHONPATH: .
           MONEYBOT_V3_ACTIVATION: 'false'
         run: python tests/browser_smoke.py
+
+      - name: Exercise journal-only dashboard in Chromium
+        env:
+          PYTHONPATH: .
+          MONEYBOT_V3_ACTIVATION: 'false'
+        run: python tests/browser_journal_smoke.py
