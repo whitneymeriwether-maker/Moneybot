@@ -48,7 +48,7 @@ This dashboard is a read-only staging diagnostic, not an operating paper trader.
 <section><h2>Paper trades</h2><div class="value">Not connected</div><p class="muted">No verified trade feed or persisted paper execution attached to this service. Trade count unknown, not zero.</p></section>
 <section><h2>Risk limits</h2><div class="value warn">Execution gate unavailable</div><p class="muted">Research policy targets (not enforced here): 1.5% risk/trade, 3% daily loss, 50% exposure, 10% drawdown pause, 25% overnight exposure.</p></section>
 <section><h2>Performance</h2><div class="value">Unavailable</div><p class="muted">No verified realized P&amp;L, return, drawdown, or equity curve. No profitability claim.</p></section>
-<section><h2>Integration status</h2><table><tr><th>Component</th><th>Actual state</th></tr>
+<section><h2>Integration status</h2><p id="integration-health" class="warn" role="status" aria-live="polite">Checking actual integration status…</p><table><tr><th>Component</th><th>Actual state</th></tr>
 <tr><td>Market data</td><td>Not connected</td></tr><tr><td>Durable paper ledger</td><td>Not connected</td></tr>
 <tr><td>Automatic paper execution</td><td>Disabled</td></tr><tr><td>Live orders</td><td>Disabled</td></tr></table></section>
 <section class="full"><h2>Operational status</h2><p>Trading readiness: <strong class="warn">NOT READY</strong>.
@@ -59,6 +59,7 @@ This page deliberately does not equate a green health check with trading readine
 "use strict";
 const health = document.getElementById("service-health");
 const readiness = document.getElementById("readiness-health");
+const integration = document.getElementById("integration-health");
 async function refreshHealth() {
   try {
     const response = await fetch("/healthz", {cache: "no-store"});
@@ -69,6 +70,24 @@ async function refreshHealth() {
       : "Unexpected health response · trading unverified";
   } catch (_) {
     health.textContent = "Service health unavailable · trading unverified";
+  }
+  // The read-only status snapshot is independently checked on every poll.
+  // A missing or inconsistent status response must never be treated as connected.
+  try {
+    const response = await fetch("/status", {cache: "no-store"});
+    if (!response.ok) throw new Error("Status endpoint unavailable");
+    const data = await response.json();
+    integration.textContent = data.application === "Moneybot V3"
+      && data.trading_state === "NOT_ACTIVATED"
+      && data.automatic_paper_trading === false
+      && data.real_money_trading === false
+      && data.market_data === "NOT_CONNECTED"
+      && data.persistent_paper_ledger === "NOT_CONNECTED"
+      && data.execution_time_risk_gate === "NOT_CONNECTED"
+      ? "Verified snapshot: integrations NOT CONNECTED · trading disabled"
+      : "Unexpected status response · integrations unverified";
+  } catch (_) {
+    integration.textContent = "Integration status unavailable · trading unverified";
   }
   // Readiness is separate from liveness. Never present an unexpected 200,
   // invalid JSON, or network failure as permission to trade.
