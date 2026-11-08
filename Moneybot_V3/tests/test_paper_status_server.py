@@ -253,3 +253,21 @@ def test_dashboard_journal_movements_are_labeled_and_fail_closed():
     assert 'data.paper_trades === null && data.performance === null' in body
     assert "NOT verified fills" in body
     assert "Recorded cash movements unavailable · no verified fills" in body
+
+
+def test_empty_paper_journal_has_dashboard_compatible_decimal_amounts(monkeypatch, tmp_path):
+    """A new, empty journal must show 0.00 rather than being rejected by the UI."""
+    from paper_journal import PaperJournal
+
+    journal_path = tmp_path / "empty-paper.db"
+    PaperJournal(journal_path)
+    monkeypatch.setenv("MONEYBOT_V3_PAPER_JOURNAL_PATH", str(journal_path))
+    with staging_server() as url:
+        code, _, body = get_response(url + "/paper-account")
+    assert code == 200
+    data = json.loads(body)
+    assert data["available"] is True
+    assert (data["cash"], data["deposits"], data["withdrawals"]) == ("0.00", "0.00", "0.00")
+    assert data["event_count"] == 0
+    assert data["trading_ready"] is False
+    assert data["paper_trades"] is None and data["performance"] is None
