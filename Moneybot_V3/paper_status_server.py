@@ -125,7 +125,7 @@ async function refreshHealth() {
       && Number.isSafeInteger(data.event_count) && data.event_count >= 0
       && (data.event_count === 0 ? data.last_recorded_at === null
         : typeof data.last_recorded_at === "string"
-          && /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?\\+00:00$/.test(data.last_recorded_at)
+          && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?\+00:00$/.test(data.last_recorded_at)
           && !Number.isNaN(Date.parse(data.last_recorded_at)))
       && data.paper_trades === null && data.performance === null;
     account.textContent = valid
