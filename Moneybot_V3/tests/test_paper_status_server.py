@@ -232,6 +232,9 @@ def test_paper_account_reads_persisted_journal_without_enabling_trading(monkeypa
     assert data["deposits"] == "1000.25"
     assert data["withdrawals"] == "75.10"
     assert data["event_count"] == 2
+    from datetime import datetime, timezone
+    recorded = datetime.fromisoformat(data["last_recorded_at"])
+    assert recorded.tzinfo == timezone.utc
     assert data["paper_trades"] is None
     assert data["performance"] is None
     assert data["trading_ready"] is False
@@ -269,6 +272,7 @@ def test_empty_paper_journal_has_dashboard_compatible_decimal_amounts(monkeypatc
     assert data["available"] is True
     assert (data["cash"], data["deposits"], data["withdrawals"]) == ("0.00", "0.00", "0.00")
     assert data["event_count"] == 0
+    assert data["last_recorded_at"] is None
     assert data["trading_ready"] is False
     assert data["paper_trades"] is None and data["performance"] is None
 
@@ -280,6 +284,23 @@ def test_subcent_journal_is_unavailable_instead_of_rounded(monkeypatch, tmp_path
     journal_path = tmp_path / "subcent-paper.db"
     journal = PaperJournal(journal_path)
     journal.record("subcent-1", "paper_deposit", "1.001", {})
+    monkeypatch.setenv("MONEYBOT_V3_PAPER_JOURNAL_PATH", str(journal_path))
+    with staging_server() as url:
+        code, _, body = get_response(url + "/paper-account")
+    assert code == 503
+    assert json.loads(body)["available"] is False
+
+
+def test_invalid_journal_timestamp_fails_closed(monkeypatch, tmp_path):
+    """An ambiguous journal time cannot be presented as recent account activity."""
+    import sqlite3
+    from paper_journal import PaperJournal
+
+    journal_path = tmp_path / "bad-timestamp.db"
+    journal = PaperJournal(journal_path)
+    journal.record("deposit-1", "paper_deposit", "10.00", {})
+    with sqlite3.connect(journal_path) as db:
+        db.execute("UPDATE paper_events SET recorded_at = ?", ("not-a-timestamp",))
     monkeypatch.setenv("MONEYBOT_V3_PAPER_JOURNAL_PATH", str(journal_path))
     with staging_server() as url:
         code, _, body = get_response(url + "/paper-account")
