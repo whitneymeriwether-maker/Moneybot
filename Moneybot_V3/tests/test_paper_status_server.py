@@ -377,3 +377,15 @@ def test_dashboard_displays_bounded_cash_activity_without_inferred_trades():
     assert 'Cash activity unavailable or unverified' in body
     assert 'NOT verified paper trades' in body
     assert "innerHTML" not in body
+
+
+def test_cash_activity_javascript_has_valid_declarations_and_regex_escapes():
+    """Prevent escaped newlines and regexes from breaking the browser dashboard."""
+    from paper_status_server import _HTML
+
+    assert 'const revision = document.getElementById("deployed-revision");\\nconst activityStatus' not in _HTML
+    assert 'const activityStatus = document.getElementById("journal-activity-status");\\nconst activityRows' not in _HTML
+    assert 'const activityStatus = document.getElementById("journal-activity-status");\nconst activityRows' in _HTML
+    assert r'/^(0|[1-9][0-9]*)\.[0-9]{2}$/.test(value)' in _HTML
+    assert r'/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}' in _HTML
+    assert r'\\d{4}' not in _HTML
