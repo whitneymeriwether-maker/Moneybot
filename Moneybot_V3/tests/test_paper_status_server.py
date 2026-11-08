@@ -309,3 +309,34 @@ def test_invalid_journal_timestamp_fails_closed(monkeypatch, tmp_path):
         code, _, body = get_response(url + "/paper-account")
     assert code == 503
     assert json.loads(body)["available"] is False
+
+
+def test_cash_journal_activity_is_read_only_and_not_a_trade_feed(monkeypatch, tmp_path):
+    from paper_journal import PaperJournal
+    journal_path = tmp_path / "audit.db"
+    journal = PaperJournal(journal_path)
+    journal.record("fund-1", "paper_deposit", "100.00", {"private": "do-not-expose"})
+    journal.record("draw-1", "paper_withdrawal", "5.00", {})
+    monkeypatch.setenv("MONEYBOT_V3_PAPER_JOURNAL_PATH", str(journal_path))
+    with staging_server() as url:
+        code, _, body = get_response(url + "/paper-journal-activity")
+    assert code == 200
+    data = json.loads(body)
+    assert data["activity_type"] == "cash_movements_not_trades"
+    assert data["trading_ready"] is False
+    assert [event["type"] for event in data["events"]] == ["paper_deposit", "paper_withdrawal"]
+    assert "do-not-expose" not in body
+    assert all("payload" not in event and "event_id" not in event for event in data["events"])
+
+
+def test_cash_journal_activity_rejects_unverified_fill_observations(monkeypatch, tmp_path):
+    from paper_journal import PaperJournal
+    journal_path = tmp_path / "unverified.db"
+    journal = PaperJournal(journal_path)
+    journal.record("fund-1", "paper_deposit", "100.00", {})
+    journal.record("fill-1", "paper_fill_observation", "10.00", {})
+    monkeypatch.setenv("MONEYBOT_V3_PAPER_JOURNAL_PATH", str(journal_path))
+    with staging_server() as url:
+        code, _, body = get_response(url + "/paper-journal-activity")
+    assert code == 503
+    assert json.loads(body)["available"] is False
