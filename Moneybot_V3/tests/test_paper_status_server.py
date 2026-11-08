@@ -348,7 +348,7 @@ def test_dashboard_utc_timestamp_regex_is_not_double_escaped():
     from datetime import datetime, timezone
     from paper_status_server import _HTML
 
-    match = re.search(r"last_recorded_at\)\s*\n\s*&&\s*(/\^.*?\$/)\.test", _HTML)
+    match = re.search(r"&&\s*(/\^.*?\$/)\.test\(data\.last_recorded_at\)", _HTML)
     assert match is not None
     js_regex = match.group(1)
     assert r"\d{4}" in js_regex
