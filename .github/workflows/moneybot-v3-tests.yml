@@ -33,6 +33,21 @@ jobs:
         working-directory: Moneybot_V3
         run: python -m compileall -q .
 
+      - name: Syntax-check browser dashboard JavaScript
+        working-directory: Moneybot_V3
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          from paper_status_server import _HTML
+
+          scripts = re.findall(r"<script(?:\\s[^>]*)?>(.*?)</script>", _HTML, re.DOTALL)
+          if len(scripts) != 1:
+              raise SystemExit("Expected exactly one inline dashboard script")
+          Path("/tmp/moneybot-v3-dashboard.js").write_text(scripts[0], encoding="utf-8")
+          PY
+          node --check /tmp/moneybot-v3-dashboard.js
+
       - name: Run V3 tests
         working-directory: Moneybot_V3
         run: python -m pytest -q
