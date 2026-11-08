@@ -29,7 +29,7 @@ try:
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
         page = browser.new_page()
-        page.goto(f"http://127.0.0.1:{PORT}/", wait_until="networkidle")
+        page.goto(f"http://127.0.0.1:{PORT}/", wait_until="domcontentloaded")
         page.locator("#service-health").get_by_text("Service reachable · trading disabled").wait_for()
         page.locator("#readiness-health").get_by_text("Paper execution NOT READY").wait_for()
         page.locator("#integration-health").get_by_text("integrations NOT CONNECTED").wait_for()
@@ -48,7 +48,7 @@ try:
         page.route("**/paper-account", lambda route: route.fulfill(
             status=200, content_type="application/json",
             body='{"available":true,"source":"demo","cash":"999999"}'))
-        page.reload(wait_until="networkidle")
+        page.reload(wait_until="domcontentloaded")
         page.locator("#readiness-health").get_by_text(
             "Unexpected readiness response · trading unverified").wait_for()
         page.locator("#paper-account-state").get_by_text(
@@ -63,7 +63,7 @@ try:
                  '"trading_ready":false,"cash":"NaN","deposits":"1250.00",'
                  '"withdrawals":"50.00","event_count":2,'
                  '"paper_trades":null,"performance":null}'))
-        page.reload(wait_until="networkidle")
+        page.reload(wait_until="domcontentloaded")
         page.locator("#paper-account-state").get_by_text("Paper account unverified").wait_for()
         assert page.get_by_text("Journal-only cash:", exact=False).count() == 0
         # A plausible but internally inconsistent journal must not be shown.
@@ -74,7 +74,7 @@ try:
                  '"trading_ready":false,"cash":"1201.00","deposits":"1250.00",'
                  '"withdrawals":"50.00","event_count":2,'
                  '"paper_trades":null,"performance":null}'))
-        page.reload(wait_until="networkidle")
+        page.reload(wait_until="domcontentloaded")
         page.locator("#paper-account-state").get_by_text("Paper account unverified").wait_for()
         assert page.get_by_text("Journal-only cash:", exact=False).count() == 0
         # Even a healthy liveness probe must not override a contradictory
@@ -85,7 +85,7 @@ try:
                  '"automatic_paper_trading":true,"real_money_trading":false,'
                  '"market_data":"CONNECTED","persistent_paper_ledger":"CONNECTED",'
                  '"execution_time_risk_gate":"CONNECTED"}'))
-        page.reload(wait_until="networkidle")
+        page.reload(wait_until="domcontentloaded")
         page.locator("#service-health").get_by_text(
             "Service reachable · trading disabled").wait_for()
         page.locator("#integration-health").get_by_text(
