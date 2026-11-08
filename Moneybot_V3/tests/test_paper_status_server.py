@@ -340,3 +340,19 @@ def test_cash_journal_activity_rejects_unverified_fill_observations(monkeypatch,
         code, _, body = get_response(url + "/paper-journal-activity")
     assert code == 503
     assert json.loads(body)["available"] is False
+
+
+def test_dashboard_utc_timestamp_regex_is_not_double_escaped():
+    """A valid populated journal must pass the browser's UTC timestamp check."""
+    import re
+    from datetime import datetime, timezone
+    from paper_status_server import _HTML
+
+    match = re.search(r"last_recorded_at\)\s*\n\s*&&\s*(/\^.*?\$/)\.test", _HTML)
+    assert match is not None
+    js_regex = match.group(1)
+    assert r"\d{4}" in js_regex
+    assert r"\\d{4}" not in js_regex
+    pattern = js_regex[1:-1]
+    timestamp = datetime.now(timezone.utc).isoformat()
+    assert re.fullmatch(pattern, timestamp)
