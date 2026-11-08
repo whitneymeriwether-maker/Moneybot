@@ -67,7 +67,9 @@ const integration = document.getElementById("integration-health");
 const account = document.getElementById("paper-account-state");
 const movements = document.getElementById("paper-account-movements");
 const recency = document.getElementById("paper-account-recency");
-const revision = document.getElementById("deployed-revision");\nconst activityStatus = document.getElementById("journal-activity-status");\nconst activityRows = document.getElementById("journal-activity-rows");
+const revision = document.getElementById("deployed-revision");
+const activityStatus = document.getElementById("journal-activity-status");
+const activityRows = document.getElementById("journal-activity-rows");
 async function refreshHealth() {
   try {
     const response = await fetch("/version", {cache: "no-store"});
@@ -152,9 +154,9 @@ async function refreshHealth() {
     if (!response.ok) throw new Error("activity unavailable");
     const data = await response.json();
     const amountValid = value => typeof value === "string"
-      && /^(0|[1-9][0-9]*)\\.[0-9]{2}$/.test(value) && value.length <= 32;
+      && /^(0|[1-9][0-9]*)\.[0-9]{2}$/.test(value) && value.length <= 32;
     const timestampValid = value => typeof value === "string"
-      && /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?\\+00:00$/.test(value)
+      && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?\+00:00$/.test(value)
       && !Number.isNaN(Date.parse(value));
     const valid = data.available === true && data.source === "isolated_paper_journal"
       && data.verification === "journal_only_not_broker_or_market_verified"
