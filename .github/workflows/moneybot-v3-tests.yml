@@ -42,8 +42,8 @@ jobs:
           from paper_status_server import _HTML
 
           scripts = re.findall(r"<script(?:\\s[^>]*)?>(.*?)</script>", _HTML, re.DOTALL)
-          if len(scripts) != 1:
-              raise SystemExit("Expected exactly one inline dashboard script")
+          if len(scripts) != 1 or len(re.findall(r"<script\b", _HTML, re.IGNORECASE)) != 1:
+              raise SystemExit("Expected exactly one inline dashboard script and no external scripts")
           Path("/tmp/moneybot-v3-dashboard.js").write_text(scripts[0], encoding="utf-8")
           PY
           node --check /tmp/moneybot-v3-dashboard.js
