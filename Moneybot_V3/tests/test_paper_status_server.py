@@ -249,6 +249,9 @@ def test_dashboard_journal_movements_are_labeled_and_fail_closed():
         code, _, body = get_response(url + "/")
     assert code == 200
     assert 'id="paper-account-movements"' in body
+    assert 'id="paper-account-recency"' in body
+    assert "NOT market-data freshness" in body
+    assert "Last journal entry unavailable" in body
     assert "amountIsValid(data.deposits)" in body
     assert "amountIsValid(data.withdrawals)" in body
     assert 'BigInt(data.deposits.replace(".", "")) - BigInt(data.withdrawals.replace(".", ""))' in body
