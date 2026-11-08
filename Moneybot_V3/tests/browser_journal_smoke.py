@@ -34,7 +34,7 @@ with tempfile.TemporaryDirectory() as directory:
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(headless=True)
             page = browser.new_page()
-            page.goto("http://127.0.0.1:18945/", wait_until="networkidle")
+            page.goto("http://127.0.0.1:18945/", wait_until="domcontentloaded")
             page.locator("#paper-account-state").get_by_text(
                 "Journal-only cash: 1200.00 · NOT broker verified").wait_for()
             page.locator("#paper-account-movements").get_by_text(
@@ -42,7 +42,7 @@ with tempfile.TemporaryDirectory() as directory:
             page.locator("#readiness-health").get_by_text("Paper execution NOT READY").wait_for()
             # An unverified fill observation must invalidate the entire cash projection.
             journal.record("unverified-fill", "paper_fill_observation", "10.00", {})
-            page.reload(wait_until="networkidle")
+            page.reload(wait_until="domcontentloaded")
             page.locator("#paper-account-state").get_by_text(
                 "Paper account unavailable · no verified balance").wait_for()
             assert page.get_by_text("Journal-only cash:", exact=False).count() == 0
