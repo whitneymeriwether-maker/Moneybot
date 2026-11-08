@@ -29,6 +29,9 @@ def paper_cash_snapshot(path):
             cash -= amount
         else:
             raise ValueError("Cannot project unverified fill or unknown journal event")
+    # Dashboard cash is cent-denominated; never silently round sub-cent events.
+    if any(value != value.quantize(Decimal("0.01")) for value in (cash, deposits, withdrawals)):
+        raise ValueError("Journal contains sub-cent amounts unsupported by dashboard")
     return {
         "source": "isolated_paper_journal",
         "verification": "journal_only_not_broker_or_market_verified",
