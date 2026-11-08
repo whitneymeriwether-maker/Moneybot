@@ -26,7 +26,7 @@ _STATUS = {
     "note": "Deployment smoke-test only. No trades, signals, or performance data.",
 }
 
-_HTML = """<!doctype html>
+_HTML = r"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Moneybot V3 | Paper Research Dashboard</title>
 <style>
