@@ -48,7 +48,7 @@ This dashboard is a read-only staging diagnostic, not an operating paper trader.
 <div class="grid">
 <section><h2>System health</h2><div class="value" id="service-health" role="status" aria-live="polite">Checking service…</div><p id="readiness-health" class="warn" role="status" aria-live="polite">Trading readiness unverified</p><p class="muted">Live liveness check; trading readiness is separately verified and remains unavailable.</p><p><a href="/healthz">Liveness JSON</a> · <a href="/readyz">Readiness JSON</a></p></section>
 <section><h2>Account state</h2><div class="value" id="paper-account-state">Not connected</div><p id="paper-account-movements" class="muted">Recorded cash movements unavailable.</p><p id="paper-account-recency" class="muted">Last journal entry unavailable.</p><p class="muted">Journal-derived cash is shown above only when a valid isolated journal is configured. Broker-verified cash, equity, buying power, and positions remain unavailable. No demo values.</p></section>
-<section><h2>Paper trades</h2><div class="value">Not connected</div><p class="muted">No verified trade feed or persisted paper execution attached to this service. Trade count unknown, not zero.</p></section>
+<section class="full"><h2>Recorded paper cash activity (NOT trades)</h2><p id="journal-activity-status" class="muted" role="status" aria-live="polite">Checking isolated journal…</p><table><thead><tr><th>UTC recorded time</th><th>Movement</th><th>Amount</th></tr></thead><tbody id="journal-activity-rows"></tbody></table><p class="muted">Up to 25 journal-only cash movements. No broker verification, trade fills, or performance.</p></section>\n<section><h2>Paper trades</h2><div class="value">Not connected</div><p class="muted">No verified trade feed or persisted paper execution attached to this service. Trade count unknown, not zero.</p></section>
 <section><h2>Risk limits</h2><div class="value warn">Execution gate unavailable</div><p class="muted">Research policy targets (not enforced here): 1.5% risk/trade, 3% daily loss, 50% exposure, 10% drawdown pause, 25% overnight exposure.</p></section>
 <section><h2>Performance</h2><div class="value">Unavailable</div><p class="muted">No verified realized P&amp;L, return, drawdown, or equity curve. No profitability claim.</p></section>
 <section><h2>Integration status</h2><p id="integration-health" class="warn" role="status" aria-live="polite">Checking actual integration status…</p><table><tr><th>Component</th><th>Actual state</th></tr>
@@ -66,7 +66,7 @@ const integration = document.getElementById("integration-health");
 const account = document.getElementById("paper-account-state");
 const movements = document.getElementById("paper-account-movements");
 const recency = document.getElementById("paper-account-recency");
-const revision = document.getElementById("deployed-revision");
+const revision = document.getElementById("deployed-revision");\nconst activityStatus = document.getElementById("journal-activity-status");\nconst activityRows = document.getElementById("journal-activity-rows");
 async function refreshHealth() {
   try {
     const response = await fetch("/version", {cache: "no-store"});
@@ -142,6 +142,44 @@ async function refreshHealth() {
     account.textContent = "Paper account unavailable · no verified balance";
     movements.textContent = "Recorded cash movements unavailable · no verified fills";
     recency.textContent = "Last journal entry unavailable";
+  }
+  // Validate the entire activity response before displaying any rows.
+  // textContent prevents persisted journal strings from becoming HTML.
+  activityRows.replaceChildren();
+  try {
+    const response = await fetch("/paper-journal-activity", {cache: "no-store"});
+    if (!response.ok) throw new Error("activity unavailable");
+    const data = await response.json();
+    const amountValid = value => typeof value === "string"
+      && /^(0|[1-9][0-9]*)\\.[0-9]{2}$/.test(value) && value.length <= 32;
+    const timestampValid = value => typeof value === "string"
+      && /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?\\+00:00$/.test(value)
+      && !Number.isNaN(Date.parse(value));
+    const valid = data.available === true && data.source === "isolated_paper_journal"
+      && data.verification === "journal_only_not_broker_or_market_verified"
+      && data.activity_type === "cash_movements_not_trades"
+      && data.trading_ready === false && Array.isArray(data.events)
+      && data.events.length <= 25
+      && data.events.every((event, index) => event && Number.isSafeInteger(event.sequence)
+        && event.sequence > 0 && (index === 0 || event.sequence > data.events[index - 1].sequence)
+        && (event.type === "paper_deposit" || event.type === "paper_withdrawal")
+        && amountValid(event.amount) && timestampValid(event.recorded_at));
+    if (!valid) throw new Error("invalid activity");
+    for (const event of data.events) {
+      const row = document.createElement("tr");
+      for (const value of [event.recorded_at, event.type === "paper_deposit" ? "Deposit" : "Withdrawal", event.amount]) {
+        const cell = document.createElement("td");
+        cell.textContent = value;
+        row.appendChild(cell);
+      }
+      activityRows.appendChild(row);
+    }
+    activityStatus.textContent = data.events.length
+      ? "Journal-only cash movements · NOT verified paper trades"
+      : "No cash movements recorded in isolated journal · NOT a trade count";
+  } catch (_) {
+    activityRows.replaceChildren();
+    activityStatus.textContent = "Cash activity unavailable or unverified · no trades inferred";
   }
   // Readiness is separate from liveness. Never present an unexpected 200,
   // invalid JSON, or network failure as permission to trade.
