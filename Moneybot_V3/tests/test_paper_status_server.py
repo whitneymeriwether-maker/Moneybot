@@ -271,3 +271,17 @@ def test_empty_paper_journal_has_dashboard_compatible_decimal_amounts(monkeypatc
     assert data["event_count"] == 0
     assert data["trading_ready"] is False
     assert data["paper_trades"] is None and data["performance"] is None
+
+
+def test_subcent_journal_is_unavailable_instead_of_rounded(monkeypatch, tmp_path):
+    """Never display rounded cash when the persisted journal contains sub-cent funds."""
+    from paper_journal import PaperJournal
+
+    journal_path = tmp_path / "subcent-paper.db"
+    journal = PaperJournal(journal_path)
+    journal.record("subcent-1", "paper_deposit", "1.001", {})
+    monkeypatch.setenv("MONEYBOT_V3_PAPER_JOURNAL_PATH", str(journal_path))
+    with staging_server() as url:
+        code, _, body = get_response(url + "/paper-account")
+    assert code == 503
+    assert json.loads(body)["available"] is False
