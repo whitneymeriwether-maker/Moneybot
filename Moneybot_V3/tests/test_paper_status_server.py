@@ -356,3 +356,24 @@ def test_dashboard_utc_timestamp_regex_is_not_double_escaped():
     pattern = js_regex[1:-1]
     timestamp = datetime.now(timezone.utc).isoformat()
     assert re.fullmatch(pattern, timestamp)
+
+
+def test_dashboard_displays_bounded_cash_activity_without_inferred_trades():
+    """UI must validate journal-only events and render using safe DOM text."""
+    with staging_server() as url:
+        code, _, body = get_response(url + "/")
+    assert code == 200
+    assert 'id="journal-activity-status"' in body
+    assert 'id="journal-activity-rows"' in body
+    assert 'fetch("/paper-journal-activity", {cache: "no-store"})' in body
+    assert 'data.activity_type === "cash_movements_not_trades"' in body
+    assert 'data.events.length <= 25' in body
+    assert 'event.type === "paper_deposit"' in body
+    assert 'event.type === "paper_withdrawal"' in body
+    assert 'Number.isSafeInteger(event.sequence)' in body
+    assert 'activityRows.replaceChildren()' in body
+    assert 'cell.textContent = value' in body
+    assert 'row.appendChild(cell)' in body
+    assert 'Cash activity unavailable or unverified' in body
+    assert 'NOT verified paper trades' in body
+    assert "innerHTML" not in body
