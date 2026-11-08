@@ -216,6 +216,35 @@ class StatusHandler(BaseHTTPRequestHandler):
                 self._send(503, json.dumps({"available": False, "reason": "journal invalid or unavailable"}), "application/json; charset=utf-8")
                 return
             self._send(200, json.dumps({"available": True, **snapshot}), "application/json; charset=utf-8")
+        elif path == "/paper-journal-activity":
+            # Cash movements only. Never expose payloads or call observations fills.
+            journal_path = os.environ.get("MONEYBOT_V3_PAPER_JOURNAL_PATH")
+            if not journal_path:
+                self._send(503, json.dumps({"available": False, "reason": "journal not configured"}), "application/json; charset=utf-8")
+                return
+            try:
+                if not Path(journal_path).is_file():
+                    raise ValueError("missing journal")
+                from paper_journal import PaperJournal
+                # Validate the entire journal before exposing even a partial history.
+                paper_cash_snapshot(journal_path)
+                events = PaperJournal(journal_path).events()
+                if any(e["event_type"] not in ("paper_deposit", "paper_withdrawal") for e in events):
+                    raise ValueError("unverified fill observation")
+                activity = [
+                    {"sequence": e["sequence"], "type": e["event_type"],
+                     "amount": e["amount"], "recorded_at": e["recorded_at"]}
+                    for e in events[-25:]
+                ]
+            except (ValueError, OSError, RuntimeError, KeyError, TypeError, sqlite3.DatabaseError):
+                self._send(503, json.dumps({"available": False, "reason": "journal invalid or unavailable"}), "application/json; charset=utf-8")
+                return
+            self._send(200, json.dumps({
+                "available": True, "source": "isolated_paper_journal",
+                "verification": "journal_only_not_broker_or_market_verified",
+                "activity_type": "cash_movements_not_trades", "trading_ready": False,
+                "events": activity,
+            }), "application/json; charset=utf-8")
         elif path == "/readyz":
             self._send(
                 503,
