@@ -9,13 +9,23 @@ import re
 import sys
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
-from urllib.request import Request, urlopen
+from urllib.request import Request, build_opener, HTTPRedirectHandler
+
+
+class NoRedirect(HTTPRedirectHandler):
+    """Do not follow redirects away from the verified staging origin."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+_OPENER = build_opener(NoRedirect)
 
 
 def fetch(base, path):
     req = Request(base + path, headers={"Accept": "application/json, text/html"})
     try:
-        response = urlopen(req, timeout=12)
+        response = _OPENER.open(req, timeout=12)
     except HTTPError as error:
         response = error
     with response:
