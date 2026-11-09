@@ -29,7 +29,7 @@ class SmokeStagingTests(unittest.TestCase):
                         smoke.check(origin)
 
     def test_rejects_missing_dashboard_markers(self):
-        with patch.object(smoke, "fetch", return_value=(200, {}, b"Moneybot V3")):
+        with patch.object(smoke, "fetch", return_value=(200, {"Content-Type": "text/html; charset=utf-8"}, b"Moneybot V3")):
             with self.assertRaisesRegex(AssertionError, "Dashboard missing"):
                 smoke.check("https://example.com")
 
@@ -37,7 +37,7 @@ class SmokeStagingTests(unittest.TestCase):
         sha = "a" * 40
         html = b"Moneybot V3 System health Account state Paper trades Risk limits Performance NOT ACTIVATED no demo balances"
         responses = iter([
-            (200, {}, html),
+            (200, {"Content-Type": "text/html; charset=utf-8"}, html),
             (200, {}, b'{"service":"up","trading_state":"NOT_ACTIVATED"}'),
             (503, {}, b'{"ready_for_automatic_paper_trading":false}'),
             (200, {}, b'{"automatic_paper_trading":false,"real_money_trading":false,"trading_state":"NOT_ACTIVATED","market_data":"NOT_CONNECTED","persistent_paper_ledger":"NOT_CONNECTED","execution_time_risk_gate":"NOT_CONNECTED"}'),
