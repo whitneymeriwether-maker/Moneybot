@@ -48,5 +48,28 @@ class SmokeStagingTests(unittest.TestCase):
                 smoke.check("https://example.com", sha)
 
 
+    def test_rejects_order_endpoint_that_accepts_post(self):
+        sha = "a" * 40
+        html = b"Moneybot V3 System health Account state Paper trades Risk limits Performance NOT ACTIVATED no demo balances"
+        responses = [
+            (200, {"Content-Type": "text/html"}, html),
+            (200, {}, b'{"service":"up","trading_state":"NOT_ACTIVATED"}'),
+            (503, {}, b'{"ready_for_automatic_paper_trading":false}'),
+            (200, {}, b'{"automatic_paper_trading":false,"real_money_trading":false,"trading_state":"NOT_ACTIVATED","market_data":"NOT_CONNECTED","persistent_paper_ledger":"NOT_CONNECTED","execution_time_risk_gate":"NOT_CONNECTED"}'),
+            (200, {}, ('{"git_commit":"' + sha + '"}').encode()),
+            (503, {}, b'{"available":false}'),
+            (503, {}, b'{"available":false}'),
+            (200, {}, b'{"accepted":true}'),
+        ]
+        calls = []
+        def fake_fetch(base, path, method="GET"):
+            calls.append((path, method))
+            return responses.pop(0)
+        with patch.object(smoke, "fetch", side_effect=fake_fetch):
+            with self.assertRaisesRegex(AssertionError, "state-changing request was not rejected"):
+                smoke.check("https://example.com", sha)
+        self.assertEqual(calls[-1], ("/orders", "POST"))
+
+
 if __name__ == "__main__":
     unittest.main()
