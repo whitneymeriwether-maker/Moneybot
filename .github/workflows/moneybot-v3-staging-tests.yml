@@ -22,12 +22,12 @@ jobs:
           python-version: '3.11'
       - name: Compile V3 server and smoke checker
         run: python -m py_compile Moneybot_V3/paper_status_server.py Moneybot_V3/smoke_staging.py
+      - name: Install isolated test runner
+        run: python -m pip install pytest==8.3.5
       - name: Run staging HTTP and smoke checker regression tests
         run: |
           python -m unittest discover -s Moneybot_V3 -p 'test_*staging*.py' -v
           python -m unittest discover -s Moneybot_V3 -p 'test_*status*.py' -v
-      - name: Install isolated test runner
-        run: python -m pip install pytest==8.3.5
       - name: Run fail-closed paper risk gate tests
         run: python -m pytest Moneybot_V3/test_paper_risk_gate.py -v
       - name: Confirm no deployment or trading activation
