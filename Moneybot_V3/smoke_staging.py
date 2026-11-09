@@ -1,0 +1,96 @@
+"""Read-only external smoke check for an isolated Moneybot V3 staging deployment.
+
+Usage: python Moneybot_V3/smoke_staging.py https://moneybot-v3-staging.onrender.com --revision SHA
+No credentials or order endpoints are used. A green check does NOT authorize trading.
+"""
+import argparse
+import json
+import re
+import sys
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
+from urllib.request import Request, urlopen
+
+
+def fetch(base, path):
+    req = Request(base + path, headers={"Accept": "application/json, text/html"})
+    try:
+        response = urlopen(req, timeout=12)
+    except HTTPError as error:
+        response = error
+    with response:
+        body = response.read(1024 * 1024 + 1)
+        if len(body) > 1024 * 1024:
+            raise ValueError(path + ": response exceeds 1 MiB")
+        return response.status, response.headers, body
+
+
+def check(base, revision=None):
+    parsed = urlsplit(base)
+    if parsed.scheme not in ("https", "http") or not parsed.netloc or parsed.path not in ("", "/") or parsed.query or parsed.fragment or parsed.username or parsed.password:
+        raise ValueError("Expected a bare HTTP(S) service origin")
+    if parsed.scheme != "https" and parsed.hostname not in ("127.0.0.1", "localhost"):
+        raise ValueError("Remote smoke tests require HTTPS")
+    base = base.rstrip("/")
+    status, headers, body = fetch(base, "/")
+    if status != 200 or b"Moneybot V3" not in body:
+        raise AssertionError("Dashboard HTML not available")
+    for marker in (b"System health", b"Account state", b"Paper trades",
+                   b"Risk limits", b"Performance", b"NOT ACTIVATED",
+                   b"no demo balances"):
+        if marker.lower() not in body.lower():
+            raise AssertionError("Dashboard missing: " + marker.decode())
+    status, _, body = fetch(base, "/healthz")
+    if status != 200 or json.loads(body) != {"service": "up", "trading_state": "NOT_ACTIVATED"}:
+        raise AssertionError("Unexpected liveness state")
+    status, _, body = fetch(base, "/readyz")
+    if status != 503 or json.loads(body).get("ready_for_automatic_paper_trading") is not False:
+        raise AssertionError("Trading readiness must fail closed")
+    status, _, body = fetch(base, "/status")
+    state = json.loads(body)
+    if status != 200 or any((state.get(k) is not v) for k, v in (
+        ("automatic_paper_trading", False), ("real_money_trading", False)
+    )) or state.get("trading_state") != "NOT_ACTIVATED":
+        raise AssertionError("Trading state is not safely disabled")
+    for key in ("market_data", "persistent_paper_ledger", "execution_time_risk_gate"):
+        if state.get(key) != "NOT_CONNECTED":
+            raise AssertionError("Unexpected integration state: " + key)
+    status, _, body = fetch(base, "/version")
+    actual = json.loads(body).get("git_commit")
+    if status != 200 or (actual is not None and not re.fullmatch("[0-9a-f]{40}", actual)):
+        raise AssertionError("Invalid deployment provenance")
+    if revision is not None and actual != revision:
+        raise AssertionError("Wrong deployed revision: " + str(actual))
+    for path in ("/paper-account", "/paper-journal-activity"):
+        status, _, body = fetch(base, path)
+        data = json.loads(body)
+        if status == 503:
+            if data.get("available") is not False:
+                raise AssertionError(path + ": invalid unavailable response")
+        elif status == 200:
+            if data.get("available") is not True or data.get("source") != "isolated_paper_journal" or data.get("trading_ready") is not False:
+                raise AssertionError(path + ": unverified journal response")
+        else:
+            raise AssertionError(path + ": unexpected HTTP " + str(status))
+    return actual
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("origin", help="HTTPS origin of isolated staging service")
+    parser.add_argument("--revision", help="Required 40-character lowercase deployed Git SHA")
+    args = parser.parse_args()
+    if args.revision and not re.fullmatch("[0-9a-f]{40}", args.revision):
+        parser.error("--revision must be a lowercase 40-character Git SHA")
+    try:
+        actual = check(args.origin, args.revision)
+    except (AssertionError, ValueError, URLError, TimeoutError, OSError, json.JSONDecodeError) as error:
+        print("FAIL: " + str(error), file=sys.stderr)
+        return 1
+    print("PASS: read-only staging diagnostics; trading disabled; revision=" + str(actual))
+    print("NOT a paper-trading readiness or profitability certification")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
