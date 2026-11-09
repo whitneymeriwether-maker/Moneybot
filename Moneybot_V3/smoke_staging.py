@@ -22,8 +22,8 @@ class NoRedirect(HTTPRedirectHandler):
 _OPENER = build_opener(NoRedirect)
 
 
-def fetch(base, path):
-    req = Request(base + path, headers={"Accept": "application/json, text/html"})
+def fetch(base, path, method="GET"):
+    req = Request(base + path, headers={"Accept": "application/json, text/html"}, method=method)
     try:
         response = _OPENER.open(req, timeout=12)
     except HTTPError as error:
@@ -43,6 +43,8 @@ def check(base, revision=None):
         raise ValueError("Remote smoke tests require HTTPS")
     base = base.rstrip("/")
     status, headers, body = fetch(base, "/")
+    if "text/html" not in headers.get("Content-Type", "").lower():
+        raise AssertionError("Dashboard must be served as HTML")
     if status != 200 or b"Moneybot V3" not in body:
         raise AssertionError("Dashboard HTML not available")
     for marker in (b"System health", b"Account state", b"Paper trades",
@@ -82,6 +84,12 @@ def check(base, revision=None):
                 raise AssertionError(path + ": unverified journal response")
         else:
             raise AssertionError(path + ": unexpected HTTP " + str(status))
+    # Prove the public service rejects order-like writes; a readable dashboard
+    # alone is insufficient evidence that staging cannot accept executions.
+    for path in ("/orders", "/api/orders", "/paper-trade"):
+        status, _, body = fetch(base, path, method="POST")
+        if status != 405 or json.loads(body).get("error") != "read-only service":
+            raise AssertionError(path + ": state-changing request was not rejected")
     return actual
 
 
