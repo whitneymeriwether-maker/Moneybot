@@ -1,0 +1,31 @@
+name: Moneybot V3 staging safety tests
+
+on:
+  push:
+    branches: [moneybot-v3-research]
+    paths:
+      - 'Moneybot_V3/**'
+      - '.github/workflows/moneybot-v3-staging-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  staging-safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Compile V3 server and smoke checker
+        run: python -m py_compile Moneybot_V3/paper_status_server.py Moneybot_V3/smoke_staging.py
+      - name: Run staging HTTP and smoke checker regression tests
+        run: |
+          python -m unittest discover -s Moneybot_V3 -p 'test_*staging*.py' -v
+          python -m unittest discover -s Moneybot_V3 -p 'test_*status*.py' -v
+      - name: Confirm no deployment or trading activation
+        run: |
+          echo "CI validates source only; no staging deploy or trading activation is performed."
