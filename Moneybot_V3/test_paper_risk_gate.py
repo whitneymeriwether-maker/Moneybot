@@ -36,7 +36,7 @@ def test_limits_fail_closed_at_boundaries():
     assert not check(drawdown="1000.00")[0]
     assert not check(order_risk="150.01")[0]
     assert not check(current_exposure="4900.00", order_notional="100.01")[0]
-    assert check(order_risk="150.00", current_exposure="4900.00")[0]
+    assert check(order_risk="150.00", order_notional="200.00", current_exposure="4800.00")[0]
 
 
 def test_invalid_inputs_fail_closed():
