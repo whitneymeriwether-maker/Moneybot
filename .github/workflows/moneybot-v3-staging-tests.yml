@@ -60,6 +60,7 @@ jobs:
         run: |
           python -m unittest discover -s Moneybot_V3 -p 'test_*staging*.py' -v
           python -m unittest discover -s Moneybot_V3 -p 'test_*status*.py' -v
+          python -m unittest discover -s Moneybot_V3/tests -p 'test_*.py' -v
       - name: Run fail-closed paper risk gate tests
         run: python -m pytest Moneybot_V3/test_paper_risk_gate.py -v
       - name: Exercise running dashboard through read-only HTTP smoke test
