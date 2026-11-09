@@ -54,6 +54,8 @@ def validate_paper_order(*, equity, daily_loss, drawdown, current_exposure,
         ]
         if equity <= 0 or order_notional <= 0 or order_risk <= 0:
             return False, "nonpositive equity or order"
+        if order_risk > order_notional:
+            return False, "order risk exceeds notional"
         fractions = [limits.max_risk_fraction, limits.max_daily_loss_fraction,
                      limits.max_exposure_fraction, limits.max_drawdown_fraction]
         if any(type(x) is not Decimal or not x.is_finite() or not 0 < x < 1 for x in fractions):
