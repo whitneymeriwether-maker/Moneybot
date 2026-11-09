@@ -62,6 +62,31 @@ jobs:
           python -m unittest discover -s Moneybot_V3 -p 'test_*status*.py' -v
       - name: Run fail-closed paper risk gate tests
         run: python -m pytest Moneybot_V3/test_paper_risk_gate.py -v
+      - name: Exercise running dashboard through read-only HTTP smoke test
+        env:
+          PORT: '18765'
+          RENDER_GIT_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          python Moneybot_V3/paper_status_server.py > /tmp/v3-staging-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true; wait "$server_pid" 2>/dev/null || true' EXIT
+          python - <<'PY'
+          import time
+          from urllib.error import URLError
+          from urllib.request import urlopen
+          for attempt in range(40):
+              try:
+                  with urlopen("http://127.0.0.1:18765/healthz", timeout=1) as response:
+                      if response.status == 200:
+                          break
+              except (URLError, TimeoutError, OSError):
+                  pass
+              time.sleep(0.25)
+          else:
+              raise SystemExit("Local staging server failed to start")
+          PY
+          python Moneybot_V3/smoke_staging.py http://127.0.0.1:18765 --revision "$RENDER_GIT_COMMIT"
       - name: Confirm no deployment or trading activation
         run: |
           echo "CI validates source only; no staging deploy or trading activation is performed."
