@@ -24,6 +24,38 @@ jobs:
         run: python -m py_compile Moneybot_V3/paper_status_server.py Moneybot_V3/smoke_staging.py
       - name: Install isolated test runner
         run: python -m pip install pytest==8.3.5
+      - name: Validate browser dashboard JavaScript syntax
+        run: |
+          python - <<'PY'
+          import ast
+          from html.parser import HTMLParser
+          from pathlib import Path
+          source = Path("Moneybot_V3/paper_status_server.py").read_text(encoding="utf-8")
+          tree = ast.parse(source)
+          html = next(node.value.value for node in tree.body
+                      if isinstance(node, ast.Assign)
+                      and any(isinstance(t, ast.Name) and t.id == "_HTML" for t in node.targets)
+                      and isinstance(node.value, ast.Constant))
+          class Scripts(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.inside = False
+                  self.parts = []
+              def handle_starttag(self, tag, attrs):
+                  if tag == "script":
+                      self.inside = True
+              def handle_endtag(self, tag):
+                  if tag == "script":
+                      self.inside = False
+              def handle_data(self, data):
+                  if self.inside:
+                      self.parts.append(data)
+          parser = Scripts()
+          parser.feed(html)
+          assert len(parser.parts) == 1 and parser.parts[0].strip(), "Expected one inline dashboard script"
+          Path("/tmp/moneybot-v3-dashboard.js").write_text(parser.parts[0], encoding="utf-8")
+          PY
+          node --check /tmp/moneybot-v3-dashboard.js
       - name: Run staging HTTP and smoke checker regression tests
         run: |
           python -m unittest discover -s Moneybot_V3 -p 'test_*staging*.py' -v
