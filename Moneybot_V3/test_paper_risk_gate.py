@@ -46,3 +46,8 @@ def test_invalid_inputs_fail_closed():
     assert not check(order_risk="0.00")[0]
     assert not check(quote_verified=1)[0]
     assert not check(equity=10000.0)[0]
+
+
+def test_risk_cannot_exceed_order_notional():
+    assert not check(order_notional="10.00", order_risk="10.01")[0]
+    assert check(order_notional="100.00", order_risk="100.00")[0]
