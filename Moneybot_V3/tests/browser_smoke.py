@@ -34,7 +34,7 @@ try:
         page.locator("#readiness-health").get_by_text("Paper execution NOT READY").wait_for()
         page.locator("#integration-health").get_by_text("integrations NOT CONNECTED").wait_for()
         page.locator("#paper-account-state").get_by_text("Paper account unavailable").wait_for()
-        page.locator("#deployed-revision").get_by_text("Deployment revision unavailable").wait_for()
+        page.locator("#deployed-revision").get_by_text("Deployed Git revision: " + os.environ["RENDER_GIT_COMMIT"]).wait_for()
         assert page.get_by_text("Actual state only").count() == 1
         for heading in ("System health", "Account state", "Paper trades",
                         "Risk limits", "Performance", "Integration status"):
