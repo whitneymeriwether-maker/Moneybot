@@ -58,7 +58,7 @@ def check(base, revision=None):
     status, _, body = fetch(base, "/readyz")
     if status != 503 or json.loads(body).get("ready_for_automatic_paper_trading") is not False:
         raise AssertionError("Trading readiness must fail closed")
-    status, _, body = fetch(base, "/status")
+    # HEAD probes must not mistake liveness for trading readiness.\n    status, _, body = fetch(base, "/readyz", method="HEAD")\n    if status != 503 or body:\n        raise AssertionError("HEAD readiness must return 503 without a body")\n    status, _, body = fetch(base, "/status")
     state = json.loads(body)
     if status != 200 or any((state.get(k) is not v) for k, v in (
         ("automatic_paper_trading", False), ("real_money_trading", False)
