@@ -58,7 +58,11 @@ def check(base, revision=None):
     status, _, body = fetch(base, "/readyz")
     if status != 503 or json.loads(body).get("ready_for_automatic_paper_trading") is not False:
         raise AssertionError("Trading readiness must fail closed")
-    # HEAD probes must not mistake liveness for trading readiness.\n    status, _, body = fetch(base, "/readyz", method="HEAD")\n    if status != 503 or body:\n        raise AssertionError("HEAD readiness must return 503 without a body")\n    status, _, body = fetch(base, "/status")
+    # HEAD probes must not mistake liveness for trading readiness.
+    status, _, body = fetch(base, "/readyz", method="HEAD")
+    if status != 503 or body:
+        raise AssertionError("HEAD readiness must return 503 without a body")
+    status, _, body = fetch(base, "/status")
     state = json.loads(body)
     if status != 200 or any((state.get(k) is not v) for k, v in (
         ("automatic_paper_trading", False), ("real_money_trading", False)
@@ -115,9 +119,10 @@ def check(base, revision=None):
     # Prove the public service rejects order-like writes; a readable dashboard
     # alone is insufficient evidence that staging cannot accept executions.
     for path in ("/orders", "/api/orders", "/paper-trade"):
-        status, _, body = fetch(base, path, method="POST")
-        if status != 405 or json.loads(body).get("error") != "read-only service":
-            raise AssertionError(path + ": state-changing request was not rejected")
+        for method in ("POST", "PUT", "PATCH", "DELETE"):
+            status, _, body = fetch(base, path, method=method)
+            if status != 405 or json.loads(body).get("error") != "read-only service":
+                raise AssertionError(path + ": " + method + " was not rejected")
     return actual
 
 
