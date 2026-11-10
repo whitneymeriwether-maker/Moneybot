@@ -8,7 +8,7 @@ from pathlib import Path
 from urllib.request import urlopen
 
 from playwright.sync_api import sync_playwright
-from paper_journal import PaperJournal
+from Moneybot_V3.paper_journal import PaperJournal
 
 with tempfile.TemporaryDirectory() as directory:
     journal_path = str(Path(directory) / "isolated-paper.sqlite3")
