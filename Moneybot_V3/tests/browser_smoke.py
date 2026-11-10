@@ -92,6 +92,46 @@ try:
             "Unexpected status response · integrations unverified").wait_for()
         page.locator("#readiness-health").get_by_text(
             "Unexpected readiness response · trading unverified").wait_for()
+        # Positive path: a valid, explicitly journal-only cash snapshot must
+        # render without being mislabeled as broker equity or verified fills.
+        page.unroute_all()
+        page.route("**/paper-account", lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body='{"available":true,"source":"isolated_paper_journal",'
+                 '"verification":"journal_only_not_broker_or_market_verified",'
+                 '"trading_ready":false,"cash":"1200.00","deposits":"1250.00",'
+                 '"withdrawals":"50.00","event_count":2,'
+                 '"last_recorded_at":"2026-11-10T01:00:00+00:00",'
+                 '"paper_trades":null,"performance":null}'))
+        page.route("**/paper-journal-activity", lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body='{"available":true,"source":"isolated_paper_journal",'
+                 '"verification":"journal_only_not_broker_or_market_verified",'
+                 '"activity_type":"cash_movements_not_trades","trading_ready":false,'
+                 '"events":[{"sequence":1,"type":"paper_deposit","amount":"1250.00",'
+                 '"recorded_at":"2026-11-10T00:00:00+00:00"},'
+                 '{"sequence":2,"type":"paper_withdrawal","amount":"50.00",'
+                 '"recorded_at":"2026-11-10T01:00:00+00:00"}]}'))
+        page.reload(wait_until="domcontentloaded")
+        page.locator("#paper-account-state").get_by_text(
+            "Journal-only cash: 1200.00 · NOT broker verified").wait_for()
+        page.locator("#journal-activity-status").get_by_text(
+            "Journal-only cash movements · NOT verified paper trades").wait_for()
+        assert page.locator("#journal-activity-rows tr").count() == 2
+        assert page.get_by_text("No verified realized P&L", exact=False).count() == 1
+        # Invalid activity must remove previously displayed rows on refresh.
+        page.unroute("**/paper-journal-activity")
+        page.route("**/paper-journal-activity", lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body='{"available":true,"source":"isolated_paper_journal",'
+                 '"verification":"journal_only_not_broker_or_market_verified",'
+                 '"activity_type":"cash_movements_not_trades","trading_ready":false,'
+                 '"events":[{"sequence":1,"type":"paper_fill","amount":"999.00",'
+                 '"recorded_at":"2026-11-10T01:00:00+00:00"}]}'))
+        page.reload(wait_until="domcontentloaded")
+        page.locator("#journal-activity-status").get_by_text(
+            "Cash activity unavailable or unverified").wait_for()
+        assert page.locator("#journal-activity-rows tr").count() == 0
         browser.close()
     print("Headless browser smoke passed: real JS fetches and fail-closed labels")
 finally:
