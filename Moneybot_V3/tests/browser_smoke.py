@@ -23,7 +23,8 @@ journal_path = Path(journal_dir.name) / "paper-only.sqlite3"
 journal = PaperJournal(journal_path)
 assert journal.record("browser-seed", "paper_deposit", "1000.25", {})
 assert journal.record("browser-withdrawal", "paper_withdrawal", "75.10", {})
-env = dict(os.environ, PORT=PORT, MONEYBOT_V3_ACTIVATION="false",
+test_revision = "a" * 40  # Deterministic provenance for local CI, not a deployed SHA.
+env = dict(os.environ, PORT=PORT, RENDER_GIT_COMMIT=test_revision, MONEYBOT_V3_ACTIVATION="false",
            MONEYBOT_V3_PAPER_JOURNAL_PATH=str(journal_path))
 process = subprocess.Popen([sys.executable, "paper_status_server.py"], env=env,
                            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
@@ -51,7 +52,7 @@ try:
         page.locator("#journal-activity-status").get_by_text(
             "Journal-only cash movements · NOT verified paper trades").wait_for()
         assert page.locator("#journal-activity-rows tr").count() == 2
-        page.locator("#deployed-revision").get_by_text("Deployed Git revision: " + os.environ["RENDER_GIT_COMMIT"]).wait_for()
+        page.locator("#deployed-revision").get_by_text("Deployed Git revision: " + test_revision).wait_for()
         assert page.get_by_text("Actual state only").count() == 1
         for heading in ("System health", "Account state", "Paper trades",
                         "Risk limits", "Performance", "Integration status"):
