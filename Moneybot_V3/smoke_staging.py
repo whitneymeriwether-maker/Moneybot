@@ -80,8 +80,36 @@ def check(base, revision=None):
             if data.get("available") is not False:
                 raise AssertionError(path + ": invalid unavailable response")
         elif status == 200:
-            if data.get("available") is not True or data.get("source") != "isolated_paper_journal" or data.get("trading_ready") is not False:
+            if (data.get("available") is not True
+                    or data.get("source") != "isolated_paper_journal"
+                    or data.get("verification") != "journal_only_not_broker_or_market_verified"
+                    or data.get("trading_ready") is not False):
                 raise AssertionError(path + ": unverified journal response")
+            if path == "/paper-account":
+                money = re.compile(r"(?:0|[1-9][0-9]*)\\.[0-9]{2}\\Z")
+                amounts = [data.get(key) for key in ("cash", "deposits", "withdrawals")]
+                if any(not isinstance(value, str) or not money.fullmatch(value)
+                       or len(value) > 32 for value in amounts):
+                    raise AssertionError("Invalid journal cash amounts")
+                cents = [int(value.replace(".", "")) for value in amounts]
+                if cents[1] - cents[2] != cents[0] or data.get("paper_trades") is not None or data.get("performance") is not None:
+                    raise AssertionError("Journal cash is inconsistent or presented as trades")
+            else:
+                if data.get("activity_type") != "cash_movements_not_trades":
+                    raise AssertionError("Journal activity mislabeled as trades")
+                events = data.get("events")
+                if not isinstance(events, list) or len(events) > 25:
+                    raise AssertionError("Invalid journal activity collection")
+                previous = 0
+                for event in events:
+                    if not isinstance(event, dict) or type(event.get("sequence")) is not int or event["sequence"] <= previous:
+                        raise AssertionError("Invalid journal sequence")
+                    previous = event["sequence"]
+                    if event.get("type") not in ("paper_deposit", "paper_withdrawal"):
+                        raise AssertionError("Non-cash event in journal activity")
+                    amount = event.get("amount")
+                    if not isinstance(amount, str) or not re.fullmatch(r"(?:0|[1-9][0-9]*)\\.[0-9]{2}", amount):
+                        raise AssertionError("Invalid journal activity amount")
         else:
             raise AssertionError(path + ": unexpected HTTP " + str(status))
     # Prove the public service rejects order-like writes; a readable dashboard
