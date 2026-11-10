@@ -86,7 +86,7 @@ def check(base, revision=None):
                     or data.get("trading_ready") is not False):
                 raise AssertionError(path + ": unverified journal response")
             if path == "/paper-account":
-                money = re.compile(r"(?:0|[1-9][0-9]*)\\.[0-9]{2}\\Z")
+                money = re.compile(r"(?:0|[1-9][0-9]*)\.[0-9]{2}\Z")
                 amounts = [data.get(key) for key in ("cash", "deposits", "withdrawals")]
                 if any(not isinstance(value, str) or not money.fullmatch(value)
                        or len(value) > 32 for value in amounts):
@@ -108,7 +108,7 @@ def check(base, revision=None):
                     if event.get("type") not in ("paper_deposit", "paper_withdrawal"):
                         raise AssertionError("Non-cash event in journal activity")
                     amount = event.get("amount")
-                    if not isinstance(amount, str) or not re.fullmatch(r"(?:0|[1-9][0-9]*)\\.[0-9]{2}", amount):
+                    if not isinstance(amount, str) or not re.fullmatch(r"(?:0|[1-9][0-9]*)\.[0-9]{2}", amount):
                         raise AssertionError("Invalid journal activity amount")
         else:
             raise AssertionError(path + ": unexpected HTTP " + str(status))
