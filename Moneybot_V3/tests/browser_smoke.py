@@ -40,6 +40,23 @@ try:
             time.sleep(0.2)
     else:
         raise RuntimeError("staging server did not become healthy")
+    # Exercise the deployed HTTP boundary, not just dashboard labels: a
+    # healthy read-only service must reject every order-like mutation.
+    from urllib.error import HTTPError
+    from urllib.request import Request
+    for method in ("POST", "PUT", "PATCH", "DELETE"):
+        request = Request(f"http://127.0.0.1:{PORT}/orders",
+                          data=b'{"symbol":"TEST","quantity":1}', method=method)
+        try:
+            urlopen(request, timeout=2)
+            raise AssertionError(f"{method} unexpectedly accepted")
+        except HTTPError as error:
+            assert error.code == 405, (method, error.code)
+    try:
+        urlopen(Request(f"http://127.0.0.1:{PORT}/readyz", method="HEAD"), timeout=2)
+        raise AssertionError("HEAD readiness unexpectedly succeeded")
+    except HTTPError as error:
+        assert error.code == 503
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
         page = browser.new_page()
