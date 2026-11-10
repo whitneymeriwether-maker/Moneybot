@@ -6,12 +6,23 @@ import os
 import subprocess
 import sys
 import time
+from tempfile import TemporaryDirectory
+from pathlib import Path
+from paper_journal import PaperJournal
 from urllib.request import urlopen
 
 from playwright.sync_api import sync_playwright
 
 PORT = "18944"
-env = dict(os.environ, PORT=PORT, MONEYBOT_V3_ACTIVATION="false")
+# Exercise a real persisted, isolated journal through the HTTP server and JS.
+# Browser route mocks below remain separate adversarial-response tests.
+journal_dir = TemporaryDirectory(prefix="moneybot-v3-browser-")
+journal_path = Path(journal_dir.name) / "paper-only.sqlite3"
+journal = PaperJournal(journal_path)
+assert journal.record("browser-seed", "paper_deposit", "1000.25", {})
+assert journal.record("browser-withdrawal", "paper_withdrawal", "75.10", {})
+env = dict(os.environ, PORT=PORT, MONEYBOT_V3_ACTIVATION="false",
+           MONEYBOT_V3_PAPER_JOURNAL_PATH=str(journal_path))
 process = subprocess.Popen([sys.executable, "paper_status_server.py"], env=env,
                            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
 try:
@@ -33,7 +44,11 @@ try:
         page.locator("#service-health").get_by_text("Service reachable · trading disabled").wait_for()
         page.locator("#readiness-health").get_by_text("Paper execution NOT READY").wait_for()
         page.locator("#integration-health").get_by_text("integrations NOT CONNECTED").wait_for()
-        page.locator("#paper-account-state").get_by_text("Paper account unavailable").wait_for()
+        page.locator("#paper-account-state").get_by_text(
+            "Journal-only cash: 925.15 · NOT broker verified").wait_for()
+        page.locator("#journal-activity-status").get_by_text(
+            "Journal-only cash movements · NOT verified paper trades").wait_for()
+        assert page.locator("#journal-activity-rows tr").count() == 2
         page.locator("#deployed-revision").get_by_text("Deployed Git revision: " + os.environ["RENDER_GIT_COMMIT"]).wait_for()
         assert page.get_by_text("Actual state only").count() == 1
         for heading in ("System health", "Account state", "Paper trades",
@@ -141,3 +156,4 @@ finally:
     except subprocess.TimeoutExpired:
         process.kill()
         process.wait()
+    journal_dir.cleanup()
