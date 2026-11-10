@@ -8,6 +8,8 @@ import sys
 import time
 from tempfile import TemporaryDirectory
 from pathlib import Path
+# Executed as tests/browser_smoke.py from the Moneybot_V3 working directory.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from paper_journal import PaperJournal
 from urllib.request import urlopen
 
