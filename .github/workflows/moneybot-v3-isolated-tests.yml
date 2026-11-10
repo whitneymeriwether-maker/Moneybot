@@ -30,12 +30,12 @@ jobs:
         run: python -m compileall -q .
       - name: Run isolated V3 tests
         env:
-          PYTHONPATH: .
+          PYTHONPATH: ${{ github.workspace }}
           MONEYBOT_V3_ACTIVATION: 'false'
         run: python -m pytest -q tests
       - name: Operational HTTP smoke test (paper execution disabled)
         env:
-          PYTHONPATH: .
+          PYTHONPATH: ${{ github.workspace }}
           MONEYBOT_V3_ACTIVATION: 'false'
           PORT: '18943'
         run: |
@@ -91,12 +91,12 @@ jobs:
           python -m playwright install --with-deps chromium
       - name: Exercise dashboard in Chromium (real JavaScript)
         env:
-          PYTHONPATH: .
+          PYTHONPATH: ${{ github.workspace }}
           MONEYBOT_V3_ACTIVATION: 'false'
         run: python tests/browser_smoke.py
 
       - name: Exercise journal-only dashboard in Chromium
         env:
-          PYTHONPATH: .
+          PYTHONPATH: ${{ github.workspace }}
           MONEYBOT_V3_ACTIVATION: 'false'
         run: python tests/browser_journal_smoke.py
