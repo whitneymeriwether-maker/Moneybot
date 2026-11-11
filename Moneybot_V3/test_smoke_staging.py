@@ -73,5 +73,29 @@ class SmokeStagingTests(unittest.TestCase):
         self.assertEqual(calls[-1], ("/orders", "POST"))
 
 
+    def test_accepts_safe_read_only_staging_with_no_journal(self):
+        sha = "a" * 40
+        html = b"Moneybot V3 System health Account state Paper trades Risk limits Performance NOT ACTIVATED no demo balances"
+        responses = [
+            (200, {"Content-Type": "text/html"}, html),
+            (200, {}, b'{"service":"up","trading_state":"NOT_ACTIVATED"}'),
+            (503, {}, b'{"ready_for_automatic_paper_trading":false}'),
+            (503, {}, b""),
+            (200, {}, b'{"automatic_paper_trading":false,"real_money_trading":false,"trading_state":"NOT_ACTIVATED","market_data":"NOT_CONNECTED","persistent_paper_ledger":"NOT_CONNECTED","execution_time_risk_gate":"NOT_CONNECTED"}'),
+            (200, {}, ('{"git_commit":"' + sha + '"}').encode()),
+            (503, {}, b'{"available":false}'),
+            (503, {}, b'{"available":false}'),
+        ] + [(405, {}, b'{"error":"read-only service"}')] * 12
+        calls = []
+        def fake_fetch(base, endpoint, method="GET"):
+            calls.append((endpoint, method))
+            return responses.pop(0)
+        with patch.object(smoke, "fetch", side_effect=fake_fetch):
+            self.assertEqual(smoke.check("https://example.com", sha), sha)
+        self.assertEqual(len(calls), 20)
+        self.assertFalse(responses)
+        self.assertEqual(sum(method != "GET" for _, method in calls), 13)
+
+
 if __name__ == "__main__":
     unittest.main()
