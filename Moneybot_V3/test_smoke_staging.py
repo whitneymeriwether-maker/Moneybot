@@ -68,7 +68,7 @@ class SmokeStagingTests(unittest.TestCase):
             calls.append((path, method))
             return responses.pop(0)
         with patch.object(smoke, "fetch", side_effect=fake_fetch):
-            with self.assertRaisesRegex(AssertionError, "state-changing request was not rejected"):
+            with self.assertRaisesRegex(AssertionError, r"/orders: POST was not rejected"):
                 smoke.check("https://example.com", sha)
         self.assertEqual(calls[-1], ("/orders", "POST"))
 
