@@ -40,12 +40,23 @@ with tempfile.TemporaryDirectory() as directory:
             page.locator("#paper-account-movements").get_by_text(
                 "Journal-only deposits: 1250.00 · withdrawals: 50.00 · recorded events: 2 · NOT verified fills").wait_for()
             page.locator("#readiness-health").get_by_text("Paper execution NOT READY").wait_for()
+            page.locator("#journal-activity-status").get_by_text(
+                "Journal-only cash movements · NOT verified paper trades").wait_for()
+            rows = page.locator("#journal-activity-rows tr")
+            assert rows.count() == 2
+            assert rows.nth(0).locator("td").nth(1).inner_text() == "Deposit"
+            assert rows.nth(0).locator("td").nth(2).inner_text() == "1250.00"
+            assert rows.nth(1).locator("td").nth(1).inner_text() == "Withdrawal"
+            assert rows.nth(1).locator("td").nth(2).inner_text() == "50.00"
             # An unverified fill observation must invalidate the entire cash projection.
             journal.record("unverified-fill", "paper_fill_observation", "10.00", {})
             page.reload(wait_until="domcontentloaded")
             page.locator("#paper-account-state").get_by_text(
                 "Paper account unavailable · no verified balance").wait_for()
             assert page.get_by_text("Journal-only cash:", exact=False).count() == 0
+            page.locator("#journal-activity-status").get_by_text(
+                "Cash activity unavailable or unverified · no trades inferred").wait_for()
+            assert page.locator("#journal-activity-rows tr").count() == 0
             page.locator("#readiness-health").get_by_text("Paper execution NOT READY").wait_for()
             browser.close()
     finally:
