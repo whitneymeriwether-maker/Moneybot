@@ -49,7 +49,7 @@ This dashboard is a read-only staging diagnostic, not an operating paper trader.
 <section><h2>System health</h2><div class="value" id="service-health" role="status" aria-live="polite">Checking service…</div><p id="readiness-health" class="warn" role="status" aria-live="polite">Trading readiness unverified</p><p class="muted">Live liveness check; trading readiness is separately verified and remains unavailable.</p><p><a href="/healthz">Liveness JSON</a> · <a href="/readyz">Readiness JSON</a></p></section>
 <section><h2>Account state</h2><div class="value" id="paper-account-state">Not connected</div><p id="paper-account-movements" class="muted">Recorded cash movements unavailable.</p><p id="paper-account-recency" class="muted">Last journal entry unavailable.</p><p class="muted">Journal-derived cash is shown above only when a valid isolated journal is configured. Broker-verified cash, equity, buying power, and positions remain unavailable. No demo values.</p></section>
 <section class="full"><h2>Recorded paper cash activity (NOT trades)</h2><p id="journal-activity-status" class="muted" role="status" aria-live="polite">Checking isolated journal…</p><table><thead><tr><th>UTC recorded time</th><th>Movement</th><th>Amount</th></tr></thead><tbody id="journal-activity-rows"></tbody></table><p class="muted">Up to 25 journal-only cash movements. No broker verification, trade fills, or performance.</p></section>
-<section><h2>Paper trades</h2><div class="value">Not connected</div><p class="muted">No verified trade feed or persisted paper execution attached to this service. Trade count unknown, not zero.</p></section>
+<section><h2>Paper trades</h2><div class="value" id="ledger-summary">Offline ledger not configured</div><p id="ledger-detail" class="muted">No verified execution feed. Local hypothetical fills are not authenticated broker trades.</p></section>
 <section><h2>Risk limits</h2><div class="value warn">Execution gate unavailable</div><p class="muted">Research policy targets (not enforced here): 1.5% risk/trade, 3% daily loss, 50% exposure, 10% drawdown pause, 25% overnight exposure.</p></section>
 <section><h2>Performance</h2><div class="value">Unavailable</div><p class="muted">No verified realized P&amp;L, return, drawdown, or equity curve. No profitability claim.</p></section>
 <section><h2>Integration status</h2><p id="integration-health" class="warn" role="status" aria-live="polite">Checking actual integration status…</p><table><tr><th>Component</th><th>Actual state</th></tr>
@@ -70,6 +70,8 @@ const recency = document.getElementById("paper-account-recency");
 const revision = document.getElementById("deployed-revision");
 const activityStatus = document.getElementById("journal-activity-status");
 const activityRows = document.getElementById("journal-activity-rows");
+const ledgerSummary = document.getElementById("ledger-summary");
+const ledgerDetail = document.getElementById("ledger-detail");
 async function refreshHealth() {
   try {
     const response = await fetch("/version", {cache: "no-store"});
@@ -184,6 +186,25 @@ async function refreshHealth() {
     activityRows.replaceChildren();
     activityStatus.textContent = "Cash activity unavailable or unverified · no trades inferred";
   }
+  // Offline ledger is independent of the cash journal and is never called actual execution.
+  try {
+    const response = await fetch("/paper-ledger-summary", {cache: "no-store"});
+    if (!response.ok) throw new Error("ledger unavailable");
+    const data = await response.json();
+    if (data.available !== true || data.source !== "local_hypothetical_sqlite_ledger"
+        || data.verification !== "audited_local_records_not_broker_verified"
+        || data.trading_ready !== false || !Number.isSafeInteger(data.fill_count)
+        || data.fill_count < 0 || !Number.isSafeInteger(data.position_count)
+        || data.position_count < 0 || typeof data.cash !== "string"
+        || !/^(0|[1-9][0-9]*)\\.[0-9]{2}$/.test(data.cash)) throw new Error("unverified ledger");
+    ledgerSummary.textContent = data.fill_count + " locally recorded hypothetical fills";
+    ledgerDetail.textContent = "Audited local ledger only · cash " + data.cash
+      + " · open symbols " + data.position_count
+      + " · NOT broker-verified, market-valued, or trading-ready.";
+  } catch (_) {
+    ledgerSummary.textContent = "Offline ledger unavailable or unverified";
+    ledgerDetail.textContent = "No authenticated paper execution or verified trade count.";
+  }
   // Readiness is separate from liveness. Never present an unexpected 200,
   // invalid JSON, or network failure as permission to trade.
   try {
@@ -286,6 +307,33 @@ class StatusHandler(BaseHTTPRequestHandler):
                 "activity_type": "cash_movements_not_trades", "trading_ready": False,
                 "events": activity,
             }), "application/json; charset=utf-8")
+        elif path == "/paper-ledger-summary":
+            # Read-only offline accounting, never a market or execution claim.
+            ledger_path = os.environ.get("MONEYBOT_V3_OFFLINE_LEDGER_PATH")
+            if not ledger_path or not Path(ledger_path).is_file():
+                self._send(503, json.dumps({"available": False, "reason": "offline ledger not configured"}), "application/json; charset=utf-8")
+                return
+            try:
+                from paper_ledger import PaperLedger
+                ledger = PaperLedger(ledger_path)
+                audit = ledger.audit_history()
+                snapshot = ledger.snapshot()
+                if (audit["audited_fills"] != snapshot["fill_count"]
+                    or audit["cash"] != snapshot["cash"]
+                    or audit["realized_pnl"] != snapshot["realized_pnl"]):
+                    raise ValueError("inconsistent offline ledger")
+                result = {
+                    "available": True, "source": "local_hypothetical_sqlite_ledger",
+                    "verification": "audited_local_records_not_broker_verified",
+                    "trading_ready": False, "fill_count": snapshot["fill_count"],
+                    "position_count": len(snapshot["positions"]),
+                    "cash": snapshot["cash"], "realized_pnl": snapshot["realized_pnl"],
+                    "marked_equity": None, "performance": None,
+                }
+            except (ValueError, OSError, RuntimeError, KeyError, TypeError, sqlite3.DatabaseError):
+                self._send(503, json.dumps({"available": False, "reason": "offline ledger invalid or unavailable"}), "application/json; charset=utf-8")
+                return
+            self._send(200, json.dumps(result), "application/json; charset=utf-8")
         elif path == "/readyz":
             self._send(
                 503,
