@@ -40,10 +40,11 @@ class SmokeStagingTests(unittest.TestCase):
             (200, {"Content-Type": "text/html; charset=utf-8"}, html),
             (200, {}, b'{"service":"up","trading_state":"NOT_ACTIVATED"}'),
             (503, {}, b'{"ready_for_automatic_paper_trading":false}'),
+            (503, {}, b""),
             (200, {}, b'{"automatic_paper_trading":false,"real_money_trading":false,"trading_state":"NOT_ACTIVATED","market_data":"NOT_CONNECTED","persistent_paper_ledger":"NOT_CONNECTED","execution_time_risk_gate":"NOT_CONNECTED"}'),
             (200, {}, b'{"git_commit":null}'),
         ])
-        with patch.object(smoke, "fetch", side_effect=lambda *args: next(responses)):
+        with patch.object(smoke, "fetch", side_effect=lambda *args, **kwargs: next(responses)):
             with self.assertRaisesRegex(AssertionError, "Wrong deployed revision"):
                 smoke.check("https://example.com", sha)
 
@@ -55,6 +56,7 @@ class SmokeStagingTests(unittest.TestCase):
             (200, {"Content-Type": "text/html"}, html),
             (200, {}, b'{"service":"up","trading_state":"NOT_ACTIVATED"}'),
             (503, {}, b'{"ready_for_automatic_paper_trading":false}'),
+            (503, {}, b""),
             (200, {}, b'{"automatic_paper_trading":false,"real_money_trading":false,"trading_state":"NOT_ACTIVATED","market_data":"NOT_CONNECTED","persistent_paper_ledger":"NOT_CONNECTED","execution_time_risk_gate":"NOT_CONNECTED"}'),
             (200, {}, ('{"git_commit":"' + sha + '"}').encode()),
             (503, {}, b'{"available":false}'),
