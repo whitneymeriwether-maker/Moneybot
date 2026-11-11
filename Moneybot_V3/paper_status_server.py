@@ -196,7 +196,7 @@ async function refreshHealth() {
         || data.trading_ready !== false || !Number.isSafeInteger(data.fill_count)
         || data.fill_count < 0 || !Number.isSafeInteger(data.position_count)
         || data.position_count < 0 || typeof data.cash !== "string"
-        || !/^(0|[1-9][0-9]*)\\.[0-9]{2}$/.test(data.cash)) throw new Error("unverified ledger");
+        || !/^(0|[1-9][0-9]*)\.[0-9]{2}$/.test(data.cash)) throw new Error("unverified ledger");
     ledgerSummary.textContent = data.fill_count + " locally recorded hypothetical fills";
     ledgerDetail.textContent = "Audited local ledger only · cash " + data.cash
       + " · open symbols " + data.position_count
