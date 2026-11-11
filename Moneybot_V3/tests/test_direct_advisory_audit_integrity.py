@@ -13,7 +13,7 @@ from v3_decision import (
 
 CANDIDATE = Candidate(
     "SPY", datetime.now(timezone.utc), 100.0, True, True, 2.0,
-    True, 1.0, 0,
+    True, 1.0, 120,
 )
 PROPOSAL = AIProposal(
     "BUY", "Observed hypothetical breakout", "Reversal risk",
