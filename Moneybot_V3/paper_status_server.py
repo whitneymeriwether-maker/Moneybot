@@ -200,7 +200,7 @@ async function refreshHealth() {
         || data.fill_count < 0 || !Number.isSafeInteger(data.position_count)
         || data.position_count < 0 || typeof data.cash !== "string"
         || !/^(0|[1-9][0-9]*)\.[0-9]{2}$/.test(data.cash) || typeof data.realized_pnl !== "string"
-        || !/^-?(0|[1-9][0-9]*)\\.[0-9]{2}$/.test(data.realized_pnl)
+        || !/^-?(0|[1-9][0-9]*)\.[0-9]{2}$/.test(data.realized_pnl)
         || data.marked_equity !== null || data.performance !== null) throw new Error("unverified ledger");
     offlinePnl.textContent = "Audited local hypothetical realized P&L: " + data.realized_pnl + " · NOT market-verified";
     ledgerSummary.textContent = data.fill_count + " locally recorded hypothetical fills";
