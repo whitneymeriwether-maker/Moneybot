@@ -35,7 +35,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          PORT=18765 python paper_status_server.py > /tmp/moneybot-v3-dashboard.log 2>&1 &
+          RENDER_GIT_COMMIT="${GITHUB_SHA}" PORT=18765 python paper_status_server.py > /tmp/moneybot-v3-dashboard.log 2>&1 &
           server_pid=$!
           trap 'kill "$server_pid" 2>/dev/null || true; cat /tmp/moneybot-v3-dashboard.log' EXIT
           for attempt in $(seq 1 30); do
@@ -56,6 +56,19 @@ jobs:
               status = json.load(response)
               assert status["real_money_trading"] is False
               assert status["automatic_paper_trading"] is False
+          with urlopen(base + "/version") as response:
+              assert json.load(response)["git_commit"] == __import__("os").environ["GITHUB_SHA"]
+          with urlopen(base + "/healthz") as response:
+              assert json.load(response) == {"service": "up", "trading_state": "NOT_ACTIVATED"}
+          for method in ("POST", "PUT", "PATCH", "DELETE"):
+              from urllib.request import Request
+              try:
+                  urlopen(Request(base + "/orders", method=method))
+              except HTTPError as error:
+                  assert error.code == 405, (method, error.code)
+                  assert json.load(error)["error"] == "read-only service"
+              else:
+                  raise AssertionError(method + " unexpectedly accepted")
           for path in ("/readyz", "/paper-ledger-summary"):
               try:
                   urlopen(base + path)
