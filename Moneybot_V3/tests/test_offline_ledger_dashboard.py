@@ -69,6 +69,27 @@ class OfflineLedgerDashboardTest(unittest.TestCase):
             self.assertEqual(PaperLedger.open_readonly(path).snapshot()["fill_count"], 0)
             self.assertFalse(lock.exists())
 
+    def test_missing_ledger_path_never_creates_database_or_lock(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "missing.sqlite"
+            old = os.environ.get("MONEYBOT_V3_OFFLINE_LEDGER_PATH")
+            os.environ["MONEYBOT_V3_OFFLINE_LEDGER_PATH"] = str(path)
+            try:
+                with self.assertRaises(ValueError):
+                    PaperLedger.open_readonly(path)
+                with running_server() as url:
+                    status, body = get_json(url + "/paper-ledger-summary")
+                    self.assertEqual(status, 503)
+                    self.assertFalse(body["available"])
+                    self.assertEqual(get_json(url + "/readyz")[0], 503)
+                self.assertFalse(path.exists())
+                self.assertFalse(Path(str(path) + ".init.lock").exists())
+            finally:
+                if old is None:
+                    os.environ.pop("MONEYBOT_V3_OFFLINE_LEDGER_PATH", None)
+                else:
+                    os.environ["MONEYBOT_V3_OFFLINE_LEDGER_PATH"] = old
+
     def test_existing_ledger_audited_but_never_trading_ready(self):
         with tempfile.TemporaryDirectory() as directory:
             path = str(Path(directory) / "paper.sqlite")
