@@ -1,0 +1,66 @@
+name: Moneybot V3 dashboard release gate
+
+on:
+  push:
+    branches: [moneybot-v3-research]
+    paths:
+      - 'Moneybot_V3/**'
+      - '.github/workflows/moneybot-v3-dashboard-gate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: moneybot-v3-dashboard-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dashboard-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    defaults:
+      run:
+        working-directory: Moneybot_V3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Compile dashboard and accounting modules
+        run: python -m py_compile paper_status_server.py paper_ledger.py paper_journal.py paper_snapshot.py
+      - name: Execute isolated ledger and dashboard HTTP regression tests
+        run: python -m unittest discover -s tests -p 'test_offline_ledger_dashboard.py' -v
+      - name: Verify dashboard startup and fail-closed HTTP endpoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT=18765 python paper_status_server.py > /tmp/moneybot-v3-dashboard.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true; cat /tmp/moneybot-v3-dashboard.log' EXIT
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18765/healthz >/dev/null; then break; fi
+            sleep 1
+          done
+          python - <<'PY'
+          import json
+          from urllib.request import urlopen
+          from urllib.error import HTTPError
+          base = "http://127.0.0.1:18765"
+          with urlopen(base + "/") as response:
+              html = response.read().decode("utf-8")
+              assert response.status == 200
+              for label in ("System health", "Account state", "Paper trades", "Risk limits", "Performance"):
+                  assert label in html, label
+          with urlopen(base + "/status") as response:
+              status = json.load(response)
+              assert status["real_money_trading"] is False
+              assert status["automatic_paper_trading"] is False
+          for path in ("/readyz", "/paper-ledger-summary"):
+              try:
+                  urlopen(base + path)
+              except HTTPError as error:
+                  assert error.code == 503, (path, error.code)
+              else:
+                  raise AssertionError(path + " unexpectedly ready")
+          PY
