@@ -51,7 +51,8 @@ This dashboard is a read-only staging diagnostic, not an operating paper trader.
 <section><h2>Account state</h2><div class="value" id="paper-account-state">Not connected</div><p id="paper-account-movements" class="muted">Recorded cash movements unavailable.</p><p id="paper-account-recency" class="muted">Last journal entry unavailable.</p><p class="muted">Journal-derived cash is shown above only when a valid isolated journal is configured. Broker-verified cash, equity, buying power, and positions remain unavailable. No demo values.</p></section>
 <section class="full"><h2>Recorded paper cash activity (NOT trades)</h2><p id="journal-activity-status" class="muted" role="status" aria-live="polite">Checking isolated journal…</p><table><thead><tr><th>UTC recorded time</th><th>Movement</th><th>Amount</th></tr></thead><tbody id="journal-activity-rows"></tbody></table><p class="muted">Up to 25 journal-only cash movements. No broker verification, trade fills, or performance.</p></section>
 <section><h2>Paper trades</h2><p class="muted">Trade count unknown, not zero, unless an audited offline ledger is available. Offline fills are hypothetical, not authenticated executions.</p><div class="value" id="ledger-summary">Offline ledger not configured</div><p id="ledger-detail" class="muted">No verified execution feed. Local hypothetical fills are not authenticated broker trades.</p></section>
-<section class="full"><h2>Recent hypothetical fills (NOT broker trades)</h2><p id="hypothetical-fill-status" class="muted">Checking audited local ledger…</p><table><thead><tr><th>UTC time</th><th>Symbol</th><th>Side</th><th>Shares</th><th>Price</th></tr></thead><tbody id="hypothetical-fill-rows"></tbody></table></section>\n<section><h2>Risk limits</h2><div class="value warn">Execution gate unavailable</div><p class="muted">Research policy targets (not enforced here): 1.5% risk/trade, 3% daily loss, 50% exposure, 10% drawdown pause, 25% overnight exposure.</p></section>
+<section class="full"><h2>Recent hypothetical fills (NOT broker trades)</h2><p id="hypothetical-fill-status" class="muted">Checking audited local ledger…</p><table><thead><tr><th>UTC time</th><th>Symbol</th><th>Side</th><th>Shares</th><th>Price</th></tr></thead><tbody id="hypothetical-fill-rows"></tbody></table></section>
+<section><h2>Risk limits</h2><div class="value warn">Execution gate unavailable</div><p class="muted">Research policy targets (not enforced here): 1.5% risk/trade, 3% daily loss, 50% exposure, 10% drawdown pause, 25% overnight exposure.</p></section>
 <section><h2>Performance</h2><div class="value">Unavailable</div><p class="muted">No verified realized P&amp;L, return, drawdown, or equity curve. No profitability claim.</p></section>
 <section><h2>Integration status</h2><p id="integration-health" class="warn" role="status" aria-live="polite">Checking actual integration status…</p><table><tr><th>Component</th><th>Actual state</th></tr>
 <tr><td>Market data</td><td>Not connected</td></tr><tr><td>Durable paper ledger</td><td>Not connected</td></tr>
@@ -214,14 +215,14 @@ async function refreshHealth() {
     const response = await fetch("/paper-ledger-fills", {cache: "no-store"});
     if (!response.ok) throw new Error("fills unavailable");
     const data = await response.json();
-    const money = v => typeof v === "string" && /^(0|[1-9][0-9]*)\\.[0-9]{2}$/.test(v) && v.length <= 32;
+    const money = v => typeof v === "string" && /^(0|[1-9][0-9]*)\.[0-9]{2}$/.test(v) && v.length <= 32;
     const valid = data.available === true && data.source === "local_hypothetical_sqlite_ledger"
       && data.verification === "audited_local_records_not_broker_verified"
       && data.trading_ready === false && Number.isSafeInteger(data.fill_count)
       && data.fill_count >= 0 && Array.isArray(data.fills) && data.fills.length <= 25
       && data.fills.length <= data.fill_count && data.fills.every(e => e
         && typeof e.timestamp_utc === "string" && !Number.isNaN(Date.parse(e.timestamp_utc))
-        && typeof e.symbol === "string" && /^[A-Z][A-Z0-9.\\-]{0,14}$/.test(e.symbol)
+        && typeof e.symbol === "string" && /^[A-Z][A-Z0-9.\-]{0,14}$/.test(e.symbol)
         && (e.side === "BUY" || e.side === "SELL")
         && Number.isSafeInteger(e.quantity) && e.quantity > 0
         && money(e.price) && money(e.fee));
