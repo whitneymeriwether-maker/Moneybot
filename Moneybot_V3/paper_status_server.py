@@ -8,6 +8,7 @@ It stays disabled even if an activation-looking environment variable is set.
 import json
 import os
 import sqlite3
+from decimal import Decimal
 from pathlib import Path
 from paper_snapshot import paper_cash_snapshot
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -393,8 +394,8 @@ class StatusHandler(BaseHTTPRequestHandler):
                     ).fetchall()
                 events = [
                     {"timestamp_utc": stamp, "symbol": symbol, "side": side,
-                     "quantity": quantity, "price": f"{price / 100:.2f}",
-                     "fee": f"{fee / 100:.2f}"}
+                     "quantity": quantity, "price": str((Decimal(price) / 100).quantize(Decimal("0.01"))),
+                     "fee": str((Decimal(fee) / 100).quantize(Decimal("0.01")))}
                     for stamp, symbol, side, quantity, price, fee in rows
                 ]
             except (ValueError, OSError, RuntimeError, KeyError, TypeError, sqlite3.DatabaseError):
