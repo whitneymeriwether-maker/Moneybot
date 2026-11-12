@@ -1,6 +1,7 @@
 """Read-only V3 offline ledger dashboard contract tests."""
 import json
 import os
+import sqlite3
 import sys
 import tempfile
 import threading
@@ -48,6 +49,25 @@ class OfflineLedgerDashboardTest(unittest.TestCase):
         finally:
             if old is not None:
                 os.environ["MONEYBOT_V3_OFFLINE_LEDGER_PATH"] = old
+
+    def test_readonly_inspection_does_not_create_lock_or_allow_fills(self):
+        from datetime import datetime, timezone
+        with tempfile.TemporaryDirectory() as directory:
+            path = str(Path(directory) / "paper.sqlite")
+            PaperLedger(path, starting_cash="1200.00")
+            lock = Path(path + ".init.lock")
+            lock.unlink()
+            readonly = PaperLedger.open_readonly(path)
+            self.assertEqual(readonly.audit_history()["audited_fills"], 0)
+            self.assertEqual(readonly.snapshot()["cash"], "1200.00")
+            self.assertFalse(lock.exists())
+            with self.assertRaises(sqlite3.OperationalError):
+                readonly.record_fill(
+                    event_id="must-not-write", timestamp=datetime.now(timezone.utc),
+                    symbol="TEST", side="BUY", quantity=1, price="1.00"
+                )
+            self.assertEqual(PaperLedger.open_readonly(path).snapshot()["fill_count"], 0)
+            self.assertFalse(lock.exists())
 
     def test_existing_ledger_audited_but_never_trading_ready(self):
         with tempfile.TemporaryDirectory() as directory:
