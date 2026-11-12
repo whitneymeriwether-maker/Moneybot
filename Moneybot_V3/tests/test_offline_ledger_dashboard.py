@@ -90,6 +90,31 @@ class OfflineLedgerDashboardTest(unittest.TestCase):
                 else:
                     os.environ["MONEYBOT_V3_OFFLINE_LEDGER_PATH"] = old
 
+    def test_corrupt_existing_ledger_fails_closed_without_reseeding(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "paper.sqlite"
+            PaperLedger(path, starting_cash="1200.00")
+            with sqlite3.connect(path) as db:
+                db.execute("DELETE FROM paper_account WHERE id=1")
+                db.commit()
+            old = os.environ.get("MONEYBOT_V3_OFFLINE_LEDGER_PATH")
+            os.environ["MONEYBOT_V3_OFFLINE_LEDGER_PATH"] = str(path)
+            try:
+                with running_server() as url:
+                    status, body = get_json(url + "/paper-ledger-summary")
+                    self.assertEqual(status, 503)
+                    self.assertFalse(body["available"])
+                    self.assertEqual(get_json(url + "/readyz")[0], 503)
+                with sqlite3.connect(path) as db:
+                    self.assertEqual(
+                        db.execute("SELECT COUNT(*) FROM paper_account").fetchone()[0], 0
+                    )
+            finally:
+                if old is None:
+                    os.environ.pop("MONEYBOT_V3_OFFLINE_LEDGER_PATH", None)
+                else:
+                    os.environ["MONEYBOT_V3_OFFLINE_LEDGER_PATH"] = old
+
     def test_existing_ledger_audited_but_never_trading_ready(self):
         with tempfile.TemporaryDirectory() as directory:
             path = str(Path(directory) / "paper.sqlite")
