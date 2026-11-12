@@ -1,0 +1,90 @@
+name: Moneybot V3 staging operational smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_revision:
+        description: 'Exact 40-character V3 commit deployed to staging'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  staging-readonly-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify deployed revision, dashboard, and fail-closed HTTP contract
+        env:
+          EXPECTED_REVISION: ${{ inputs.expected_revision }}
+          STAGING_URL: https://moneybot-v3-staging.onrender.com
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import re
+          import time
+          from urllib.error import HTTPError, URLError
+          from urllib.request import Request, urlopen
+
+          base = os.environ["STAGING_URL"].rstrip("/")
+          expected = os.environ["EXPECTED_REVISION"]
+          assert re.fullmatch(r"[0-9a-f]{40}", expected), "Invalid expected revision"
+
+          def request(path, method="GET"):
+              req = Request(base + path, method=method, headers={"Cache-Control": "no-cache"})
+              try:
+                  with urlopen(req, timeout=20) as response:
+                      return response.status, response.read(), response.headers
+              except HTTPError as error:
+                  return error.code, error.read(), error.headers
+
+          # Allow a sleeping free-tier instance to start, without masking contract failures.
+          for attempt in range(12):
+              try:
+                  code, body, headers = request("/healthz")
+                  if code == 200:
+                      break
+              except (URLError, TimeoutError):
+                  pass
+              time.sleep(10)
+          else:
+              raise AssertionError("Staging liveness unavailable")
+
+          assert json.loads(body) == {"service": "up", "trading_state": "NOT_ACTIVATED"}
+          assert headers.get("Cache-Control") == "no-store"
+          code, body, _ = request("/version")
+          assert code == 200 and json.loads(body)["git_commit"] == expected, "Wrong deployed revision"
+          code, body, _ = request("/")
+          assert code == 200
+          html = body.decode("utf-8")
+          for section in ("System health", "Account state", "Paper trades", "Risk limits", "Performance"):
+              assert section in html, section
+          assert "no demo balances" in html and "NOT ACTIVATED" in html
+          code, body, _ = request("/status")
+          assert code == 200
+          state = json.loads(body)
+          assert state["real_money_trading"] is False
+          assert state["automatic_paper_trading"] is False
+          assert state["trading_state"] == "NOT_ACTIVATED"
+          for field in ("market_data", "persistent_paper_ledger", "execution_time_risk_gate"):
+              assert state[field] == "NOT_CONNECTED", field
+          code, body, _ = request("/readyz")
+          assert code == 503 and json.loads(body)["ready_for_automatic_paper_trading"] is False
+          for path in ("/paper-account", "/paper-journal-activity", "/paper-ledger-summary"):
+              code, body, _ = request(path)
+              assert code in (200, 503), (path, code)
+              data = json.loads(body)
+              if code == 200:
+                  assert data["available"] is True and data["trading_ready"] is False, path
+              else:
+                  assert data["available"] is False, path
+          for method in ("POST", "PUT", "PATCH", "DELETE"):
+              code, body, _ = request("/orders", method)
+              assert code == 405 and json.loads(body)["error"] == "read-only service", method
+          code, _, _ = request("/readyz", "HEAD")
+          assert code == 503
+          print("PASS: matching deployed V3 revision, visible dashboard, fail-closed staging; trading NOT activated")
+          PY
