@@ -315,15 +315,8 @@ class StatusHandler(BaseHTTPRequestHandler):
                 return
             try:
                 from paper_ledger import PaperLedger
-                # Existing accounts can have any valid initial funding; never
-                # silently reseed a ledger with the constructor's default.
-                with sqlite3.connect(Path(ledger_path).resolve().as_uri() + "?mode=ro", uri=True) as db:
-                    row = db.execute("SELECT starting_cash_cents FROM paper_account WHERE id=1").fetchone()
-                if row is None or type(row[0]) is not int or row[0] <= 0:
-                    raise ValueError("missing initial paper funding")
-                from decimal import Decimal
-                starting_cash = str(Decimal(row[0]) / Decimal(100))
-                ledger = PaperLedger(ledger_path, starting_cash=starting_cash)
+                # Open strictly read-only: no BEGIN IMMEDIATE, reseeding, or sidecar files.
+                ledger = PaperLedger.open_readonly(ledger_path)
                 audit = ledger.audit_history()
                 snapshot = ledger.snapshot()
                 if (audit["audited_fills"] != snapshot["fill_count"]
