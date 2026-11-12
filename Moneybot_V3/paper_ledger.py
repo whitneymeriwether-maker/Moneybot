@@ -151,8 +151,27 @@ class PaperLedger:
                 db.rollback()
                 raise
 
+    @classmethod
+    def open_readonly(cls, db_path):
+        """Inspect an existing ledger without initializing or modifying it.
+
+        All connections use SQLite mode=ro; no lock sidecars are created.
+        This does not authorize fills or authenticate market observations.
+        """
+        path = Path(db_path)
+        if not path.is_file():
+            raise ValueError("Existing paper ledger required")
+        instance = cls.__new__(cls)
+        instance.db_path = str(path.resolve())
+        instance._read_only = True
+        return instance
+
     def _connect(self):
-        db = sqlite3.connect(self.db_path, timeout=10, isolation_level=None)
+        if getattr(self, "_read_only", False):
+            db = sqlite3.connect(Path(self.db_path).as_uri() + "?mode=ro", uri=True,
+                                 timeout=10, isolation_level=None)
+        else:
+            db = sqlite3.connect(self.db_path, timeout=10, isolation_level=None)
         db.execute("PRAGMA busy_timeout=10000")
         return db
 
