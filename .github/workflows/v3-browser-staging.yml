@@ -1,0 +1,33 @@
+name: V3 real-browser staging smoke
+on:
+  push:
+    branches: [moneybot-v3-research]
+    paths:
+      - 'Moneybot_V3/staging_browser_smoke.cjs'
+      - '.github/workflows/v3-browser-staging.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v3-browser-staging-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  chromium-staging:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated browser test dependency
+        run: |
+          npm install --no-save --ignore-scripts playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Verify real rendered staging dashboard and safety labels
+        run: node Moneybot_V3/staging_browser_smoke.cjs
