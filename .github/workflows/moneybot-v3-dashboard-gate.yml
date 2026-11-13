@@ -102,7 +102,7 @@ jobs:
             '/readyz': {ready_for_automatic_paper_trading: false}
           };
           const fetch = async path => ({
-            ok: Object.hasOwn(responses, path),
+            ok: path !== '/readyz' && Object.hasOwn(responses, path),
             status: path === '/readyz' ? 503 : (Object.hasOwn(responses, path) ? 200 : 503),
             json: async () => responses[path]
           });
