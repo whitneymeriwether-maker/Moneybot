@@ -109,7 +109,7 @@ jobs:
           vm.runInNewContext(script, {document, fetch, setInterval() {}}, {timeout: 2000});
           (async () => {
             // Drain the asynchronous response and JSON microtasks from refreshHealth.
-            for (let i = 0; i < 30; i++) await Promise.resolve();
+            for (let i = 0; i < 200; i++) await Promise.resolve();
             const value = id => document.getElementById(id).textContent;
             if (!value('service-health').includes('trading disabled')) throw Error('liveness UI');
             if (!value('integration-health').includes('NOT CONNECTED')) throw Error('integration UI');
