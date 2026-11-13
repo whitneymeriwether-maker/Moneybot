@@ -51,6 +51,10 @@ jobs:
           const amount = /^(0|[1-9][0-9]*)\.[0-9]{2}$/;
           const signed = /^-?(0|[1-9][0-9]*)\.[0-9]{2}$/;
           const symbol = /^[A-Z][A-Z0-9.-]{0,14}$/;
+          // Guard against testing stand-in patterns while the served dashboard regresses.
+          for (const pattern of [amount, signed, symbol]) {
+            if (!script.includes(pattern.toString())) throw Error('served dashboard regex differs: ' + pattern);
+          }
           for (const value of ['0.00', '12.34', '1000000.01']) {
             if (!amount.test(value) || !signed.test(value)) throw Error('valid amount rejected: ' + value);
           }
