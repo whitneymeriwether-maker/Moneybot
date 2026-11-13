@@ -67,6 +67,61 @@ jobs:
             throw Error('dashboard integration missing');
           }
           JS
+      - name: Execute served dashboard JavaScript against fail-closed browser DOM smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'JS'
+          const fs = require('fs');
+          const vm = require('vm');
+          const script = fs.readFileSync('/tmp/moneybot-v3-dashboard.js', 'utf8');
+          const elements = new Map();
+          function element() {
+            return {
+              textContent: '', children: [],
+              replaceChildren() { this.children = []; },
+              appendChild(child) { this.children.push(child); }
+            };
+          }
+          const document = {
+            getElementById(id) {
+              if (!elements.has(id)) elements.set(id, element());
+              return elements.get(id);
+            },
+            createElement: element
+          };
+          const responses = {
+            '/version': {git_commit: 'a'.repeat(40)},
+            '/healthz': {service: 'up', trading_state: 'NOT_ACTIVATED'},
+            '/status': {
+              application: 'Moneybot V3', trading_state: 'NOT_ACTIVATED',
+              automatic_paper_trading: false, real_money_trading: false,
+              market_data: 'NOT_CONNECTED', persistent_paper_ledger: 'NOT_CONNECTED',
+              execution_time_risk_gate: 'NOT_CONNECTED'
+            },
+            '/readyz': {ready_for_automatic_paper_trading: false}
+          };
+          const fetch = async path => ({
+            ok: Object.hasOwn(responses, path),
+            status: path === '/readyz' ? 503 : (Object.hasOwn(responses, path) ? 200 : 503),
+            json: async () => responses[path]
+          });
+          vm.runInNewContext(script, {document, fetch, setInterval() {}}, {timeout: 2000});
+          (async () => {
+            // Drain the asynchronous response and JSON microtasks from refreshHealth.
+            for (let i = 0; i < 30; i++) await Promise.resolve();
+            const value = id => document.getElementById(id).textContent;
+            if (!value('service-health').includes('trading disabled')) throw Error('liveness UI');
+            if (!value('integration-health').includes('NOT CONNECTED')) throw Error('integration UI');
+            if (!value('readiness-health').includes('NOT READY')) throw Error('readiness UI');
+            if (!value('paper-account-state').includes('unavailable')) throw Error('cash must fail closed');
+            if (!value('ledger-summary').includes('unavailable')) throw Error('ledger must fail closed');
+            if (!value('offline-realized-pnl').includes('Unavailable')) throw Error('P&L must fail closed');
+            if (!value('hypothetical-fill-status').includes('unavailable')) throw Error('fills must fail closed');
+            if (document.getElementById('hypothetical-fill-rows').children.length) throw Error('invented fills');
+            if (!value('deployed-revision').includes('a'.repeat(40))) throw Error('revision provenance');
+          })().catch(error => { console.error(error); process.exitCode = 1; });
+          JS
       - name: Verify dashboard startup and fail-closed HTTP endpoints
         shell: bash
         run: |
