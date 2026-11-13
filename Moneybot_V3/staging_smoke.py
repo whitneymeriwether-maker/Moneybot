@@ -28,10 +28,35 @@ def fetch(base, path):
     return status, json.loads(body)
 
 
+def verify_dashboard_html(base):
+    """Check the actual served dashboard, not just JSON health endpoints."""
+    req = Request(base + "/", headers={"Accept": "text/html", "Cache-Control": "no-cache"})
+    with urlopen(req, timeout=15) as response:
+        if response.status != 200 or "text/html" not in response.headers.get("Content-Type", ""):
+            raise ValueError("dashboard: unexpected HTTP status or content type")
+        payload = response.read(262145)
+    if len(payload) > 262144:
+        raise ValueError("dashboard: response too large")
+    html = payload.decode("utf-8")
+    for marker in (
+        "<title>Moneybot V3", "System health", "Account state",
+        "Paper trades", "Risk limits", "Performance", "Integration status",
+        "Actual state only", "NOT ACTIVATED",
+        "Recent hypothetical fills (NOT broker trades)",
+        'id="service-health"', 'id="readiness-health"',
+        'id="paper-account-state"', 'id="hypothetical-fill-rows"',
+        'id="offline-realized-pnl"', 'id="integration-health"',
+        'id="deployed-revision"', "refreshHealth();",
+    ):
+        if marker not in html:
+            raise ValueError("dashboard: missing required content " + marker)
+
+
 def verify(base):
     parsed = urlsplit(base)
     if parsed.scheme != "https" or parsed.netloc != "moneybot-v3-staging.onrender.com" or parsed.path or parsed.query or parsed.fragment:
         raise ValueError("Only the exact isolated HTTPS staging origin is allowed")
+    verify_dashboard_html(base)
     status, health = fetch(base, "/healthz")
     assert status == 200 and health.get("service") == "up" and health.get("trading_state") == "NOT_ACTIVATED", "liveness contract failed"
     status, state = fetch(base, "/status")
