@@ -1,0 +1,30 @@
+name: V3 isolated staging HTTP smoke
+
+on:
+  push:
+    branches: [moneybot-v3-research]
+    paths:
+      - 'Moneybot_V3/staging_smoke.py'
+      - '.github/workflows/v3-staging-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v3-staging-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  staging-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout V3 branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check isolated staging HTTP contracts (read-only)
+        env:
+          PYTHONUNBUFFERED: '1'
+        run: python3 Moneybot_V3/staging_smoke.py https://moneybot-v3-staging.onrender.com
