@@ -26,6 +26,27 @@ const { chromium } = require("playwright");
         !body.includes("hypothetical") || !body.includes("NOT broker verified") ||
         !body.includes("Execution gate unavailable"))
       throw new Error("missing actual-vs-demo or risk disclosure");
+    // Probe the deployed HTTP boundary, not just visible labels. A dashboard
+    // must never expose an accidental order or state-changing endpoint.
+    for (const endpoint of ["/", "/status", "/paper-account", "/orders", "/trade", "/execute"]) {
+      const result = await page.request.post(origin + endpoint, {
+        data: { symbol: "SPY", side: "BUY", quantity: 1 },
+        maxRedirects: 0,
+        timeout: 30000
+      });
+      if (result.status() < 400)
+        throw new Error("unsafe POST accepted at " + endpoint + ": " + result.status());
+    }
+    const ready = await page.request.get(origin + "/readyz", { maxRedirects: 0 });
+    if (ready.status() !== 503 ||
+        (await ready.json()).ready_for_automatic_paper_trading !== false)
+      throw new Error("deployed execution readiness must fail closed");
+    const status = await page.request.get(origin + "/status", { maxRedirects: 0 });
+    if (status.status() !== 200) throw new Error("status endpoint unavailable");
+    const snapshot = await status.json();
+    if (snapshot.real_money_trading !== false || snapshot.automatic_paper_trading !== false ||
+        snapshot.trading_state !== "NOT_ACTIVATED")
+      throw new Error("deployed trading state is not disabled");
     if (errors.length) throw new Error("browser JS errors: " + errors.join("; "));
     console.log("PASS: real Chromium rendered isolated V3 staging dashboard, revision " + revision);
   } finally {
