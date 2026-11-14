@@ -26,6 +26,20 @@ const { chromium } = require("playwright");
         !body.includes("hypothetical") || !body.includes("NOT broker verified") ||
         !body.includes("Execution gate unavailable"))
       throw new Error("missing actual-vs-demo or risk disclosure");
+    // Verify the rendered account and performance panels fail closed when the
+    // isolated staging ledger is unavailable; section headings alone are insufficient.
+    for (const [selector, expected] of [
+      ["#paper-account-state", /unavailable/i],
+      ["#ledger-summary", /unavailable/i],
+      ["#offline-realized-pnl", /unavailable/i],
+      ["#hypothetical-fill-status", /unavailable/i]
+    ]) {
+      const value = await page.locator(selector).innerText();
+      if (!expected.test(value))
+        throw new Error("unverified or fabricated dashboard data at " + selector + ": " + value);
+    }
+    if (await page.locator("#hypothetical-fill-rows").locator("tr").count() !== 0)
+      throw new Error("staging rendered paper fills without a verified ledger");
     // Probe the deployed HTTP boundary, not just visible labels. A dashboard
     // must never expose an accidental order or state-changing endpoint.
     for (const endpoint of ["/", "/status", "/paper-account", "/orders", "/trade", "/execute"]) {
