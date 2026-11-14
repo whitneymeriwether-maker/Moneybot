@@ -2,7 +2,7 @@
 const { chromium } = require("playwright");
 
 (async () => {
-  const origin = "https://moneybot-v3-staging.onrender.com";
+  const origin = process.env.MONEYBOT_V3_SMOKE_ORIGIN || "https://moneybot-v3-staging.onrender.com";
   const browser = await chromium.launch({ headless: true });
   try {
     const page = await browser.newPage();
