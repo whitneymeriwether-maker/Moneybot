@@ -253,6 +253,13 @@ async function refreshHealth() {
   } catch (_) {
     fillRows.replaceChildren();
     fillStatus.textContent = "Hypothetical fill history unavailable or unverified";
+    // The summary and recent fills are separate HTTP reads. If they disagree,
+    // neither the purported fill count nor hypothetical P&L is trustworthy.
+    // Fail the entire offline-ledger panel closed rather than showing a
+    // misleading audited summary beside rejected transaction history.
+    offlinePnl.textContent = "Unavailable · inconsistent or unverified ledger";
+    ledgerSummary.textContent = "Offline ledger unavailable or inconsistent";
+    ledgerDetail.textContent = "No authenticated paper execution or verified trade count.";
   }
   // Readiness is separate from liveness. Never present an unexpected 200,
   // invalid JSON, or network failure as permission to trade.
