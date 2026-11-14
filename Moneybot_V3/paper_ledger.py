@@ -216,7 +216,9 @@ class PaperLedger:
 
     def record_fill(
         self, *, event_id, timestamp, symbol, side, quantity, price,
-        fee="0.00",
+        fee="0.00", max_order_dollars=None,
+        max_position_dollars=None, max_daily_loss_dollars=None,
+        daily_realized_pnl=None,
     ):
         """Atomically record a hypothetical fill; True=new, False=exact retry.
 
@@ -286,6 +288,36 @@ class PaperLedger:
                     (symbol,),
                 ).fetchone()
                 held, basis = position if position else (0, 0)
+
+                # Enforce optional execution-time limits under the same
+                # BEGIN IMMEDIATE writer lock as the balance mutation. When
+                # limits are requested, all three and the independently
+                # audited daily realized P&L must be supplied. This is not
+                # market-data authentication or a complete execution gate.
+                limits = (max_order_dollars, max_position_dollars,
+                          max_daily_loss_dollars, daily_realized_pnl)
+                if any(value is not None for value in limits):
+                    if any(value is None for value in limits):
+                        raise ValueError("Incomplete atomic paper risk limits")
+                    order_cap = _cents(max_order_dollars)
+                    position_cap = _cents(max_position_dollars)
+                    loss_cap = _cents(max_daily_loss_dollars)
+                    if type(daily_realized_pnl) not in (str, Decimal):
+                        raise ValueError("Invalid daily realized PnL")
+                    try:
+                        daily_pnl = Decimal(daily_realized_pnl)
+                        if (not daily_pnl.is_finite()
+                            or daily_pnl != daily_pnl.quantize(_CENT)
+                            or abs(daily_pnl) > Decimal(MAX_CENTS) / 100):
+                            raise ValueError("Invalid daily realized PnL")
+                    except (InvalidOperation, OverflowError):
+                        raise ValueError("Invalid daily realized PnL") from None
+                    if daily_pnl <= -Decimal(loss_cap) / 100:
+                        raise ValueError("Daily paper loss limit reached")
+                    if gross + fee_cents > order_cap:
+                        raise ValueError("Atomic paper order limit exceeded")
+                    if side == "BUY" and (held + quantity) * price_cents > position_cap:
+                        raise ValueError("Atomic paper position limit exceeded")
 
                 if side == "BUY":
                     debit = gross + fee_cents
