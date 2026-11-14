@@ -189,6 +189,8 @@ async function refreshHealth() {
     activityRows.replaceChildren();
     activityStatus.textContent = "Cash activity unavailable or unverified · no trades inferred";
   }
+  // The fill table may only be trusted after the independently audited summary passes.
+  let verifiedLedgerFillCount = null;
   // Offline ledger is independent of the cash journal and is never called actual execution.
   try {
     const response = await fetch("/paper-ledger-summary", {cache: "no-store"});
@@ -202,6 +204,7 @@ async function refreshHealth() {
         || !/^(0|[1-9][0-9]*)\.[0-9]{2}$/.test(data.cash) || typeof data.realized_pnl !== "string"
         || !/^-?(0|[1-9][0-9]*)\.[0-9]{2}$/.test(data.realized_pnl)
         || data.marked_equity !== null || data.performance !== null) throw new Error("unverified ledger");
+    verifiedLedgerFillCount = data.fill_count;
     offlinePnl.textContent = "Audited local hypothetical realized P&L: " + data.realized_pnl + " · NOT market-verified";
     ledgerSummary.textContent = data.fill_count + " locally recorded hypothetical fills";
     ledgerDetail.textContent = "Audited local ledger only · cash " + data.cash
@@ -231,7 +234,10 @@ async function refreshHealth() {
         && (e.side === "BUY" || e.side === "SELL")
         && Number.isSafeInteger(e.quantity) && e.quantity > 0
         && money(e.price) && money(e.fee));
-    if (!valid) throw new Error("invalid hypothetical fills");
+    if (!valid || verifiedLedgerFillCount === null
+        || data.fill_count !== verifiedLedgerFillCount
+        || (data.fill_count > 0 && data.fills.length === 0))
+      throw new Error("inconsistent or unverified hypothetical fills");
     for (const e of data.fills) {
       const row = document.createElement("tr");
       for (const value of [e.timestamp_utc, e.symbol, e.side, String(e.quantity), e.price]) {
