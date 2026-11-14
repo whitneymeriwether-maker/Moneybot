@@ -1,0 +1,36 @@
+name: V3 market-data smoke contract
+on:
+  push:
+    branches: [moneybot-v3-research]
+    paths:
+      - 'Moneybot_V3/market_data_smoke.py'
+      - 'Moneybot_V3/alpaca_market_data.py'
+      - 'Moneybot_V3/verified_market_quote.py'
+      - 'Moneybot_V3/tests/test_market_data_smoke.py'
+      - '.github/workflows/moneybot-v3-market-data-smoke.yml'
+  workflow_dispatch:
+jobs:
+  offline-market-data-contract:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Compile market-data boundary
+        run: python -m compileall -q Moneybot_V3/alpaca_market_data.py Moneybot_V3/verified_market_quote.py Moneybot_V3/market_data_smoke.py
+      - name: Run credential-free smoke contract tests
+        run: python -m unittest discover -s Moneybot_V3/tests -p 'test_market_data_smoke.py' -v
+      - name: Verify missing credentials fail closed
+        env:
+          APCA_API_KEY_ID: ''
+          APCA_API_SECRET_KEY: ''
+        run: |
+          set +e
+          python Moneybot_V3/market_data_smoke.py SPY > smoke.json
+          status=$?
+          set -e
+          test "$status" -eq 1
+          python -c 'import json; d=json.load(open("smoke.json")); assert d["ok"] is False and d["paper_trading_enabled"] is False'
