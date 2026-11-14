@@ -1,0 +1,23 @@
+name: V3 research cycle claims
+on:
+  push:
+    branches: [moneybot-v3-research]
+    paths:
+      - 'Moneybot_V3/research_cycle_claims.py'
+      - 'Moneybot_V3/tests/test_research_cycle_claims.py'
+      - '.github/workflows/v3-research-cycle-claims.yml'
+  workflow_dispatch:
+jobs:
+  durable-claims:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile module and test
+        run: |
+          python -m py_compile Moneybot_V3/research_cycle_claims.py Moneybot_V3/tests/test_research_cycle_claims.py
+          python -m unittest discover -s Moneybot_V3/tests -p 'test_research_cycle_claims.py' -v
