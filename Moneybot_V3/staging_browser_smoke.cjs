@@ -89,6 +89,8 @@ const { chromium } = require("playwright");
       await adversarial.goto(origin, {waitUntil:"domcontentloaded", timeout:90000});
       await adversarial.locator("#ledger-summary").getByText(/2 locally recorded hypothetical fills/).waitFor();
       await adversarial.locator("#hypothetical-fill-status").getByText(/unavailable or unverified/i).waitFor();
+      await adversarial.locator("#ledger-summary").getByText(/unavailable or inconsistent/i).waitFor();
+      await adversarial.locator("#offline-realized-pnl").getByText(/unavailable.*inconsistent/i).waitFor();
       if (await adversarial.locator("#hypothetical-fill-rows tr").count())
         throw new Error("dashboard displayed contradictory hypothetical fills");
     } finally {
