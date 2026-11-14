@@ -87,7 +87,8 @@ const { chromium } = require("playwright");
         })
       }));
       await adversarial.goto(origin, {waitUntil:"domcontentloaded", timeout:90000});
-      await adversarial.locator("#ledger-summary").getByText(/2 locally recorded hypothetical fills/).waitFor();
+      // Wait for the final fail-closed state, not a transient optimistic render.
+      // A fast UI may reconcile both responses before any intermediate count is visible.
       await adversarial.locator("#hypothetical-fill-status").getByText(/unavailable or unverified/i).waitFor();
       await adversarial.locator("#ledger-summary").getByText(/unavailable or inconsistent/i).waitFor();
       await adversarial.locator("#offline-realized-pnl").getByText(/unavailable.*inconsistent/i).waitFor();
