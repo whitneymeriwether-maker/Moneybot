@@ -1,0 +1,25 @@
+name: Moneybot V3 market and paper risk gate
+on:
+  push:
+    branches: [moneybot-v3-research]
+    paths:
+      - 'Moneybot_V3/verified_market_quote.py'
+      - 'Moneybot_V3/paper_decision_gate.py'
+      - 'Moneybot_V3/tests/test_verified_market_quote.py'
+      - 'Moneybot_V3/tests/test_paper_decision_gate.py'
+      - '.github/workflows/moneybot-v3-market-risk-gate.yml'
+  workflow_dispatch:
+jobs:
+  offline-paper-risk:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Compile market and risk modules
+        run: python -m compileall -q Moneybot_V3/verified_market_quote.py Moneybot_V3/paper_decision_gate.py
+      - name: Offline validation tests (no credentials, network or trading)
+        run: python -m unittest discover -s Moneybot_V3/tests -p 'test_*market_quote.py' -v && python -m unittest discover -s Moneybot_V3/tests -p 'test_paper_decision_gate.py' -v
