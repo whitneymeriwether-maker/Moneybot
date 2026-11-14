@@ -1,0 +1,23 @@
+name: Moneybot V3 market-analysis contract
+on:
+  push:
+    branches: [moneybot-v3-research]
+    paths:
+      - 'Moneybot_V3/market_analysis.py'
+      - 'Moneybot_V3/tests/test_market_analysis.py'
+      - '.github/workflows/moneybot-v3-market-analysis.yml'
+  workflow_dispatch:
+jobs:
+  analysis-contract:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Compile and run fail-closed market-analysis tests
+        run: |
+          python -m py_compile Moneybot_V3/market_analysis.py
+          python -m unittest discover -s Moneybot_V3/tests -p 'test_market_analysis.py' -v
