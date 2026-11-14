@@ -61,6 +61,39 @@ const { chromium } = require("playwright");
     if (snapshot.real_money_trading !== false || snapshot.automatic_paper_trading !== false ||
         snapshot.trading_state !== "NOT_ACTIVATED")
       throw new Error("deployed trading state is not disabled");
+    // Inject internally inconsistent ledger endpoints into a separate browser view.
+    // The UI must reject hypothetical fills even when both endpoints individually
+    // claim to be audited. This does not mutate the deployed service.
+    const adversarial = await browser.newPage();
+    try {
+      await adversarial.route("**/paper-ledger-summary", route => route.fulfill({
+        status: 200, contentType: "application/json",
+        body: JSON.stringify({
+          available: true, source: "local_hypothetical_sqlite_ledger",
+          verification: "audited_local_records_not_broker_verified",
+          trading_ready: false, fill_count: 2, position_count: 0,
+          cash: "1000.00", realized_pnl: "0.00",
+          marked_equity: null, performance: null
+        })
+      }));
+      await adversarial.route("**/paper-ledger-fills", route => route.fulfill({
+        status: 200, contentType: "application/json",
+        body: JSON.stringify({
+          available: true, source: "local_hypothetical_sqlite_ledger",
+          verification: "audited_local_records_not_broker_verified",
+          trading_ready: false, fill_count: 1,
+          fills: [{timestamp_utc:"2026-11-14T00:00:00+00:00",
+            symbol:"SPY",side:"BUY",quantity:1,price:"100.00",fee:"0.00"}]
+        })
+      }));
+      await adversarial.goto(origin, {waitUntil:"domcontentloaded", timeout:90000});
+      await adversarial.locator("#ledger-summary").getByText(/2 locally recorded hypothetical fills/).waitFor();
+      await adversarial.locator("#hypothetical-fill-status").getByText(/unavailable or unverified/i).waitFor();
+      if (await adversarial.locator("#hypothetical-fill-rows tr").count())
+        throw new Error("dashboard displayed contradictory hypothetical fills");
+    } finally {
+      await adversarial.close();
+    }
     if (errors.length) throw new Error("browser JS errors: " + errors.join("; "));
     console.log("PASS: real Chromium rendered isolated V3 staging dashboard, revision " + revision);
   } finally {
