@@ -1,0 +1,54 @@
+name: V3 isolated Chromium acceptance
+
+on:
+  push:
+    branches: [moneybot-v3-research]
+    paths:
+      - 'Moneybot_V3/**'
+      - '.github/workflows/v3-isolated-browser-acceptance.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v3-browser-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  browser-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PORT: '18765'
+      RENDER_GIT_COMMIT: ${{ github.sha }}
+      MONEYBOT_V3_SMOKE_ORIGIN: http://127.0.0.1:18765
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Compile read-only V3 service
+        run: python -m compileall -q Moneybot_V3/paper_status_server.py
+      - name: Install Chromium acceptance dependencies
+        run: |
+          npm install --no-save --no-package-lock playwright@1.58.2
+          npx playwright install --with-deps chromium
+      - name: Start isolated read-only V3 server
+        run: |
+          python Moneybot_V3/paper_status_server.py > /tmp/v3-browser-server.log 2>&1 &
+          echo $! > /tmp/v3-browser-server.pid
+          for i in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:18765/healthz >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/v3-browser-server.log
+          exit 1
+      - name: Execute real Chromium dashboard and fail-closed HTTP checks
+        run: node Moneybot_V3/staging_browser_smoke.cjs
+      - name: Preserve server diagnostics on failure
+        if: failure()
+        run: cat /tmp/v3-browser-server.log || true
