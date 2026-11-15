@@ -41,6 +41,7 @@ jobs:
       - name: Verify real browser dashboard and blocked trading endpoints
         env:
           MONEYBOT_V3_SMOKE_ORIGIN: http://127.0.0.1:8765
+          MONEYBOT_V3_EXPECTED_REVISION: ${{ github.sha }}
         run: node Moneybot_V3/staging_browser_smoke.cjs
       - name: Show service logs on failure
         if: failure()
