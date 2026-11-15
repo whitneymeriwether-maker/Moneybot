@@ -47,7 +47,7 @@ table{width:100%;border-collapse:collapse;text-align:left}td,th{padding:10px 4px
 <p class="warn"><strong>Actual state only — no demo balances, fabricated trades, or simulated performance are shown.</strong>
 This dashboard is a read-only staging diagnostic, not an operating paper trader.</p>
 <div class="grid">
-<section><h2>System health</h2><div class="value" id="service-health" role="status" aria-live="polite">Checking service…</div><p id="readiness-health" class="warn" role="status" aria-live="polite">Trading readiness unverified</p><p class="muted">Live liveness check; trading readiness is separately verified and remains unavailable.</p><p><a href="/healthz">Liveness JSON</a> · <a href="/readyz">Readiness JSON</a></p></section>
+<section><h2>System health</h2><p id="snapshot-time" class="muted" role="status" aria-live="polite">Snapshot not yet checked · data freshness unknown</p><div class="value" id="service-health" role="status" aria-live="polite">Checking service…</div><p id="readiness-health" class="warn" role="status" aria-live="polite">Trading readiness unverified</p><p class="muted">Live liveness check; trading readiness is separately verified and remains unavailable.</p><p><a href="/healthz">Liveness JSON</a> · <a href="/readyz">Readiness JSON</a></p></section>
 <section><h2>Account state</h2><div class="value" id="paper-account-state">Not connected</div><p id="paper-account-movements" class="muted">Recorded cash movements unavailable.</p><p id="paper-account-recency" class="muted">Last journal entry unavailable.</p><p class="muted">Journal-derived cash is shown above only when a valid isolated journal is configured. Broker-verified cash, equity, buying power, and positions remain unavailable. No demo values.</p></section>
 <section class="full"><h2>Recorded paper cash activity (NOT trades)</h2><p id="journal-activity-status" class="muted" role="status" aria-live="polite">Checking isolated journal…</p><table><thead><tr><th>UTC recorded time</th><th>Movement</th><th>Amount</th></tr></thead><tbody id="journal-activity-rows"></tbody></table><p class="muted">Up to 25 journal-only cash movements. No broker verification, trade fills, or performance.</p></section>
 <section><h2>Paper trades</h2><p class="muted">Trade count unknown, not zero, unless an audited offline ledger is available. Offline fills are hypothetical, not authenticated executions.</p><div class="value" id="ledger-summary">Offline ledger not configured</div><p id="ledger-detail" class="muted">No verified execution feed. Local hypothetical fills are not authenticated broker trades.</p></section>
@@ -278,6 +278,7 @@ async function refreshHealth() {
     readiness.textContent = "Trading readiness unavailable · trading unverified";
   }
   } finally {
+    document.getElementById("snapshot-time").textContent = "Last refresh attempt (UTC): " + new Date().toISOString() + " · failed endpoints remain unverified";
     refreshInProgress = false;
   }
 }
