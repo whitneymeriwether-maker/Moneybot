@@ -1,0 +1,47 @@
+name: V3 local browser regression
+on:
+  push:
+    branches: [moneybot-v3-research]
+    paths:
+      - 'Moneybot_V3/paper_status_server.py'
+      - 'Moneybot_V3/staging_browser_smoke.cjs'
+      - '.github/workflows/v3-local-browser-regression.yml'
+  workflow_dispatch:
+jobs:
+  browser-regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install browser dependencies
+        run: |
+          npm install --no-save --no-package-lock playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Launch isolated read-only V3 service
+        env:
+          RENDER_GIT_COMMIT: ${{ github.sha }}
+          PORT: '8765'
+        run: |
+          python Moneybot_V3/paper_status_server.py > /tmp/moneybot-v3-server.log 2>&1 &
+          echo $! > /tmp/moneybot-v3-server.pid
+          for i in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8765/healthz >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/moneybot-v3-server.log
+          exit 1
+      - name: Verify real browser dashboard and blocked trading endpoints
+        env:
+          MONEYBOT_V3_SMOKE_ORIGIN: http://127.0.0.1:8765
+        run: node Moneybot_V3/staging_browser_smoke.cjs
+      - name: Show service logs on failure
+        if: failure()
+        run: cat /tmp/moneybot-v3-server.log || true
