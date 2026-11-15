@@ -23,7 +23,7 @@ const { chromium } = require("playwright");
     }
     const body = await page.locator("body").innerText();
     if (!body.includes("Actual state only") || !body.includes("NOT ACTIVATED") ||
-        !body.includes("hypothetical") || !body.includes("NOT broker verified") ||
+        !body.includes("hypothetical") || !body.includes("No demo values") ||
         !body.includes("Execution gate unavailable"))
       throw new Error("missing actual-vs-demo or risk disclosure");
     // Verify the rendered account and performance panels fail closed when the
