@@ -13,7 +13,9 @@ class DashboardRefreshContract(unittest.TestCase):
         self.assertIn("let refreshInProgress = false;", html[:start])
         self.assertIn("if (refreshInProgress) return;", function)
         self.assertIn("refreshInProgress = true;", function)
-        self.assertIn("finally {\n    refreshInProgress = false;", function)
+        self.assertIn("finally {", function)
+        self.assertIn('document.getElementById("snapshot-time").textContent = "Last refresh attempt (UTC): "', function)
+        self.assertIn("refreshInProgress = false;", function.split("} finally {", 1)[1])
         self.assertLess(function.index("refreshInProgress = true;"), function.index('fetch("/version"'))
 
 
