@@ -21,7 +21,7 @@ def _utc(value):
 
 class ResearchCycleClaims:
     def __init__(self, path):
-        if type(path) not in (str, Path) or not str(path).strip() or str(path) == ":memory:":
+        if not isinstance(path, (str, Path)) or not str(path).strip() or str(path) == ":memory:":
             raise ValueError("Persistent SQLite path required")
         self.path = str(path)
         # Never silently recreate a lost database if an existing path is corrupt.
