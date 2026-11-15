@@ -82,7 +82,7 @@ async function refreshHealth() {
   refreshInProgress = true;
   try {
   try {
-    const response = await fetch("/version", {cache: "no-store"});
+    const response = await fetch("/version", {cache: "no-store", signal: AbortSignal.timeout(10000)});
     if (!response.ok) throw new Error("version unavailable");
     const data = await response.json();
     revision.textContent = typeof data.git_commit === "string" && /^[0-9a-f]{40}$/.test(data.git_commit)
@@ -92,7 +92,7 @@ async function refreshHealth() {
     revision.textContent = "Deployment revision unavailable · cannot establish code provenance";
   }
   try {
-    const response = await fetch("/healthz", {cache: "no-store"});
+    const response = await fetch("/healthz", {cache: "no-store", signal: AbortSignal.timeout(10000)});
     if (!response.ok) throw new Error("Health endpoint unavailable");
     const data = await response.json();
     health.textContent = data.service === "up" && data.trading_state === "NOT_ACTIVATED"
@@ -104,7 +104,7 @@ async function refreshHealth() {
   // The read-only status snapshot is independently checked on every poll.
   // A missing or inconsistent status response must never be treated as connected.
   try {
-    const response = await fetch("/status", {cache: "no-store"});
+    const response = await fetch("/status", {cache: "no-store", signal: AbortSignal.timeout(10000)});
     if (!response.ok) throw new Error("Status endpoint unavailable");
     const data = await response.json();
     integration.textContent = data.application === "Moneybot V3"
@@ -120,7 +120,7 @@ async function refreshHealth() {
     integration.textContent = "Integration status unavailable · trading unverified";
   }
   try {
-    const response = await fetch("/paper-account", {cache: "no-store"});
+    const response = await fetch("/paper-account", {cache: "no-store", signal: AbortSignal.timeout(10000)});
     if (!response.ok) throw new Error("journal unavailable");
     const data = await response.json();
     const amountIsValid = value => typeof value === "string"
@@ -160,7 +160,7 @@ async function refreshHealth() {
   // textContent prevents persisted journal strings from becoming HTML.
   activityRows.replaceChildren();
   try {
-    const response = await fetch("/paper-journal-activity", {cache: "no-store"});
+    const response = await fetch("/paper-journal-activity", {cache: "no-store", signal: AbortSignal.timeout(10000)});
     if (!response.ok) throw new Error("activity unavailable");
     const data = await response.json();
     const amountValid = value => typeof value === "string"
@@ -198,7 +198,7 @@ async function refreshHealth() {
   let verifiedLedgerFillCount = null;
   // Offline ledger is independent of the cash journal and is never called actual execution.
   try {
-    const response = await fetch("/paper-ledger-summary", {cache: "no-store"});
+    const response = await fetch("/paper-ledger-summary", {cache: "no-store", signal: AbortSignal.timeout(10000)});
     if (!response.ok) throw new Error("ledger unavailable");
     const data = await response.json();
     if (data.available !== true || data.source !== "local_hypothetical_sqlite_ledger"
@@ -225,7 +225,7 @@ async function refreshHealth() {
   const fillStatus = document.getElementById("hypothetical-fill-status");
   fillRows.replaceChildren();
   try {
-    const response = await fetch("/paper-ledger-fills", {cache: "no-store"});
+    const response = await fetch("/paper-ledger-fills", {cache: "no-store", signal: AbortSignal.timeout(10000)});
     if (!response.ok) throw new Error("fills unavailable");
     const data = await response.json();
     const money = v => typeof v === "string" && /^(0|[1-9][0-9]*)\.[0-9]{2}$/.test(v) && v.length <= 32;
@@ -269,7 +269,7 @@ async function refreshHealth() {
   // Readiness is separate from liveness. Never present an unexpected 200,
   // invalid JSON, or network failure as permission to trade.
   try {
-    const response = await fetch("/readyz", {cache: "no-store"});
+    const response = await fetch("/readyz", {cache: "no-store", signal: AbortSignal.timeout(10000)});
     const data = await response.json();
     readiness.textContent = response.status === 503 && data.ready_for_automatic_paper_trading === false
       ? "Paper execution NOT READY · safeguards unvalidated"
