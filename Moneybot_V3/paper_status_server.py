@@ -75,7 +75,12 @@ const activityRows = document.getElementById("journal-activity-rows");
 const ledgerSummary = document.getElementById("ledger-summary");
 const ledgerDetail = document.getElementById("ledger-detail");
 const offlinePnl = document.getElementById("offline-realized-pnl");
+let refreshInProgress = false;
 async function refreshHealth() {
+  // Prevent slow polls from racing newer snapshots and overwriting their state.
+  if (refreshInProgress) return;
+  refreshInProgress = true;
+  try {
   try {
     const response = await fetch("/version", {cache: "no-store"});
     if (!response.ok) throw new Error("version unavailable");
@@ -271,6 +276,9 @@ async function refreshHealth() {
       : "Unexpected readiness response · trading unverified";
   } catch (_) {
     readiness.textContent = "Trading readiness unavailable · trading unverified";
+  }
+  } finally {
+    refreshInProgress = false;
   }
 }
 refreshHealth();
