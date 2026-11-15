@@ -15,8 +15,11 @@ const { chromium } = require("playwright");
     await page.locator("#integration-health").getByText("Verified snapshot: integrations NOT CONNECTED · trading disabled").waitFor({ timeout: 30000 });
     await page.locator("#readiness-health").getByText(/NOT READY|not ready/i).waitFor({ timeout: 30000 });
     const revision = await page.locator("#deployed-revision").innerText();
-    if (!/Deployed Git revision: [a-f0-9]{40}/.test(revision))
+    if (!/^Deployed Git revision: [a-f0-9]{40}$/.test(revision.trim()))
       throw new Error("browser did not verify deployment provenance");
+    const expectedRevision = process.env.MONEYBOT_V3_EXPECTED_REVISION;
+    if (expectedRevision && revision.trim() !== "Deployed Git revision: " + expectedRevision)
+      throw new Error("browser revision mismatch: expected " + expectedRevision + ", got " + revision.trim());
     for (const title of ["System health", "Account state", "Paper trades", "Risk limits", "Performance", "Integration status"]) {
       if (await page.getByRole("heading", { name: title, exact: true }).count() !== 1)
         throw new Error("missing dashboard section: " + title);
