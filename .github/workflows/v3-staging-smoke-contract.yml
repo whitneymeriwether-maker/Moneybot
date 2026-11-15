@@ -5,6 +5,7 @@ on:
     paths:
       - 'Moneybot_V3/staging_smoke.py'
       - 'Moneybot_V3/tests/test_staging_smoke_contract.py'
+      - 'Moneybot_V3/tests/test_staging_revision_contract.py'
       - '.github/workflows/v3-staging-smoke-contract.yml'
   workflow_dispatch:
 jobs:
@@ -18,4 +19,4 @@ jobs:
         with:
           python-version: '3.12'
       - name: Run staging smoke contract regression tests
-        run: python -m unittest discover -s Moneybot_V3/tests -p test_staging_smoke_contract.py -v
+        run: python -m unittest discover -s Moneybot_V3/tests -p 'test_staging_*contract.py' -v
