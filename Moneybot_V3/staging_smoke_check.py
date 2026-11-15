@@ -13,7 +13,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
 DEFAULT_URL = "https://moneybot-v3-staging.onrender.com"
-_MAX_BODY = 16 * 1024
+_MAX_BODY = 128 * 1024
 
 
 class _NoRedirect(HTTPRedirectHandler):
