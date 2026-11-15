@@ -1,0 +1,21 @@
+name: V3 dashboard refresh contract
+on:
+  push:
+    branches: [moneybot-v3-research]
+    paths:
+      - 'Moneybot_V3/paper_status_server.py'
+      - 'Moneybot_V3/tests/test_dashboard_refresh_contract.py'
+      - '.github/workflows/v3-dashboard-refresh-contract.yml'
+  workflow_dispatch:
+jobs:
+  dashboard-refresh:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile staging server
+        run: python -m compileall -q Moneybot_V3/paper_status_server.py
+      - name: Test dashboard polling contract
+        run: python -m unittest discover -s Moneybot_V3/tests -p test_dashboard_refresh_contract.py -v
