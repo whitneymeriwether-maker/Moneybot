@@ -1,5 +1,9 @@
 name: V3 deployed browser acceptance
 on:
+  push:
+    branches: [moneybot-v3-research]
+    paths:
+      - '.github/workflows/v3-deployed-browser-acceptance.yml'
   workflow_dispatch:
     inputs:
       expected_sha:
@@ -21,7 +25,7 @@ jobs:
           node-version: '22'
       - name: Validate requested deployed revision
         env:
-          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          EXPECTED_SHA: ${{ inputs.expected_sha || github.sha }}
         run: |
           [[ "$EXPECTED_SHA" =~ ^[a-f0-9]{40}$ ]] || exit 1
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
