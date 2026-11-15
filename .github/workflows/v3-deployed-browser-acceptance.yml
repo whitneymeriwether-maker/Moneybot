@@ -1,0 +1,40 @@
+name: V3 deployed browser acceptance
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: 'Exact 40-character commit deployed to isolated V3 staging'
+        required: true
+        type: string
+jobs:
+  browser-acceptance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: moneybot-v3-research
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate requested deployed revision
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: |
+          [[ "$EXPECTED_SHA" =~ ^[a-f0-9]{40}$ ]] || exit 1
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - name: Install isolated browser test dependencies
+        run: |
+          npm install --no-save --no-package-lock playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Test deployed HTTP contract and exact revision
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: python Moneybot_V3/staging_smoke.py https://moneybot-v3-staging.onrender.com "$EXPECTED_SHA"
+      - name: Test real Chromium dashboard and fail-closed execution boundary
+        env:
+          MONEYBOT_V3_SMOKE_ORIGIN: https://moneybot-v3-staging.onrender.com
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: node Moneybot_V3/staging_browser_smoke.cjs
