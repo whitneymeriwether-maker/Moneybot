@@ -5,6 +5,7 @@ on:
     paths:
       - 'Moneybot_V3/paper_status_server.py'
       - 'Moneybot_V3/tests/test_dashboard_refresh_contract.py'
+      - 'Moneybot_V3/tests/test_dashboard_refresh_timestamp_contract.py'
       - '.github/workflows/v3-dashboard-refresh-contract.yml'
   workflow_dispatch:
 jobs:
@@ -18,4 +19,4 @@ jobs:
       - name: Compile staging server
         run: python -m compileall -q Moneybot_V3/paper_status_server.py
       - name: Test dashboard polling contract
-        run: python -m unittest discover -s Moneybot_V3/tests -p test_dashboard_refresh_contract.py -v
+        run: python -m unittest discover -s Moneybot_V3/tests -p 'test_dashboard_refresh*contract.py' -v
