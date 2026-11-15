@@ -60,7 +60,7 @@ def verify_dashboard_html(base):
             raise ValueError("dashboard: missing required content " + marker)
 
 
-def verify(base):
+def verify(base, expected_commit=None):
     parsed = urlsplit(base)
     if parsed.scheme != "https" or parsed.netloc != "moneybot-v3-staging.onrender.com" or parsed.path or parsed.query or parsed.fragment:
         raise ValueError("Only the exact isolated HTTPS staging origin is allowed")
@@ -91,13 +91,18 @@ def verify(base):
     status, version = fetch(base, "/version")
     if not (status == 200 and isinstance(version.get("git_commit"), str) and len(version["git_commit"]) == 40):
         raise ValueError("missing deployment provenance")
+    if expected_commit is not None and version["git_commit"] != expected_commit:
+        raise ValueError("staging revision does not match expected commit")
     print("PASS: staging read-only HTTP contract, revision", version["git_commit"])
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        sys.exit("Usage: staging_smoke.py https://moneybot-v3-staging.onrender.com")
+    if len(sys.argv) not in (2, 3):
+        sys.exit("Usage: staging_smoke.py https://moneybot-v3-staging.onrender.com [expected-40-char-commit]")
+    expected = sys.argv[2] if len(sys.argv) == 3 else None
+    if expected is not None and (len(expected) != 40 or any(c not in "0123456789abcdef" for c in expected)):
+        sys.exit("FAIL: expected commit must be a lowercase 40-character SHA")
     try:
-        verify(sys.argv[1].rstrip("/"))
+        verify(sys.argv[1].rstrip("/"), expected)
     except (AssertionError, ValueError, URLError, TimeoutError, OSError) as exc:
         sys.exit("FAIL: " + str(exc))
