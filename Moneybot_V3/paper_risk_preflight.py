@@ -4,6 +4,7 @@ Pure decision function. Never submits orders or records fills. A future executor
 MUST recheck these limits inside its durable accounting transaction.
 """
 from decimal import Decimal, InvalidOperation, DecimalException
+import re
 from .market_data_boundary import verified_quote
 
 
@@ -14,6 +15,9 @@ class PaperRiskRejected(ValueError):
 def _decimal(value, label, *, allow_zero=False):
     if type(value) is not str:
         raise PaperRiskRejected(label + " must be a decimal string")
+    # Bound untrusted decimal parsing and exclude exponent notation before allocation.
+    if len(value) > 32 or not re.fullmatch(r"(0|[1-9][0-9]*)(\\.[0-9]{1,6})?", value):
+        raise PaperRiskRejected("invalid " + label + " representation")
     try:
         number = Decimal(value)
     except InvalidOperation as exc:
