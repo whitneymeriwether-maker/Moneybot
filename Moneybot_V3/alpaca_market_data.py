@@ -15,8 +15,10 @@ from decimal import Decimal, InvalidOperation
 
 try:
     from .verified_market_quote import verified_quote
+    from .market_data_boundary import verified_quote as boundary_verified_quote
 except ImportError:
     from verified_market_quote import verified_quote
+    from market_data_boundary import verified_quote as boundary_verified_quote
 
 _DATA_ORIGIN = "https://data.alpaca.markets"
 _SYMBOL = re.compile(r"[A-Z][A-Z0-9.-]{0,9}")
@@ -89,4 +91,11 @@ def latest_alpaca_quote(symbol, *, key_id=None, secret_key=None, now=None,
             provider="alpaca", authenticated=True, expected_symbol=symbol, now=now)
     except (KeyError, TypeError, json.JSONDecodeError, InvalidOperation, OverflowError) as exc:
         raise ValueError("Invalid authenticated market-data response") from None
+    # Attest provenance only after authenticated HTTPS and strict provider parsing.
+    boundary_verified_quote({
+        "symbol": symbol, "price": validated["price"],
+        "timestamp_utc": validated["timestamp_utc"],
+        "provider": "alpaca", "authenticated_transport": True,
+        "provider_verified": True,
+    }, expected_symbol=symbol, now=now)
     return {**validated, "feed": "iex", "price_type": "bid_ask_midpoint_not_execution"}
