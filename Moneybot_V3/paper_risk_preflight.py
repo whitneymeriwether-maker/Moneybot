@@ -16,7 +16,7 @@ def _decimal(value, label, *, allow_zero=False):
     if type(value) is not str:
         raise PaperRiskRejected(label + " must be a decimal string")
     # Bound untrusted decimal parsing and exclude exponent notation before allocation.
-    if len(value) > 32 or not re.fullmatch(r"(0|[1-9][0-9]*)(\\.[0-9]{1,6})?", value):
+    if len(value) > 32 or not re.fullmatch(r"(0|[1-9][0-9]*)(\.[0-9]{1,6})?", value):
         raise PaperRiskRejected("invalid " + label + " representation")
     try:
         number = Decimal(value)
