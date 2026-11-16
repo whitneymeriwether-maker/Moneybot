@@ -43,6 +43,13 @@ class RiskPreflightTests(unittest.TestCase):
                 with self.assertRaises(PaperRiskRejected):
                     check_paper_buy(**proposal(**changes))
 
+    def test_decimal_input_is_bounded_before_conversion(self):
+        for value in ("9" * 100000, "1e2", "+2", "02", "2.0000001", " 2", "2 "):
+            with self.subTest(value=value[:30]):
+                with self.assertRaises(PaperRiskRejected):
+                    check_paper_buy(**proposal(quantity=value))
+        self.assertEqual(check_paper_buy(**proposal(quantity="2.000000"))["quantity"], "2.000000")
+
     def test_stale_or_unauthenticated_quote_rejected(self):
         for change in (
             {"authenticated_transport": False},
