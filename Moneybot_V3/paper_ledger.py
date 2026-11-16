@@ -29,8 +29,13 @@ def _cents(value, *, allow_zero=False):
     """Require exact, finite decimal-dollar input; never accept binary floats."""
     if type(value) not in (str, Decimal):
         raise ValueError("Money must be a decimal string or Decimal")
+    # Bound untrusted decimal text before Decimal parsing. Reject exponent notation
+    # and excessive precision so a malformed fill cannot consume large resources.
+    text = str(value)
+    if len(text) > 32 or not re.fullmatch(r"(0|[1-9][0-9]*)(\\.[0-9]{1,2})?", text):
+        raise ValueError("Invalid money representation")
     try:
-        amount = Decimal(value)
+        amount = Decimal(text)
         if (
             not amount.is_finite()
             or amount < 0
