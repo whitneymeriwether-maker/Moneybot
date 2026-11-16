@@ -4,6 +4,7 @@ on:
     branches: [moneybot-v3-research]
     paths:
       - 'Moneybot_V3/paper_status_server.py'
+      - 'Moneybot_V3/paper_snapshot.py'
       - 'Moneybot_V3/staging_browser_smoke.cjs'
       - '.github/workflows/v3-local-browser-regression.yml'
   workflow_dispatch:
