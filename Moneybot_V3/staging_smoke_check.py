@@ -132,9 +132,9 @@ def smoke_check(url=DEFAULT_URL, *, allow_loopback=False, timeout=10):
             b"Risk limits", b"Performance", b"Integration status",
             b"Trade count unknown, not zero", b"No demo values",
             b"Execution gate unavailable", b"No profitability claim",
-            b'id="service-health"', b'fetch("/healthz", {cache: "no-store"})',
+            b'id="service-health"', b'fetch("/healthz", {cache: "no-store", signal: AbortSignal.timeout(10000)})',
             b"setInterval(refreshHealth, 30000)",
-            b'id="readiness-health"', b'fetch("/readyz", {cache: "no-store"})',
+            b'id="readiness-health"', b'fetch("/readyz", {cache: "no-store", signal: AbortSignal.timeout(10000)})',
             b"response.status === 503", b"Trading readiness unavailable",
             b"Service health unavailable", b"NOT READY",
         ))
