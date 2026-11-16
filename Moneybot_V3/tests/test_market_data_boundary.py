@@ -25,6 +25,14 @@ class QuoteBoundaryTests(unittest.TestCase):
             with self.subTest(mutation=mutation), self.assertRaises(UnverifiedMarketData):
                 verified_quote({**sample(), **mutation}, expected_symbol="AAPL", now=NOW)
 
+    def test_malformed_symbol_and_clock_fail_closed(self):
+        for symbol in (None, 123, [], {}, True):
+            with self.subTest(symbol=symbol), self.assertRaises(UnverifiedMarketData):
+                verified_quote(sample(), expected_symbol=symbol, now=NOW)
+        for clock in ("2026-11-16T12:00:00Z", 0, [], {}, False):
+            with self.subTest(clock=clock), self.assertRaises(UnverifiedMarketData):
+                verified_quote(sample(), expected_symbol="AAPL", now=clock)
+
     def test_missing_attestation(self):
         for key in ("authenticated_transport", "provider_verified", "timestamp_utc", "provider"):
             q = sample()
