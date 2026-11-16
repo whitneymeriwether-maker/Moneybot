@@ -34,6 +34,9 @@ class RiskPreflightTests(unittest.TestCase):
             {"max_position_notional": "299"},
             {"quantity": "NaN"}, {"quantity": "-1"}, {"quantity": 2},
             {"available_cash": None}, {"existing_position_notional": "-1"},
+            {"quantity": "1e999999"}, {"available_cash": "1e999999"},
+            {"max_order_notional": "1e999999"},
+            {"existing_position_notional": "1e999999"},
         ):
             with self.subTest(changes=changes):
                 with self.assertRaises(PaperRiskRejected):
