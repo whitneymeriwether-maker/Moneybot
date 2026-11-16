@@ -106,7 +106,7 @@ jobs:
             status: path === '/readyz' ? 503 : (Object.hasOwn(responses, path) ? 200 : 503),
             json: async () => responses[path]
           });
-          vm.runInNewContext(script, {document, fetch, setInterval() {}}, {timeout: 2000});
+          vm.runInNewContext(script, {document, fetch, AbortSignal: {timeout: () => ({})}, setInterval() {}}, {timeout: 2000});
           (async () => {
             // Drain the asynchronous response and JSON microtasks from refreshHealth.
             for (let i = 0; i < 200; i++) await Promise.resolve();
