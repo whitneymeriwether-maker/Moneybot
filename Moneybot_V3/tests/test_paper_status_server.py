@@ -147,12 +147,12 @@ def test_dashboard_health_indicator_is_live_and_fail_closed():
     assert code == 200
     assert 'id="service-health"' in body
     assert 'aria-live="polite"' in body
-    assert 'fetch("/healthz", {cache: "no-store"})' in body
+    assert 'fetch("/healthz", {cache: "no-store", signal: AbortSignal.timeout(10000)})' in body
     assert 'data.trading_state === "NOT_ACTIVATED"' in body
     assert "Service health unavailable · trading unverified" in body
     assert "setInterval(refreshHealth, 30000)" in body
     assert 'id="readiness-health"' in body
-    assert 'fetch("/readyz", {cache: "no-store"})' in body
+    assert 'fetch("/readyz", {cache: "no-store", signal: AbortSignal.timeout(10000)})' in body
     assert "response.status === 503" in body
     assert "data.ready_for_automatic_paper_trading === false" in body
     assert "Unexpected readiness response · trading unverified" in body
@@ -165,7 +165,7 @@ def test_dashboard_integration_poll_is_independent_and_fail_closed():
         code, _, body = get_response(url + "/")
     assert code == 200
     assert 'id="integration-health"' in body
-    assert 'fetch("/status", {cache: "no-store"})' in body
+    assert 'fetch("/status", {cache: "no-store", signal: AbortSignal.timeout(10000)})' in body
     for field in ("market_data", "persistent_paper_ledger", "execution_time_risk_gate",
                   "automatic_paper_trading", "real_money_trading"):
         assert "data." + field in body
@@ -200,7 +200,7 @@ def test_paper_account_dashboard_requires_explicit_journal_verification():
     with staging_server() as url:
         code, _, body = get_response(url)
     assert code == 200
-    assert 'fetch("/paper-account", {cache: "no-store"})' in body
+    assert 'fetch("/paper-account", {cache: "no-store", signal: AbortSignal.timeout(10000)})' in body
     assert "journal_only_not_broker_or_market_verified" in body
     assert "Paper account unavailable" in body
     assert "NOT broker verified" in body
@@ -365,7 +365,7 @@ def test_dashboard_displays_bounded_cash_activity_without_inferred_trades():
     assert code == 200
     assert 'id="journal-activity-status"' in body
     assert 'id="journal-activity-rows"' in body
-    assert 'fetch("/paper-journal-activity", {cache: "no-store"})' in body
+    assert 'fetch("/paper-journal-activity", {cache: "no-store", signal: AbortSignal.timeout(10000)})' in body
     assert 'data.activity_type === "cash_movements_not_trades"' in body
     assert 'data.events.length <= 25' in body
     assert 'event.type === "paper_deposit"' in body
