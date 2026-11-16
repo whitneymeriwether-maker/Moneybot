@@ -32,7 +32,7 @@ def _cents(value, *, allow_zero=False):
     # Bound untrusted decimal text before Decimal parsing. Reject exponent notation
     # and excessive precision so a malformed fill cannot consume large resources.
     text = str(value)
-    if len(text) > 32 or not re.fullmatch(r"(0|[1-9][0-9]*)(\\.[0-9]{1,2})?", text):
+    if len(text) > 32 or not re.fullmatch(r"(0|[1-9][0-9]*)([.][0-9]{1,2})?", text):
         raise ValueError("Invalid money representation")
     try:
         amount = Decimal(text)
