@@ -33,6 +33,7 @@ class RiskPreflightTests(unittest.TestCase):
             {"available_cash": "199"}, {"max_order_notional": "199"},
             {"max_position_notional": "299"},
             {"quantity": "NaN"}, {"quantity": "-1"}, {"quantity": 2},
+            {"quantity": "0.5"}, {"quantity": "2.000001"},
             {"available_cash": None}, {"existing_position_notional": "-1"},
             {"quantity": "1e999999"}, {"available_cash": "1e999999"},
             {"max_order_notional": "1e999999"},
