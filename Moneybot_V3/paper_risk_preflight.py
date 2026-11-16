@@ -45,6 +45,10 @@ def check_paper_buy(*, quote, symbol, quantity, available_cash,
     except (ValueError, TypeError) as exc:
         raise PaperRiskRejected("unverified market quote") from exc
     qty = _decimal(quantity, "quantity")
+    # The durable ledger supports whole shares only. Reject fractional
+    # proposals here rather than approving an unexecutable quantity.
+    if qty != qty.to_integral_value():
+        raise PaperRiskRejected("paper quantity must be whole shares")
     cash = _decimal(available_cash, "cash", allow_zero=True)
     order_limit = _decimal(max_order_notional, "order limit")
     position_limit = _decimal(max_position_notional, "position limit")
