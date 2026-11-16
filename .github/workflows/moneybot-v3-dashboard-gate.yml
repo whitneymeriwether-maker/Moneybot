@@ -28,7 +28,9 @@ jobs:
         with:
           python-version: '3.11'
       - name: Compile dashboard and accounting modules
-        run: python -m py_compile paper_status_server.py paper_ledger.py paper_journal.py paper_snapshot.py
+        run: python -m py_compile paper_status_server.py paper_ledger.py paper_journal.py paper_snapshot.py market_data_boundary.py
+      - name: Reject unauthenticated, stale, malformed, and future market quotes
+        run: python -m unittest discover -s tests -p 'test_market_data_boundary.py' -v
       - name: Execute isolated ledger and dashboard HTTP regression tests
         run: python -m unittest discover -s tests -p 'test_offline_ledger_dashboard.py' -v
       - name: Test audited hypothetical fills and corrupted ledger rejection
