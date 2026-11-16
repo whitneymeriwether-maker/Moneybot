@@ -309,11 +309,16 @@ class PaperLedger:
                     loss_cap = _cents(max_daily_loss_dollars)
                     if type(daily_realized_pnl) not in (str, Decimal):
                         raise ValueError("Invalid daily realized PnL")
+                    pnl_text = str(daily_realized_pnl)
+                    # Apply the same bounded canonical-decimal boundary as
+                    # fill money before Decimal parses untrusted risk input.
+                    if (len(pnl_text) > 33 or not re.fullmatch(
+                        r"-?(0|[1-9][0-9]*)([.][0-9]{1,2})?", pnl_text
+                    )):
+                        raise ValueError("Invalid daily realized PnL")
                     try:
-                        daily_pnl = Decimal(daily_realized_pnl)
-                        if (not daily_pnl.is_finite()
-                            or daily_pnl != daily_pnl.quantize(_CENT)
-                            or abs(daily_pnl) > Decimal(MAX_CENTS) / 100):
+                        daily_pnl = Decimal(pnl_text)
+                        if abs(daily_pnl) > Decimal(MAX_CENTS) / 100:
                             raise ValueError("Invalid daily realized PnL")
                     except (InvalidOperation, OverflowError):
                         raise ValueError("Invalid daily realized PnL") from None
