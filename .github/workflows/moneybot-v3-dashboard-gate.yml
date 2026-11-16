@@ -151,6 +151,16 @@ jobs:
               assert json.load(response)["git_commit"] == __import__("os").environ["GITHUB_SHA"]
           with urlopen(base + "/healthz") as response:
               assert json.load(response) == {"service": "up", "trading_state": "NOT_ACTIVATED"}
+          # Uptime probes commonly use HEAD; readiness must still fail closed.
+          from urllib.request import Request
+          for path, expected in (("/healthz", 200), ("/readyz", 503)):
+              try:
+                  response = urlopen(Request(base + path, method="HEAD"))
+              except HTTPError as error:
+                  response = error
+              with response:
+                  assert response.status == expected, (path, response.status)
+                  assert response.read() == b"", "HEAD returned a response body"
           for method in ("POST", "PUT", "PATCH", "DELETE"):
               from urllib.request import Request
               try:
