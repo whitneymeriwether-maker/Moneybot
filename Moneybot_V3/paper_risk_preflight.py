@@ -3,7 +3,7 @@
 Pure decision function. Never submits orders or records fills. A future executor
 MUST recheck these limits inside its durable accounting transaction.
 """
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, DecimalException
 from .market_data_boundary import verified_quote
 
 
@@ -22,6 +22,10 @@ def _decimal(value, label, *, allow_zero=False):
         raise PaperRiskRejected("invalid " + label)
     if number.as_tuple().exponent < -6:
         raise PaperRiskRejected("excessive precision: " + label)
+    # Reject oversized scientific notation before arithmetic or string formatting.
+    # This preflight is advisory, not an execution authorization.
+    if number.adjusted() > 12:
+        raise PaperRiskRejected("out-of-bounds " + label)
     return number
 
 
@@ -45,7 +49,10 @@ def check_paper_buy(*, quote, symbol, quantity, available_cash,
     order_limit = _decimal(max_order_notional, "order limit")
     position_limit = _decimal(max_position_notional, "position limit")
     position = _decimal(existing_position_notional, "position", allow_zero=True)
-    notional = observation["price"] * qty
+    try:
+        notional = observation["price"] * qty
+    except DecimalException as exc:
+        raise PaperRiskRejected("unrepresentable paper notional") from exc
     if notional > cash:
         raise PaperRiskRejected("insufficient paper cash")
     if notional > order_limit:
