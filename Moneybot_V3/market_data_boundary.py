@@ -14,7 +14,7 @@ class UnverifiedMarketData(ValueError):
 
 def verified_quote(payload, *, expected_symbol, now=None, max_age_seconds=90):
     """Return validated price and UTC observation time; reject uncertain provenance."""
-    if not isinstance(payload, dict) or not SYMBOL.fullmatch(expected_symbol):
+    if not isinstance(payload, dict) or not isinstance(expected_symbol, str) or not SYMBOL.fullmatch(expected_symbol):
         raise UnverifiedMarketData("invalid quote or symbol")
     if payload.get("symbol") != expected_symbol:
         raise UnverifiedMarketData("symbol mismatch")
@@ -40,8 +40,8 @@ def verified_quote(payload, *, expected_symbol, now=None, max_age_seconds=90):
         raise UnverifiedMarketData("timestamp invalid") from exc
     if observed.tzinfo is None or observed.utcoffset() != timedelta(0):
         raise UnverifiedMarketData("timestamp must be UTC")
-    current = now or datetime.now(timezone.utc)
-    if current.tzinfo is None or current.utcoffset() != timedelta(0):
+    current = datetime.now(timezone.utc) if now is None else now
+    if not isinstance(current, datetime) or current.tzinfo is None or current.utcoffset() != timedelta(0):
         raise UnverifiedMarketData("clock must be UTC")
     if not isinstance(max_age_seconds, int) or isinstance(max_age_seconds, bool) or not 0 < max_age_seconds <= 300:
         raise UnverifiedMarketData("invalid freshness policy")
