@@ -56,7 +56,16 @@ def latest_alpaca_quote(symbol, *, key_id=None, secret_key=None, now=None,
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         raise ValueError("Market-data transport unavailable") from None
     try:
-        result = json.loads(raw)
+        # Reject ambiguous provider JSON rather than silently accepting the last
+        # duplicate key (including nested quote fields such as bid and ask).
+        def unique_object(pairs):
+            obj = {}
+            for key, value in pairs:
+                if key in obj:
+                    raise ValueError("Duplicate market-data JSON field")
+                obj[key] = value
+            return obj
+        result = json.loads(raw, object_pairs_hook=unique_object)
         if type(result) is not dict or type(result.get("quote")) is not dict:
             raise ValueError("Missing market quote")
         quote = result["quote"]
