@@ -74,7 +74,11 @@ def latest_alpaca_quote(symbol, *, key_id=None, secret_key=None, now=None,
         def decimal_price(value):
             if type(value) not in (str, int, Decimal, float):
                 raise ValueError("Invalid bid or ask")
-            number = Decimal(str(value))
+            literal = str(value)
+            # Reject oversized and noncanonical provider numbers before parsing.
+            if len(literal) > 32 or not re.fullmatch(r"(?:0|[1-9][0-9]{0,6})(?:\.[0-9]{1,2})?", literal):
+                raise ValueError("Invalid bid or ask")
+            number = Decimal(literal)
             if not number.is_finite() or number <= 0 or number != number.quantize(Decimal("0.01")):
                 raise ValueError("Invalid bid or ask")
             return number
