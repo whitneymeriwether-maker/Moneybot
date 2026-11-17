@@ -39,6 +39,14 @@ class MalformedProviderResponseTests(unittest.TestCase):
             "AAPL", key_id="test-key", secret_key="test-secret",
             now=self.NOW, opener=transport)
 
+    def test_reject_nonfinite_and_invalid_timeouts_before_network(self):
+        def forbidden_transport(*args, **kwargs):
+            self.fail('Invalid timeout must not reach transport')
+        for timeout in (float('nan'), float('inf'), float('-inf'), 0, -1, 31, True, '8'):
+            with self.subTest(timeout=timeout), self.assertRaises(ValueError):
+                latest_alpaca_quote('AAPL', key_id='test-key', secret_key='test-secret',
+                                    timeout=timeout, opener=forbidden_transport)
+
     def test_valid_quote_is_observation_only(self):
         result = self.fetch(self.GOOD)
         self.assertIs(result["execution_authorized"], False)
