@@ -48,6 +48,21 @@ class AdapterTests(unittest.TestCase):
                     self.fetch()
                 self.payload["quote"]["bp"] = 500.20
 
+    def test_duplicate_json_fields_fail_closed(self):
+        # A provider response with repeated keys is ambiguous, even when
+        # the final values would otherwise pass normal quote validation.
+        for raw in (
+            '{"symbol":"QQQ","symbol":"SPY","quote":{"t":"2026-11-14T15:59:40Z","bp":500.20,"ap":500.30}}',
+            '{"symbol":"SPY","quote":{"t":"2026-11-14T15:59:40Z","bp":100.00,"bp":500.20,"ap":500.30}}',
+        ):
+            class RawResponse(Response):
+                def __init__(self, payload):
+                    self.payload = io.BytesIO(raw.encode())
+            with self.subTest(raw=raw):
+                with self.assertRaises(ValueError):
+                    latest_alpaca_quote("SPY", key_id="test", secret_key="secret",
+                                        now=self.now, opener=lambda request, timeout: RawResponse(None))
+
     def test_missing_credentials_fail_before_network(self):
         with self.assertRaises(ValueError):
             latest_alpaca_quote("SPY", key_id="", secret_key="", opener=lambda *a, **k: self.fail("network"))
