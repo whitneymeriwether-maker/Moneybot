@@ -40,6 +40,14 @@ class AdapterTests(unittest.TestCase):
         self.assertEqual(value["price"], "500.25")
         self.assertEqual(value["feed"], "iex")
         self.assertFalse(value["execution_authorized"])
+    def test_provider_numeric_inputs_fail_closed(self):
+        for bad in ("9" * 1000, "1e3", "-1.00", "500.001", "NaN", "10000000.00"):
+            with self.subTest(bad=bad[:30]):
+                self.payload["quote"]["bp"] = bad
+                with self.assertRaises(ValueError):
+                    self.fetch()
+                self.payload["quote"]["bp"] = 500.20
+
     def test_missing_credentials_fail_before_network(self):
         with self.assertRaises(ValueError):
             latest_alpaca_quote("SPY", key_id="", secret_key="", opener=lambda *a, **k: self.fail("network"))
