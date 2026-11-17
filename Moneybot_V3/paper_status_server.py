@@ -235,11 +235,11 @@ async function refreshHealth() {
       && Number.isSafeInteger(data.fill_count) && data.fill_count === verifiedLedgerFillCount
       && Array.isArray(data.positions) && data.positions.length <= 100
       && data.positions.every((p, i) => p && typeof p.symbol === "string"
-        && /^[A-Z][A-Z0-9.\\-]{0,14}$/.test(p.symbol)
+        && /^[A-Z][A-Z0-9.\-]{0,14}$/.test(p.symbol)
         && (i === 0 || data.positions[i - 1].symbol < p.symbol)
         && Number.isSafeInteger(p.quantity) && p.quantity > 0
         && typeof p.cost_basis === "string"
-        && /^(0|[1-9][0-9]*)\\.[0-9]{2}$/.test(p.cost_basis));
+        && /^(0|[1-9][0-9]*)\.[0-9]{2}$/.test(p.cost_basis));
     if (!valid) throw new Error("unverified positions");
     for (const p of data.positions) {
       const row = document.createElement("tr");
