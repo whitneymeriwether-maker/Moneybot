@@ -8,13 +8,23 @@ import json
 import sys
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
+
+
+class RejectRedirects(HTTPRedirectHandler):
+    """Never follow a response to another origin during a staging smoke check."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+_OPENER = build_opener(RejectRedirects)
 
 
 def fetch(base, path):
     request = Request(base + path, headers={"Accept": "application/json"})
     try:
-        with urlopen(request, timeout=12) as response:
+        with _OPENER.open(request, timeout=12) as response:
             return response.status, response.read(1024 * 1024).decode("utf-8")
     except HTTPError as error:
         return error.code, error.read(1024 * 1024).decode("utf-8")
