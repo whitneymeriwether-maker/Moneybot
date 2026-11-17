@@ -102,4 +102,5 @@ def latest_alpaca_quote(symbol, *, key_id=None, secret_key=None, now=None,
         "provider": "alpaca", "authenticated_transport": True,
         "provider_verified": True,
     }, expected_symbol=symbol, now=now)
-    return {**validated, "feed": "iex", "price_type": "bid_ask_midpoint_not_execution"}
+    return {**validated, "feed": "iex", "price_type": "bid_ask_midpoint_not_execution",
+            "execution_authorized": False}
