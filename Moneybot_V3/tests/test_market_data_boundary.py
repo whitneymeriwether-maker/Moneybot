@@ -25,6 +25,11 @@ class QuoteBoundaryTests(unittest.TestCase):
             with self.subTest(mutation=mutation), self.assertRaises(UnverifiedMarketData):
                 verified_quote({**sample(), **mutation}, expected_symbol="AAPL", now=NOW)
 
+    def test_reject_oversized_price_before_decimal_parsing(self):
+        for price in ("9" * 100000, "0." + "1" * 100000, "1" * 33):
+            with self.subTest(length=len(price)), self.assertRaises(UnverifiedMarketData):
+                verified_quote({**sample(), "price": price}, expected_symbol="AAPL", now=NOW)
+
     def test_malformed_symbol_and_clock_fail_closed(self):
         for symbol in (None, 123, [], {}, True):
             with self.subTest(symbol=symbol), self.assertRaises(UnverifiedMarketData):
