@@ -5,6 +5,7 @@ does not establish a live market session or authorize a hypothetical fill.
 Credentials must be supplied in the worker's environment; never logged.
 """
 import json
+import math
 import os
 import re
 import urllib.error
@@ -37,7 +38,7 @@ def latest_alpaca_quote(symbol, *, key_id=None, secret_key=None, now=None,
     secret_key = secret_key if secret_key is not None else os.environ.get("APCA_API_SECRET_KEY")
     if not isinstance(key_id, str) or not key_id.strip() or not isinstance(secret_key, str) or not secret_key.strip():
         raise ValueError("Alpaca market-data credentials required")
-    if type(timeout) not in (int, float) or not 0 < timeout <= 30:
+    if type(timeout) not in (int, float) or not math.isfinite(timeout) or not 0 < timeout <= 30:
         raise ValueError("Invalid request timeout")
     url = _DATA_ORIGIN + "/v2/stocks/" + urllib.parse.quote(symbol, safe="") + "/quotes/latest?feed=iex"
     request = urllib.request.Request(url, headers={
