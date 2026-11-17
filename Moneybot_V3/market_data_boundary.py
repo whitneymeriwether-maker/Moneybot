@@ -23,7 +23,7 @@ def verified_quote(payload, *, expected_symbol, now=None, max_age_seconds=90):
     if not isinstance(payload.get("provider"), str) or not payload["provider"].strip():
         raise UnverifiedMarketData("provider identity missing")
     raw = payload.get("price")
-    if not isinstance(raw, str) or not re.fullmatch(r"(0|[1-9][0-9]*)(\.[0-9]{1,6})?", raw):
+    if not isinstance(raw, str) or len(raw) > 32 or not re.fullmatch(r"(0|[1-9][0-9]*)(\.[0-9]{1,6})?", raw):
         raise UnverifiedMarketData("invalid price representation")
     try:
         price = Decimal(raw)
