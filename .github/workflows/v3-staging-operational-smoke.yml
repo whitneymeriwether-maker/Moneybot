@@ -38,7 +38,19 @@ jobs:
               page = browser.new_page()
               errors = []
               page.on("pageerror", lambda error: errors.append(str(error)))
-              response = page.goto(base, timeout=120000)
+              # Free staging can return a temporary gateway response during wake-up.
+              # Never accept a non-200 response or a different deployment.
+              import time
+              deadline = time.monotonic() + 150
+              while True:
+                  response = page.goto(base, timeout=120000)
+                  code = response.status if response else None
+                  print(f"Staging navigation: HTTP {code}, URL {page.url}", flush=True)
+                  if code == 200:
+                      break
+                  if code not in (502, 503, 504) or time.monotonic() >= deadline:
+                      raise AssertionError(f"Staging navigation failed: HTTP {code}")
+                  time.sleep(10)
               assert response and response.status == 200
               assert page.url.rstrip("/") == base
               expect(page.locator("#deployed-revision")).to_have_text("Deployed Git revision: " + expected, timeout=30000)
