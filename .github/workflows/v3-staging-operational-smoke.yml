@@ -14,7 +14,7 @@ permissions:
 jobs:
   browser:
     if: github.ref == 'refs/heads/moneybot-v3-research'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 8
     env:
       EXPECTED_REVISION: ${{ inputs.deployed_revision || '2dde0e056dfa73fd0aa3c41b228218cc41e9476d' }}
