@@ -1,0 +1,63 @@
+name: V3 staging operational smoke
+on:
+  push:
+    branches: [moneybot-v3-research]
+    paths: ['.github/workflows/v3-staging-operational-smoke.yml']
+  workflow_dispatch:
+    inputs:
+      deployed_revision:
+        description: Exact deployed V3 Git SHA
+        required: true
+        default: '2dde0e056dfa73fd0aa3c41b228218cc41e9476d'
+permissions:
+  contents: read
+jobs:
+  browser:
+    if: github.ref == 'refs/heads/moneybot-v3-research'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      EXPECTED_REVISION: ${{ inputs.deployed_revision || '2dde0e056dfa73fd0aa3c41b228218cc41e9476d' }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: |
+          python -m pip install playwright==1.51.0
+          python -m playwright install --with-deps chromium
+      - name: Verify actual deployed service and rendered dashboard
+        run: |
+          python - <<'PY'
+          import os, re
+          from playwright.sync_api import sync_playwright, expect
+          base = "https://moneybot-v3-staging.onrender.com"
+          expected = os.environ["EXPECTED_REVISION"]
+          assert re.fullmatch(r"[0-9a-f]{40}", expected)
+          with sync_playwright() as p:
+              browser = p.chromium.launch()
+              page = browser.new_page()
+              errors = []
+              page.on("pageerror", lambda error: errors.append(str(error)))
+              response = page.goto(base, timeout=120000)
+              assert response and response.status == 200
+              assert page.url.rstrip("/") == base
+              expect(page.locator("#deployed-revision")).to_have_text("Deployed Git revision: " + expected, timeout=30000)
+              expect(page.locator("#service-health")).to_have_text("Service reachable · trading disabled", timeout=30000)
+              expect(page.locator("#readiness-health")).to_have_text("Paper execution NOT READY · safeguards unvalidated", timeout=120000)
+              expect(page.locator("#integration-health")).to_contain_text("integrations NOT CONNECTED")
+              expect(page.locator("#paper-account-state")).to_contain_text("unavailable")
+              expect(page.locator("#ledger-summary")).to_contain_text("unavailable")
+              expect(page.locator("#offline-realized-pnl")).to_contain_text("Unavailable")
+              expect(page.locator("#hypothetical-position-rows tr")).to_have_count(0)
+              expect(page.locator("#hypothetical-fill-rows tr")).to_have_count(0)
+              for path in ("paper-account", "paper-journal-activity", "paper-ledger-summary", "paper-ledger-positions", "paper-ledger-fills"):
+                  r = page.request.get(base + "/" + path, timeout=20000)
+                  assert r.status == 503 and r.json()["available"] is False, path
+              status = page.request.get(base + "/status").json()
+              assert status["automatic_paper_trading"] is False
+              assert status["real_money_trading"] is False
+              assert status["trading_state"] == "NOT_ACTIVATED"
+              assert not errors, errors
+              browser.close()
+          print("Deployed read-only dashboard verified; paper execution remains disabled.")
+          PY
