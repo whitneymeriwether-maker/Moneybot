@@ -13,7 +13,11 @@ def paper_cash_snapshot(path):
 
     This is a journal-derived accounting view, NOT a brokerage balance or P&L.
     """
-    events = PaperJournal(path).events()
+    return project_cash_events(PaperJournal(path).events())
+
+
+def project_cash_events(events):
+    """Project one coherent journal read; no execution or broker balance."""
     cash = Decimal("0")
     deposits = Decimal("0")
     withdrawals = Decimal("0")
