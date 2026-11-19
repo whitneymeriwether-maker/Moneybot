@@ -324,6 +324,30 @@ setInterval(refreshHealth, 30000);
 </script></body></html>"""
 
 
+def _read_cash_journal():
+    """Prefer explicitly configured V3 Postgres; never fall back on failure."""
+    dsn = os.environ.get("MONEYBOT_V3_DATABASE_URL")
+    journal_path = os.environ.get("MONEYBOT_V3_PAPER_JOURNAL_PATH")
+    if dsn is not None:
+        if journal_path:
+            raise ValueError("Ambiguous journal configuration")
+        from postgres_cash_reader import read_cash_events
+        try:
+            snapshot, events = read_cash_events(dsn)
+        except Exception:
+            # Driver/network errors must not expose credentials or fall back.
+            raise ValueError("V3 database unavailable") from None
+        if not events:
+            raise ValueError("V3 cash journal not initialized")
+        return snapshot, events
+    if not journal_path or not Path(journal_path).is_file():
+        raise ValueError("missing journal")
+    from paper_journal import PaperJournal
+    from paper_snapshot import project_cash_events
+    events = PaperJournal(journal_path).events()
+    return project_cash_events(events), events
+
+
 class StatusHandler(BaseHTTPRequestHandler):
     """Read-only HTTP handler with a permanently closed trading gate."""
 
@@ -368,33 +392,22 @@ class StatusHandler(BaseHTTPRequestHandler):
         elif path == "/status":
             self._send(200, json.dumps(_STATUS), "application/json; charset=utf-8")
         elif path == "/paper-account":
-            journal_path = os.environ.get("MONEYBOT_V3_PAPER_JOURNAL_PATH")
-            if not journal_path:
+            if not any(k in os.environ for k in ("MONEYBOT_V3_DATABASE_URL", "MONEYBOT_V3_PAPER_JOURNAL_PATH")):
                 self._send(503, json.dumps({"available": False, "reason": "journal not configured"}), "application/json; charset=utf-8")
                 return
             try:
-                if not Path(journal_path).is_file():
-                    raise ValueError("missing journal")
-                snapshot = paper_cash_snapshot(journal_path)
+                snapshot, _ = _read_cash_journal()
             except (ValueError, OSError, RuntimeError, KeyError, TypeError, sqlite3.DatabaseError):
                 self._send(503, json.dumps({"available": False, "reason": "journal invalid or unavailable"}), "application/json; charset=utf-8")
                 return
             self._send(200, json.dumps({"available": True, **snapshot}), "application/json; charset=utf-8")
         elif path == "/paper-journal-activity":
             # Cash movements only. Never expose payloads or call observations fills.
-            journal_path = os.environ.get("MONEYBOT_V3_PAPER_JOURNAL_PATH")
-            if not journal_path:
+            if not any(k in os.environ for k in ("MONEYBOT_V3_DATABASE_URL", "MONEYBOT_V3_PAPER_JOURNAL_PATH")):
                 self._send(503, json.dumps({"available": False, "reason": "journal not configured"}), "application/json; charset=utf-8")
                 return
             try:
-                if not Path(journal_path).is_file():
-                    raise ValueError("missing journal")
-                from paper_journal import PaperJournal
-                # Validate the entire journal before exposing even a partial history.
-                paper_cash_snapshot(journal_path)
-                events = PaperJournal(journal_path).events()
-                if any(e["event_type"] not in ("paper_deposit", "paper_withdrawal") for e in events):
-                    raise ValueError("unverified fill observation")
+                _, events = _read_cash_journal()
                 activity = [
                     {"sequence": e["sequence"], "type": e["event_type"],
                      "amount": e["amount"], "recorded_at": e["recorded_at"]}
