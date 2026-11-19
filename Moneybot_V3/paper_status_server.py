@@ -331,8 +331,8 @@ def _read_cash_journal():
     if dsn is not None:
         if journal_path:
             raise ValueError("Ambiguous journal configuration")
-        from postgres_cash_reader import read_cash_events
         try:
+            from postgres_cash_reader import read_cash_events
             snapshot, events = read_cash_events(dsn)
         except Exception:
             # Driver/network errors must not expose credentials or fall back.
