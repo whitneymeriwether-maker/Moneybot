@@ -1,0 +1,2 @@
+# Isolated staging PostgreSQL reader runtime
+psycopg[binary]==3.2.13
