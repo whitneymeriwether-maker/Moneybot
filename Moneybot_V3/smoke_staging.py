@@ -116,6 +116,41 @@ def check(base, revision=None):
                         raise AssertionError("Invalid journal activity amount")
         else:
             raise AssertionError(path + ": unexpected HTTP " + str(status))
+    # Independently validate the offline hypothetical ledger surfaces. A 503 is
+    # acceptable; a 200 must never be presented as broker-verified activity.
+    ledger_count = None
+    for path in ("/paper-ledger-summary", "/paper-ledger-positions", "/paper-ledger-fills"):
+        status, _, body = fetch(base, path)
+        data = json.loads(body)
+        if status == 503:
+            if data.get("available") is not False:
+                raise AssertionError(path + ": unavailable response is inconsistent")
+            continue
+        if status != 200 or data.get("available") is not True:
+            raise AssertionError(path + ": unexpected ledger response")
+        if (data.get("source") != "local_hypothetical_sqlite_ledger"
+                or data.get("verification") != "audited_local_records_not_broker_verified"
+                or data.get("trading_ready") is not False):
+            raise AssertionError(path + ": hypothetical provenance not verified")
+        count = data.get("fill_count")
+        if type(count) is not int or count < 0:
+            raise AssertionError(path + ": invalid fill count")
+        if ledger_count is not None and count != ledger_count:
+            raise AssertionError("Inconsistent ledger fill counts across endpoints")
+        ledger_count = count
+        if path == "/paper-ledger-summary":
+            if data.get("marked_equity") is not None or data.get("performance") is not None:
+                raise AssertionError("Unverified marked performance displayed")
+        elif path == "/paper-ledger-positions":
+            if data.get("market_valued") is not False:
+                raise AssertionError("Unverified market valuation displayed")
+            positions = data.get("positions")
+            if not isinstance(positions, list) or len(positions) > 100:
+                raise AssertionError("Invalid positions collection")
+        else:
+            fills = data.get("fills")
+            if not isinstance(fills, list) or len(fills) > 25 or len(fills) > count:
+                raise AssertionError("Invalid hypothetical fill collection")
     # Prove the public service rejects order-like writes; a readable dashboard
     # alone is insufficient evidence that staging cannot accept executions.
     for path in ("/orders", "/api/orders", "/paper-trade"):
