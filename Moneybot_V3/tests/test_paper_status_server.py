@@ -389,3 +389,48 @@ def test_cash_activity_javascript_has_valid_declarations_and_regex_escapes():
     assert r'/^(0|[1-9][0-9]*)\.[0-9]{2}$/.test(value)' in _HTML
     assert r'/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}' in _HTML
     assert r'\\d{4}' not in _HTML
+
+
+def test_postgres_cash_endpoints_and_closed_gate(monkeypatch):
+    import postgres_cash_reader
+    from paper_snapshot import project_cash_events
+
+    events = [{"sequence": 1, "event_type": "paper_deposit",
+               "amount": "100.00", "recorded_at": "2026-01-01T00:00:00+00:00"}]
+    monkeypatch.delenv("MONEYBOT_V3_PAPER_JOURNAL_PATH", raising=False)
+    monkeypatch.setenv("MONEYBOT_V3_DATABASE_URL", "test-only-dsn")
+    monkeypatch.setattr(postgres_cash_reader, "read_cash_events",
+                        lambda dsn: (project_cash_events(events), events))
+    with staging_server() as url:
+        code, _, body = get_response(url + "/paper-account")
+        assert code == 200
+        assert json.loads(body)["cash"] == "100.00"
+        assert json.loads(body)["trading_ready"] is False
+        code, _, body = get_response(url + "/paper-journal-activity")
+        assert code == 200
+        assert json.loads(body)["events"][0]["type"] == "paper_deposit"
+        assert get_response(url + "/readyz")[0] == 503
+        assert get_response(url + "/orders", "POST")[0] == 405
+        monkeypatch.setenv("MONEYBOT_V3_PAPER_JOURNAL_PATH", "ambiguous")
+        for endpoint in ("/paper-account", "/paper-journal-activity"):
+            assert get_response(url + endpoint)[0] == 503
+
+
+def test_postgres_failure_and_empty_history_fail_closed(monkeypatch):
+    import postgres_cash_reader
+    from paper_snapshot import project_cash_events
+
+    monkeypatch.delenv("MONEYBOT_V3_PAPER_JOURNAL_PATH", raising=False)
+    monkeypatch.setenv("MONEYBOT_V3_DATABASE_URL", "private-test-sentinel")
+
+    def unavailable(dsn):
+        raise RuntimeError(dsn)
+
+    with staging_server() as url:
+        for reader in (unavailable, lambda dsn: (project_cash_events([]), [])):
+            monkeypatch.setattr(postgres_cash_reader, "read_cash_events", reader)
+            for endpoint in ("/paper-account", "/paper-journal-activity"):
+                code, _, body = get_response(url + endpoint)
+                assert code == 503
+                assert json.loads(body)["available"] is False
+                assert "private-test-sentinel" not in body
