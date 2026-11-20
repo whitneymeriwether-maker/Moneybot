@@ -6,6 +6,11 @@ on:
       - 'Moneybot_V3/**'
       - '.github/workflows/moneybot-v3-dashboard.yml'
   workflow_dispatch:
+    inputs:
+      deployed_revision:
+        description: 'Exact 40-character V3 staging commit SHA to verify after deployment (leave blank for local-only tests)'
+        required: false
+        type: string
 jobs:
   dashboard-smoke:
     runs-on: ubuntu-latest
@@ -33,3 +38,9 @@ jobs:
             sleep 1
           done
           python Moneybot_V3/smoke_staging.py http://127.0.0.1:18765
+      - name: Verify deployed V3 staging HTTP safety and exact revision (manual only)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.deployed_revision != '' }}
+        timeout-minutes: 5
+        env:
+          EXPECTED_REVISION: ${{ inputs.deployed_revision }}
+        run: python Moneybot_V3/smoke_staging.py https://moneybot-v3-staging.onrender.com --revision "$EXPECTED_REVISION"
