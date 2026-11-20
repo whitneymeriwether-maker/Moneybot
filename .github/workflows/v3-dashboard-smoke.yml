@@ -21,6 +21,18 @@ jobs:
           python -c 'import psycopg; print("V3 PostgreSQL driver import OK")'
       - name: Compile V3 status and smoke scripts
         run: python -m compileall -q Moneybot_V3
+      - name: Validate dashboard browser JavaScript syntax
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          page = Path('Moneybot_V3/paper_status_server.py').read_text()
+          match = re.search(r'<script>(.*?)</script>', page, re.DOTALL)
+          if not match:
+              raise SystemExit('Dashboard inline JavaScript not found')
+          Path('/tmp/moneybot-v3-dashboard.js').write_text(match.group(1))
+          PY
+          node --check /tmp/moneybot-v3-dashboard.js
       - name: Launch isolated read-only status service
         run: |
           PORT=18765 python Moneybot_V3/paper_status_server.py > /tmp/v3-dashboard.log 2>&1 &
