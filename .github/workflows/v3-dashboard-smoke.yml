@@ -15,6 +15,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Install and verify V3 isolated runtime dependencies
+        run: |
+          python -m pip install -r Moneybot_V3/requirements.txt
+          python -c 'import psycopg; print("V3 PostgreSQL driver import OK")'
       - name: Compile V3 status and smoke scripts
         run: python -m compileall -q Moneybot_V3
       - name: Launch isolated read-only status service
