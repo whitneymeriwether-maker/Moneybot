@@ -1,0 +1,35 @@
+name: Moneybot V3 staging dashboard safety
+on:
+  push:
+    branches: [moneybot-v3-research]
+    paths:
+      - 'Moneybot_V3/**'
+      - '.github/workflows/moneybot-v3-dashboard.yml'
+  workflow_dispatch:
+jobs:
+  dashboard-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install V3-only runtime dependencies
+        run: python -m pip install -r Moneybot_V3/requirements.txt
+      - name: Compile V3 source
+        run: python -m compileall -q Moneybot_V3
+      - name: Start read-only dashboard and test actual HTTP behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PORT=18765
+          python Moneybot_V3/paper_status_server.py > /tmp/v3-dashboard.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true; cat /tmp/v3-dashboard.log' EXIT
+          for i in {1..30}; do
+            if curl --silent --fail http://127.0.0.1:18765/healthz >/dev/null; then break; fi
+            if ! kill -0 "$server_pid" 2>/dev/null; then exit 1; fi
+            sleep 1
+          done
+          python Moneybot_V3/smoke_staging.py http://127.0.0.1:18765
