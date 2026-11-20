@@ -434,3 +434,16 @@ def test_postgres_failure_and_empty_history_fail_closed(monkeypatch):
                 assert code == 503
                 assert json.loads(body)["available"] is False
                 assert "private-test-sentinel" not in body
+
+
+def test_dashboard_manual_refresh_is_accessible_and_prevents_overlap():
+    with staging_server() as url:
+        code, _, body = get_response(url + "/")
+    assert code == 200
+    assert 'id="refresh-now" type="button"' in body
+    assert 'id="refresh-feedback"' in body
+    assert 'addEventListener("click", refreshHealth)' in body
+    assert 'if (refreshInProgress) return;' in body
+    assert 'document.getElementById("refresh-now").disabled = true;' in body
+    assert 'document.getElementById("refresh-now").disabled = false;' in body
+    assert 'Refresh completed · check individual panels for unavailable data' in body
