@@ -1,0 +1,40 @@
+name: V3 dashboard HTTP smoke
+on:
+  push:
+    branches: [moneybot-v3-research]
+    paths:
+      - 'Moneybot_V3/**'
+      - '.github/workflows/v3-dashboard-smoke.yml'
+  workflow_dispatch:
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile V3 status and smoke scripts
+        run: python -m compileall -q Moneybot_V3
+      - name: Launch isolated read-only status service
+        run: |
+          PORT=18765 python Moneybot_V3/paper_status_server.py > /tmp/v3-dashboard.log 2>&1 &
+          echo $! > /tmp/v3-dashboard.pid
+      - name: Probe actual HTTP endpoints and write rejection
+        run: |
+          python - <<'PY'
+          import time, urllib.request
+          for attempt in range(30):
+              try:
+                  urllib.request.urlopen('http://127.0.0.1:18765/healthz', timeout=1)
+                  break
+              except Exception:
+                  time.sleep(0.3)
+          else:
+              raise SystemExit('Local dashboard failed to start')
+          PY
+          python Moneybot_V3/smoke_dashboard.py http://127.0.0.1:18765
+      - name: Show server logs on failure
+        if: failure()
+        run: cat /tmp/v3-dashboard.log
