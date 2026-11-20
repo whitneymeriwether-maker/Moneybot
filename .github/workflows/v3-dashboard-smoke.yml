@@ -51,6 +51,12 @@ jobs:
               raise SystemExit('Local dashboard failed to start')
           PY
           python Moneybot_V3/smoke_dashboard.py http://127.0.0.1:18765
+      - name: Install isolated Chromium browser test dependency
+        run: |
+          npm install --no-save --no-package-lock playwright@1.58.2
+          npx playwright install --with-deps chromium
+      - name: Exercise real browser dashboard and refresh
+        run: node Moneybot_V3/smoke_dashboard_browser.cjs
       - name: Show server logs on failure
         if: failure()
         run: cat /tmp/v3-dashboard.log
