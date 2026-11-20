@@ -46,6 +46,7 @@ table{width:100%;border-collapse:collapse;text-align:left}td,th{padding:10px 4px
 <span class="tag">NOT ACTIVATED</span></header>
 <p class="warn"><strong>Actual state only — no demo balances, fabricated trades, or simulated performance are shown.</strong>
 This dashboard is a read-only staging diagnostic, not an operating paper trader.</p>
+<p><button id="refresh-now" type="button">Refresh status now</button> <span id="refresh-feedback" class="muted" role="status" aria-live="polite">Automatic refresh every 30 seconds</span></p>
 <div class="grid">
 <section><h2>System health</h2><p id="snapshot-time" class="muted" role="status" aria-live="polite">Snapshot not yet checked · data freshness unknown</p><div class="value" id="service-health" role="status" aria-live="polite">Checking service…</div><p id="readiness-health" class="warn" role="status" aria-live="polite">Trading readiness unverified</p><p class="muted">Live liveness check; trading readiness is separately verified and remains unavailable.</p><p><a href="/healthz">Liveness JSON</a> · <a href="/readyz">Readiness JSON</a></p></section>
 <section><h2>Account state</h2><div class="value" id="paper-account-state">Not connected</div><p id="paper-account-movements" class="muted">Recorded cash movements unavailable.</p><p id="paper-account-recency" class="muted">Last journal entry unavailable.</p><p class="muted">Journal-derived cash is shown above only when a valid isolated journal is configured. Broker-verified cash, equity, buying power, and positions remain unavailable. No demo values.</p></section>
@@ -81,6 +82,8 @@ async function refreshHealth() {
   // Prevent slow polls from racing newer snapshots and overwriting their state.
   if (refreshInProgress) return;
   refreshInProgress = true;
+  document.getElementById("refresh-now").disabled = true;
+  document.getElementById("refresh-feedback").textContent = "Refreshing status…";
   try {
   try {
     const response = await fetch("/version", {cache: "no-store", signal: AbortSignal.timeout(10000)});
@@ -317,8 +320,11 @@ async function refreshHealth() {
   } finally {
     document.getElementById("snapshot-time").textContent = "Last refresh attempt (UTC): " + new Date().toISOString() + " · failed endpoints remain unverified";
     refreshInProgress = false;
+    document.getElementById("refresh-now").disabled = false;
+    document.getElementById("refresh-feedback").textContent = "Refresh completed · check individual panels for unavailable data";
   }
 }
+document.getElementById("refresh-now").addEventListener("click", refreshHealth);
 refreshHealth();
 setInterval(refreshHealth, 30000);
 </script></body></html>"""
