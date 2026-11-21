@@ -119,6 +119,7 @@ def check(base, revision=None):
     # Independently validate the offline hypothetical ledger surfaces. A 503 is
     # acceptable; a 200 must never be presented as broker-verified activity.
     ledger_count = None
+    expected_position_count = None
     for path in ("/paper-ledger-summary", "/paper-ledger-positions", "/paper-ledger-fills"):
         status, _, body = fetch(base, path)
         data = json.loads(body)
@@ -139,6 +140,9 @@ def check(base, revision=None):
             raise AssertionError("Inconsistent ledger fill counts across endpoints")
         ledger_count = count
         if path == "/paper-ledger-summary":
+            expected_position_count = data.get("position_count")
+            if type(expected_position_count) is not int or expected_position_count < 0:
+                raise AssertionError("Invalid audited summary position count")
             if data.get("marked_equity") is not None or data.get("performance") is not None:
                 raise AssertionError("Unverified marked performance displayed")
         elif path == "/paper-ledger-positions":
@@ -147,6 +151,10 @@ def check(base, revision=None):
             positions = data.get("positions")
             if not isinstance(positions, list) or len(positions) > 100:
                 raise AssertionError("Invalid positions collection")
+            if type(data.get("position_count")) is not int or data["position_count"] != len(positions):
+                raise AssertionError("Positions payload contradicts its own count")
+            if expected_position_count is not None and len(positions) != expected_position_count:
+                raise AssertionError("Positions contradict independently audited summary")
         else:
             fills = data.get("fills")
             if not isinstance(fills, list) or len(fills) > 25 or len(fills) > count:
