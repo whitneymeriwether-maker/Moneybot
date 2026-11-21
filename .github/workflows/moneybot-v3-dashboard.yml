@@ -51,7 +51,7 @@ jobs:
           parser = Scripts()
           parser.feed(_HTML)
           assert parser.parts, "Dashboard JavaScript is missing"
-          Path("/tmp/v3-dashboard.js").write_text("\\n".join(parser.parts))
+          Path("/tmp/v3-dashboard.js").write_text("\n".join(parser.parts))
           PY
           node --check /tmp/v3-dashboard.js
         env:
