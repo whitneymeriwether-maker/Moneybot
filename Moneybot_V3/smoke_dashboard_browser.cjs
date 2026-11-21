@@ -37,6 +37,30 @@ const { chromium } = require("playwright");
       const feedback = document.querySelector("#refresh-feedback");
       return !button?.disabled && feedback?.textContent?.includes("Refresh completed");
     }, null, {timeout: 20000});
+    // Adversarial browser check: a plausible ledger summary must never survive
+    // a failed transaction-history read as an "audited" P&L or fill count.
+    await page.route("**/paper-ledger-summary", route => route.fulfill({
+      status: 200, contentType: "application/json",
+      body: JSON.stringify({
+        available: true, source: "local_hypothetical_sqlite_ledger",
+        verification: "audited_local_records_not_broker_verified",
+        trading_ready: false, fill_count: 1, position_count: 0,
+        cash: "1000.00", realized_pnl: "250.00",
+        marked_equity: null, performance: null
+      })
+    }));
+    await page.route("**/paper-ledger-fills", route => route.fulfill({
+      status: 503, contentType: "application/json",
+      body: JSON.stringify({available: false})
+    }));
+    await page.locator("#refresh-now").click();
+    await page.waitForFunction(() => !document.querySelector("#refresh-now")?.disabled, null, {timeout: 20000});
+    const rejectedPnl = await page.locator("#offline-realized-pnl").innerText();
+    const rejectedSummary = await page.locator("#ledger-summary").innerText();
+    if (!rejectedPnl.includes("Unavailable") || !rejectedSummary.includes("inconsistent"))
+      throw new Error("Contradictory ledger responses were not rejected: " + rejectedPnl + " / " + rejectedSummary);
+    if (await page.locator("#hypothetical-fill-rows tr").count())
+      throw new Error("Failed ledger read left hypothetical fills visible");
     if (errors.length) throw new Error("Browser JS errors: " + errors.join("; "));
     console.log("PASS: actual Chromium dashboard render, refresh, fail-closed labels and empty unverified tables");
   } finally {
