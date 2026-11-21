@@ -25,7 +25,12 @@ const { chromium } = require("playwright");
       throw new Error("Unverified fills rendered");
     if (await page.locator("#hypothetical-position-rows tr").count())
       throw new Error("Unverified positions rendered");
+    // Require a NEW successful health request after the user click; a stale label is insufficient.
+    const refreshedHealth = page.waitForResponse(response =>
+      new URL(response.url()).pathname === "/healthz" && response.status() === 200,
+      {timeout: 20000});
     await page.locator("#refresh-now").click();
+    await refreshedHealth;
     // A stale "Refresh completed" label must not satisfy this second-cycle test.
     await page.waitForFunction(() => {
       const button = document.querySelector("#refresh-now");
