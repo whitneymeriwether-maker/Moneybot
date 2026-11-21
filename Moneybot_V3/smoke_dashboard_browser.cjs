@@ -75,6 +75,29 @@ const { chromium } = require("playwright");
       throw new Error("Failed ledger read left hypothetical fills visible");
     if (await page.locator("#hypothetical-position-rows tr").count())
       throw new Error("Failed fill audit left hypothetical positions visible");
+    // A valid-looking fill feed must not make a contradictory position count acceptable.
+    await page.unroute("**/paper-ledger-summary");
+    await page.route("**/paper-ledger-summary", route => route.fulfill({
+      status: 200, contentType: "application/json",
+      body: JSON.stringify({available: true, source: "local_hypothetical_sqlite_ledger",
+        verification: "audited_local_records_not_broker_verified", trading_ready: false,
+        fill_count: 1, position_count: 2, cash: "1000.00", realized_pnl: "0.00",
+        marked_equity: null, performance: null})
+    }));
+    await page.unroute("**/paper-ledger-fills");
+    await page.route("**/paper-ledger-fills", route => route.fulfill({
+      status: 200, contentType: "application/json",
+      body: JSON.stringify({available: true, source: "local_hypothetical_sqlite_ledger",
+        verification: "audited_local_records_not_broker_verified", trading_ready: false,
+        fill_count: 1, fills: [{timestamp_utc: "2026-11-20T12:00:00+00:00",
+          symbol: "TEST", side: "BUY", quantity: 2, price: "50.00", fee: "0.00"}]})
+    }));
+    await page.locator("#refresh-now").click();
+    await page.waitForFunction(() => !document.querySelector("#refresh-now")?.disabled, null, {timeout: 20000});
+    if (await page.locator("#hypothetical-position-rows tr").count())
+      throw new Error("Inconsistent position count rendered purported audited holdings");
+    if (!(await page.locator("#hypothetical-position-status").innerText()).includes("unavailable"))
+      throw new Error("Inconsistent position count not marked unverified");
     if (errors.length) throw new Error("Browser JS errors: " + errors.join("; "));
     console.log("PASS: actual Chromium dashboard render, refresh, fail-closed labels and empty unverified tables");
   } finally {
