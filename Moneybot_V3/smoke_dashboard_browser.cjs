@@ -7,7 +7,7 @@ const { chromium } = require("playwright");
     const errors = [];
     page.on("pageerror", error => errors.push(error.message));
     await page.goto("http://127.0.0.1:18765/", {waitUntil: "domcontentloaded"});
-    await page.waitForFunction(() => document.querySelector("#refresh-feedback")?.textContent?.includes("Refresh completed"), {timeout: 20000});
+    await page.waitForFunction(() => document.querySelector("#refresh-feedback")?.textContent?.includes("Refresh completed"), null, {timeout: 20000});
     const expected = {
       "#service-health": "Service reachable · trading disabled",
       "#readiness-health": "Paper execution NOT READY",
@@ -26,9 +26,12 @@ const { chromium } = require("playwright");
     if (await page.locator("#hypothetical-position-rows tr").count())
       throw new Error("Unverified positions rendered");
     await page.locator("#refresh-now").click();
-    await page.waitForFunction(() => document.querySelector("#refresh-feedback")?.textContent?.includes("Refresh completed"), {timeout: 20000});
-    if (await page.locator("#refresh-now").isDisabled())
-      throw new Error("Refresh button remained disabled");
+    // A stale "Refresh completed" label must not satisfy this second-cycle test.
+    await page.waitForFunction(() => {
+      const button = document.querySelector("#refresh-now");
+      const feedback = document.querySelector("#refresh-feedback");
+      return !button?.disabled && feedback?.textContent?.includes("Refresh completed");
+    }, null, {timeout: 20000});
     if (errors.length) throw new Error("Browser JS errors: " + errors.join("; "));
     console.log("PASS: actual Chromium dashboard render, refresh, fail-closed labels and empty unverified tables");
   } finally {
