@@ -302,6 +302,10 @@ async function refreshHealth() {
     // neither the purported fill count nor hypothetical P&L is trustworthy.
     // Fail the entire offline-ledger panel closed rather than showing a
     // misleading audited summary beside rejected transaction history.
+    // Reject positions from the same inconsistent ledger snapshot as well.
+    // Otherwise valid-looking holdings could remain beside a failed fill audit.
+    positionRows.replaceChildren();
+    positionStatus.textContent = "Local hypothetical positions unavailable or inconsistent";
     offlinePnl.textContent = "Unavailable · inconsistent or unverified ledger";
     ledgerSummary.textContent = "Offline ledger unavailable or inconsistent";
     ledgerDetail.textContent = "No authenticated paper execution or verified trade count.";
