@@ -8,6 +8,28 @@ const { chromium } = require("playwright");
     page.on("pageerror", error => errors.push(error.message));
     await page.goto("http://127.0.0.1:18765/", {waitUntil: "domcontentloaded"});
     await page.waitForFunction(() => document.querySelector("#refresh-feedback")?.textContent?.includes("Refresh completed"), null, {timeout: 20000});
+    // Verify the user-facing operational sections exist and are visible in Chromium,
+    // not merely present in the server HTML or hidden by broken layout.
+    const requiredSections = [
+      "System health", "Account state", "Paper trades", "Risk limits",
+      "Performance", "Integration status", "Operational status",
+      "Recent hypothetical fills (NOT broker trades)",
+      "Open local hypothetical positions (NOT market-valued)"
+    ];
+    for (const heading of requiredSections) {
+      const section = page.locator("section").filter({has: page.getByRole("heading", {name: heading, exact: true})});
+      if (await section.count() !== 1 || !(await section.isVisible()))
+        throw new Error("Required dashboard section missing or hidden: " + heading);
+    }
+    const riskText = await page.locator("section").filter({has: page.getByRole("heading", {name: "Risk limits"})}).innerText();
+    if (!riskText.includes("Execution gate unavailable") || !riskText.includes("not enforced here"))
+      throw new Error("Risk limits incorrectly imply enforcement");
+    const performanceText = await page.locator("section").filter({has: page.getByRole("heading", {name: "Performance"})}).innerText();
+    if (!performanceText.includes("No verified realized") || !performanceText.includes("No market-valued return"))
+      throw new Error("Performance caveats missing");
+    const banner = await page.locator("body > p.warn").innerText();
+    if (!banner.includes("no demo balances") || !banner.includes("not an operating paper trader"))
+      throw new Error("Demo-vs-actual labeling missing");
     const expected = {
       "#service-health": "Service reachable · trading disabled",
       "#readiness-health": "Paper execution NOT READY",
