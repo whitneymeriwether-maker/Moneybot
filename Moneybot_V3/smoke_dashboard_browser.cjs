@@ -46,10 +46,18 @@ const { chromium } = require("playwright");
       body: JSON.stringify({
         available: true, source: "local_hypothetical_sqlite_ledger",
         verification: "audited_local_records_not_broker_verified",
-        trading_ready: false, fill_count: 1, position_count: 0,
+        trading_ready: false, fill_count: 1, position_count: 1,
         cash: "1000.00", realized_pnl: "250.00",
         marked_equity: null, performance: null
       })
+    }); });
+    let positionIntercepts = 0;
+    await page.route("**/paper-ledger-positions", route => { positionIntercepts++; return route.fulfill({
+      status: 200, contentType: "application/json",
+      body: JSON.stringify({available: true, source: "local_hypothetical_sqlite_ledger",
+        verification: "audited_local_records_not_broker_verified", trading_ready: false,
+        market_valued: false, fill_count: 1,
+        positions: [{symbol: "TEST", quantity: 2, cost_basis: "100.00"}]})
     }); });
     await page.route("**/paper-ledger-fills", route => { failedFillIntercepts++; return route.fulfill({
       status: 503, contentType: "application/json",
@@ -57,14 +65,16 @@ const { chromium } = require("playwright");
     }); });
     await page.locator("#refresh-now").click();
     await page.waitForFunction(() => !document.querySelector("#refresh-now")?.disabled, null, {timeout: 20000});
-    if (summaryIntercepts !== 1 || failedFillIntercepts !== 1)
-      throw new Error(`Adversarial requests not exercised: summary=${summaryIntercepts}, fills=${failedFillIntercepts}`);
+    if (summaryIntercepts !== 1 || positionIntercepts !== 1 || failedFillIntercepts !== 1)
+      throw new Error(`Adversarial requests not exercised: summary=${summaryIntercepts}, positions=${positionIntercepts}, fills=${failedFillIntercepts}`);
     const rejectedPnl = await page.locator("#offline-realized-pnl").innerText();
     const rejectedSummary = await page.locator("#ledger-summary").innerText();
     if (!rejectedPnl.includes("Unavailable") || !rejectedSummary.includes("inconsistent"))
       throw new Error("Contradictory ledger responses were not rejected: " + rejectedPnl + " / " + rejectedSummary);
     if (await page.locator("#hypothetical-fill-rows tr").count())
       throw new Error("Failed ledger read left hypothetical fills visible");
+    if (await page.locator("#hypothetical-position-rows tr").count())
+      throw new Error("Failed fill audit left hypothetical positions visible");
     if (errors.length) throw new Error("Browser JS errors: " + errors.join("; "));
     console.log("PASS: actual Chromium dashboard render, refresh, fail-closed labels and empty unverified tables");
   } finally {
