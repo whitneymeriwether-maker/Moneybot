@@ -200,6 +200,7 @@ async function refreshHealth() {
   }
   // The fill table may only be trusted after the independently audited summary passes.
   let verifiedLedgerFillCount = null;
+  let verifiedLedgerPositionCount = null;
   // Offline ledger is independent of the cash journal and is never called actual execution.
   try {
     const response = await fetch("/paper-ledger-summary", {cache: "no-store", signal: AbortSignal.timeout(10000)});
@@ -214,6 +215,7 @@ async function refreshHealth() {
         || !/^-?(0|[1-9][0-9]*)\.[0-9]{2}$/.test(data.realized_pnl)
         || data.marked_equity !== null || data.performance !== null) throw new Error("unverified ledger");
     verifiedLedgerFillCount = data.fill_count;
+    verifiedLedgerPositionCount = data.position_count;
     offlinePnl.textContent = "Audited local hypothetical realized P&L: " + data.realized_pnl + " · NOT market-verified";
     ledgerSummary.textContent = data.fill_count + " locally recorded hypothetical fills";
     ledgerDetail.textContent = "Audited local ledger only · cash " + data.cash
@@ -238,6 +240,7 @@ async function refreshHealth() {
       && Number.isSafeInteger(data.fill_count) && data.fill_count === verifiedLedgerFillCount
       && Array.isArray(data.positions) && data.positions.length <= 100
       && data.positions.length === data.position_count
+      && data.position_count === verifiedLedgerPositionCount
       && data.positions.every((p, i) => p && typeof p.symbol === "string"
         && /^[A-Z][A-Z0-9.\-]{0,14}$/.test(p.symbol)
         && (i === 0 || data.positions[i - 1].symbol < p.symbol)
