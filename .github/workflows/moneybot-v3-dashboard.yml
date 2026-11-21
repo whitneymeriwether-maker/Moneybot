@@ -70,6 +70,23 @@ jobs:
             sleep 1
           done
           python Moneybot_V3/smoke_staging.py http://127.0.0.1:18765
+      - name: Exercise real Chromium dashboard safety and refresh behavior
+        shell: bash
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          npm install --no-save --ignore-scripts playwright@1.56.1
+          npx playwright install --with-deps chromium
+          export PORT=18765
+          python Moneybot_V3/paper_status_server.py > /tmp/v3-browser.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true; cat /tmp/v3-browser.log' EXIT
+          for i in {1..30}; do
+            if curl --silent --fail http://127.0.0.1:18765/healthz >/dev/null; then break; fi
+            if ! kill -0 "$server_pid" 2>/dev/null; then exit 1; fi
+            sleep 1
+          done
+          node Moneybot_V3/smoke_dashboard_browser.cjs
       - name: Verify deployed V3 staging HTTP safety and exact revision (manual only)
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.deployed_revision != '' }}
         timeout-minutes: 5
