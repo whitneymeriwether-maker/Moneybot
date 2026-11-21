@@ -492,7 +492,8 @@ class StatusHandler(BaseHTTPRequestHandler):
                 "available": True, "source": "local_hypothetical_sqlite_ledger",
                 "verification": "audited_local_records_not_broker_verified",
                 "trading_ready": False, "market_valued": False,
-                "fill_count": snapshot["fill_count"], "positions": positions,
+                "fill_count": snapshot["fill_count"],
+                "position_count": len(positions), "positions": positions,
             }), "application/json; charset=utf-8")
         elif path == "/paper-ledger-fills":
             # Explicitly hypothetical, locally recorded fills; never broker executions.
