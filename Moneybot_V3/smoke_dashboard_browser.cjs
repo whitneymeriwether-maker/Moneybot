@@ -39,7 +39,9 @@ const { chromium } = require("playwright");
     }, null, {timeout: 20000});
     // Adversarial browser check: a plausible ledger summary must never survive
     // a failed transaction-history read as an "audited" P&L or fill count.
-    await page.route("**/paper-ledger-summary", route => route.fulfill({
+    let summaryIntercepts = 0;
+    let failedFillIntercepts = 0;
+    await page.route("**/paper-ledger-summary", route => { summaryIntercepts++; return route.fulfill({
       status: 200, contentType: "application/json",
       body: JSON.stringify({
         available: true, source: "local_hypothetical_sqlite_ledger",
@@ -48,13 +50,15 @@ const { chromium } = require("playwright");
         cash: "1000.00", realized_pnl: "250.00",
         marked_equity: null, performance: null
       })
-    }));
-    await page.route("**/paper-ledger-fills", route => route.fulfill({
+    }); });
+    await page.route("**/paper-ledger-fills", route => { failedFillIntercepts++; return route.fulfill({
       status: 503, contentType: "application/json",
       body: JSON.stringify({available: false})
-    }));
+    }); });
     await page.locator("#refresh-now").click();
     await page.waitForFunction(() => !document.querySelector("#refresh-now")?.disabled, null, {timeout: 20000});
+    if (summaryIntercepts !== 1 || failedFillIntercepts !== 1)
+      throw new Error(`Adversarial requests not exercised: summary=${summaryIntercepts}, fills=${failedFillIntercepts}`);
     const rejectedPnl = await page.locator("#offline-realized-pnl").innerText();
     const rejectedSummary = await page.locator("#ledger-summary").innerText();
     if (!rejectedPnl.includes("Unavailable") || !rejectedSummary.includes("inconsistent"))
