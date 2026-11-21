@@ -237,6 +237,7 @@ async function refreshHealth() {
       && data.trading_ready === false && data.market_valued === false
       && Number.isSafeInteger(data.fill_count) && data.fill_count === verifiedLedgerFillCount
       && Array.isArray(data.positions) && data.positions.length <= 100
+      && data.positions.length === data.position_count
       && data.positions.every((p, i) => p && typeof p.symbol === "string"
         && /^[A-Z][A-Z0-9.\-]{0,14}$/.test(p.symbol)
         && (i === 0 || data.positions[i - 1].symbol < p.symbol)
