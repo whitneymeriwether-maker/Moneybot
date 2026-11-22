@@ -1,0 +1,30 @@
+name: V3 dashboard regression (isolated)
+on:
+  push:
+    branches: [moneybot-v3-research]
+    paths:
+      - 'Moneybot_V3/**'
+      - '.github/workflows/v3-dashboard-regression.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  dashboard-http:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Validate V3 staging build and HTTP tests
+        run: bash Moneybot_V3/render-build.sh
+      - name: Assert trading remains disabled
+        run: |
+          PYTHONPATH=Moneybot_V3 python - <<'PY'
+          from paper_status_server import _STATUS
+          assert _STATUS["trading_state"] == "NOT_ACTIVATED"
+          assert _STATUS["automatic_paper_trading"] is False
+          assert _STATUS["real_money_trading"] is False
+          assert _STATUS["execution_time_risk_gate"] == "NOT_CONNECTED"
+          PY
