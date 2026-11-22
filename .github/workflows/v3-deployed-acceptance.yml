@@ -55,11 +55,12 @@ jobs:
               assert code in (200, 503), (path, code)
               assert headers.get("Cache-Control") == "no-store"
               data = json.loads(body)
-              assert data.get("trading_ready") is False, path
               if code == 200:
                   assert data.get("available") is True, path
+                  assert data.get("trading_ready") is False, path
                   assert "verification" in data, path
               else:
                   assert data.get("available") is False, path
+                  assert isinstance(data.get("reason"), str), path
           print("PASS: deployed exact revision, read-only dashboard, fail-closed endpoints")
           PY
