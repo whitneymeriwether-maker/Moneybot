@@ -11,7 +11,8 @@ from paper_status_server import StatusHandler
 
 @pytest.fixture
 def staging_server(monkeypatch):
-    monkeypatch.delenv("MONEYBOT_V3_PAPER_JOURNAL_PATH", raising=False)
+    for key in ("MONEYBOT_V3_PAPER_JOURNAL_PATH", "MONEYBOT_V3_DATABASE_URL", "MONEYBOT_V3_OFFLINE_LEDGER_PATH"):
+        monkeypatch.delenv(key, raising=False)
     server = ThreadingHTTPServer(("127.0.0.1", 0), StatusHandler)
     worker = threading.Thread(target=server.serve_forever, daemon=True)
     worker.start()
@@ -76,3 +77,29 @@ def test_status_discloses_disabled_integrations(staging_server):
     assert data["real_money_trading"] is False
     assert data["market_data"] == "NOT_CONNECTED"
     assert data["execution_time_risk_gate"] == "NOT_CONNECTED"
+
+
+def test_unconfigured_offline_ledger_endpoints_fail_closed(staging_server):
+    """Never present absent fills, positions, or P&L as verified zeroes."""
+    for endpoint in ("/paper-ledger-summary", "/paper-ledger-positions", "/paper-ledger-fills"):
+        status, _, body = request(staging_server, "GET", endpoint)
+        assert status == 503
+        data = json.loads(body)
+        assert data["available"] is False
+        assert "fill_count" not in data
+        assert "realized_pnl" not in data
+
+
+def test_readonly_status_and_version_do_not_claim_trading(staging_server, monkeypatch):
+    monkeypatch.delenv("RENDER_GIT_COMMIT", raising=False)
+    status, headers, body = request(staging_server, "GET", "/version")
+    assert status == 200
+    assert json.loads(body) == {"git_commit": None}
+    assert headers["Cache-Control"] == "no-store"
+    monkeypatch.setenv("RENDER_GIT_COMMIT", "not-a-commit")
+    assert json.loads(request(staging_server, "GET", "/version")[2])["git_commit"] is None
+    for endpoint in ("/healthz", "/status", "/readyz"):
+        status, headers, body = request(staging_server, "HEAD", endpoint)
+        assert status == (503 if endpoint == "/readyz" else 200)
+        assert body == b""
+        assert headers["Cache-Control"] == "no-store"
