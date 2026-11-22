@@ -7,7 +7,7 @@ cd "$(dirname "$0")/.."
 python -m pip install --disable-pip-version-check -r Moneybot_V3/requirements.txt
 python -m pip install --disable-pip-version-check pytest==8.4.2
 python -m compileall -q Moneybot_V3
-PYTHONPATH=Moneybot_V3 python -m pytest -q Moneybot_V3/test_staging_http_smoke.py
+PYTHONPATH=Moneybot_V3 python -m pytest -q Moneybot_V3/test_staging_http_smoke.py Moneybot_V3/tests/test_paper_status_server.py
 python - <<'PY'
 import psycopg
 assert psycopg.__version__.split(".")[0] == "3"
