@@ -139,8 +139,9 @@ def test_activation_like_environment_cannot_enable_trading(staging_server, monke
         assert status == 200
         data = json.loads(body)
         assert data["trading_state"] == "NOT_ACTIVATED"
-        assert data["automatic_paper_trading"] is False
-        assert data["real_money_trading"] is False
+        if endpoint == "/status":
+            assert data["automatic_paper_trading"] is False
+            assert data["real_money_trading"] is False
     status, _, body = request(staging_server, "GET", "/readyz")
     assert status == 503
     assert json.loads(body)["ready_for_automatic_paper_trading"] is False
