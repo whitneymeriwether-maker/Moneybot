@@ -127,3 +127,25 @@ def test_head_never_exposes_body_or_trading_readiness(staging_server):
         status, _, body = request(staging_server, "HEAD", endpoint)
         assert status in (200, 503), (endpoint, status)
         assert body == b"", endpoint
+
+
+def test_activation_like_environment_cannot_enable_trading(staging_server, monkeypatch):
+    """Deployment flags must not turn this diagnostic service into an order endpoint."""
+    for key in ("MONEYBOT_V3_AUTO_TRADE", "MONEYBOT_V3_TRADING_ENABLED",
+                "MONEYBOT_V3_PAPER_TRADING_ENABLED", "ENABLE_LIVE_TRADING"):
+        monkeypatch.setenv(key, "true")
+    for endpoint in ("/status", "/healthz"):
+        status, _, body = request(staging_server, "GET", endpoint)
+        assert status == 200
+        data = json.loads(body)
+        assert data["trading_state"] == "NOT_ACTIVATED"
+        assert data["automatic_paper_trading"] is False
+        assert data["real_money_trading"] is False
+    status, _, body = request(staging_server, "GET", "/readyz")
+    assert status == 503
+    assert json.loads(body)["ready_for_automatic_paper_trading"] is False
+    for endpoint in ("/", "/orders", "/paper-orders", "/execute", "/api/orders"):
+        for method in ("POST", "PUT", "PATCH", "DELETE"):
+            status, _, body = request(staging_server, method, endpoint)
+            assert status == 405, (method, endpoint, status)
+            assert json.loads(body)["error"] == "read-only service"
