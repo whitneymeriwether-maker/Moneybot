@@ -1,0 +1,32 @@
+name: Moneybot V3 staging build verification
+on:
+  push:
+    branches: [moneybot-v3-research]
+    paths:
+      - 'Moneybot_V3/**'
+      - '.github/workflows/moneybot-v3-staging-build.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify-v3-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install and verify isolated staging dependencies
+        run: bash Moneybot_V3/render-build.sh
+      - name: Verify server imports without enabling trading
+        run: |
+          python - <<'PY'
+          import importlib.util
+          from pathlib import Path
+          p = Path('Moneybot_V3/paper_status_server.py')
+          spec = importlib.util.spec_from_file_location('v3_paper_status_server', p)
+          module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+          print('V3 dashboard server import succeeded')
+          PY
