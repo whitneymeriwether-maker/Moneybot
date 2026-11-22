@@ -120,13 +120,16 @@ def check(base, revision=None):
     # acceptable; a 200 must never be presented as broker-verified activity.
     ledger_count = None
     expected_position_count = None
+    ledger_availability = []
     for path in ("/paper-ledger-summary", "/paper-ledger-positions", "/paper-ledger-fills"):
         status, _, body = fetch(base, path)
         data = json.loads(body)
         if status == 503:
             if data.get("available") is not False:
                 raise AssertionError(path + ": unavailable response is inconsistent")
+            ledger_availability.append(False)
             continue
+        ledger_availability.append(True)
         if status != 200 or data.get("available") is not True:
             raise AssertionError(path + ": unexpected ledger response")
         if (data.get("source") != "local_hypothetical_sqlite_ledger"
@@ -159,6 +162,8 @@ def check(base, revision=None):
             fills = data.get("fills")
             if not isinstance(fills, list) or len(fills) > 25 or len(fills) > count:
                 raise AssertionError("Invalid hypothetical fill collection")
+    if len(set(ledger_availability)) != 1:
+        raise AssertionError("Partial ledger availability: dashboard cannot reconcile its account, positions, and fills")
     # Prove the public service rejects order-like writes; a readable dashboard
     # alone is insufficient evidence that staging cannot accept executions.
     for path in ("/orders", "/api/orders", "/paper-trade"):
