@@ -1,0 +1,65 @@
+name: V3 deployed staging acceptance (read only)
+on:
+  workflow_dispatch:
+jobs:
+  verify-staging:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+    steps:
+      - name: Check deployed V3 HTTP contracts without placing orders
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          python - <<'PY'
+          import json, os, time, urllib.error, urllib.request
+          base = "https://moneybot-v3-staging.onrender.com"
+          def get(path):
+              request = urllib.request.Request(base + path, headers={"Accept": "application/json", "Cache-Control": "no-cache"})
+              try:
+                  with urllib.request.urlopen(request, timeout=25) as response:
+                      return response.status, response.headers, response.read(200000)
+              except urllib.error.HTTPError as exc:
+                  return exc.code, exc.headers, exc.read(200000)
+          # Free-tier cold starts can take a short time; retry only transport errors.
+          for attempt in range(4):
+              try:
+                  code, headers, body = get("/")
+                  break
+              except (OSError, TimeoutError):
+                  if attempt == 3: raise
+                  time.sleep(15)
+          assert code == 200 and b"Moneybot V3" in body and b"NOT ACTIVATED" in body
+          assert b"Account state" in body and b"Paper trades" in body
+          assert b"Risk limits" in body and b"Performance" in body
+          assert b"hypothetical" in body and b"no demo balances" in body
+          def endpoint(path, expected_code):
+              status, headers, body = get(path)
+              assert status == expected_code, (path, status)
+              assert headers.get("Cache-Control") == "no-store", path
+              return json.loads(body)
+          version = endpoint("/version", 200)
+          assert version.get("git_commit") == os.environ["EXPECTED_SHA"], "Staging does not run the requested commit"
+          health = endpoint("/healthz", 200)
+          assert health.get("service") == "up" and health.get("trading_state") == "NOT_ACTIVATED"
+          status = endpoint("/status", 200)
+          assert status.get("automatic_paper_trading") is False
+          assert status.get("real_money_trading") is False
+          assert status.get("market_data") == "NOT_CONNECTED"
+          assert status.get("execution_time_risk_gate") == "NOT_CONNECTED"
+          ready = endpoint("/readyz", 503)
+          assert ready.get("ready_for_automatic_paper_trading") is False
+          for path in ("/paper-account", "/paper-journal-activity", "/paper-ledger-summary", "/paper-ledger-positions", "/paper-ledger-fills"):
+              code, headers, body = get(path)
+              assert code in (200, 503), (path, code)
+              assert headers.get("Cache-Control") == "no-store"
+              data = json.loads(body)
+              assert data.get("trading_ready") is False, path
+              if code == 200:
+                  assert data.get("available") is True, path
+                  assert "verification" in data, path
+              else:
+                  assert data.get("available") is False, path
+          print("PASS: deployed exact revision, read-only dashboard, fail-closed endpoints")
+          PY
