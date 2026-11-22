@@ -263,6 +263,13 @@ async function refreshHealth() {
   } catch (_) {
     positionRows.replaceChildren();
     positionStatus.textContent = "Local hypothetical positions unavailable or unverified";
+    // A failed positions audit invalidates the whole ledger snapshot, not just
+    // holdings. Never show an apparently audited P&L beside rejected positions.
+    verifiedLedgerFillCount = null;
+    verifiedLedgerPositionCount = null;
+    offlinePnl.textContent = "Unavailable · inconsistent or unverified ledger";
+    ledgerSummary.textContent = "Offline ledger unavailable or inconsistent";
+    ledgerDetail.textContent = "No authenticated paper execution or verified trade count.";
   }
   // Render only audited hypothetical fills, never inferred or broker-verified trades.
   const fillRows = document.getElementById("hypothetical-fill-rows");
