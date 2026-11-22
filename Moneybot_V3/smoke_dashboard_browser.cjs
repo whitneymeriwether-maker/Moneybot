@@ -78,7 +78,7 @@ const { chromium } = require("playwright");
       status: 200, contentType: "application/json",
       body: JSON.stringify({available: true, source: "local_hypothetical_sqlite_ledger",
         verification: "audited_local_records_not_broker_verified", trading_ready: false,
-        market_valued: false, fill_count: 1,
+        market_valued: false, fill_count: 1, position_count: 1,
         positions: [{symbol: "TEST", quantity: 2, cost_basis: "100.00"}]})
     }); });
     await page.route("**/paper-ledger-fills", route => { failedFillIntercepts++; return route.fulfill({
