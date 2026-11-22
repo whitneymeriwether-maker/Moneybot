@@ -103,3 +103,27 @@ def test_readonly_status_and_version_do_not_claim_trading(staging_server, monkey
         assert status == (503 if endpoint == "/readyz" else 200)
         assert body == b""
         assert headers["Cache-Control"] == "no-store"
+
+
+def test_every_dashboard_data_endpoint_is_non_cacheable(staging_server):
+    """Financial snapshots and disabled-state indicators must not be cached."""
+    endpoints = (
+        "/", "/healthz", "/readyz", "/status", "/version",
+        "/paper-account", "/paper-journal-activity",
+        "/paper-ledger-summary", "/paper-ledger-positions", "/paper-ledger-fills",
+    )
+    for endpoint in endpoints:
+        status, headers, _ = request(staging_server, "GET", endpoint)
+        assert status in (200, 503), (endpoint, status)
+        assert headers.get("Cache-Control") == "no-store", endpoint
+
+
+def test_head_never_exposes_body_or_trading_readiness(staging_server):
+    """HEAD must not accidentally advertise readiness or return financial JSON."""
+    for endpoint in ("/", "/healthz", "/readyz", "/status", "/version",
+                     "/paper-account", "/paper-journal-activity",
+                     "/paper-ledger-summary", "/paper-ledger-positions",
+                     "/paper-ledger-fills"):
+        status, _, body = request(staging_server, "HEAD", endpoint)
+        assert status in (200, 503), (endpoint, status)
+        assert body == b"", endpoint
