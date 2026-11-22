@@ -10,6 +10,13 @@ python - <<'PY'
 import psycopg
 assert psycopg.__version__.split(".")[0] == "3"
 from pathlib import Path
-assert Path("Moneybot_V3/paper_status_server.py").is_file()
-print("V3 staging build prerequisites verified")
+import sys
+sys.path.insert(0, str(Path("Moneybot_V3").resolve()))
+import paper_status_server as server
+assert server._STATUS["trading_state"] == "NOT_ACTIVATED"
+assert server._STATUS["automatic_paper_trading"] is False
+assert server._STATUS["real_money_trading"] is False
+assert server._STATUS["market_data"] == "NOT_CONNECTED"
+assert server._STATUS["execution_time_risk_gate"] == "NOT_CONNECTED"
+print("V3 staging dependencies, server import, and disabled execution verified")
 PY
