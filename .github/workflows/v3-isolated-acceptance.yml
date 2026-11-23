@@ -1,0 +1,51 @@
+name: V3 isolated staging acceptance
+on:
+  push:
+    branches: [moneybot-v3-research]
+    paths:
+      - 'Moneybot_V3/**'
+      - '.github/workflows/v3-isolated-acceptance.yml'
+  workflow_dispatch:
+    inputs:
+      probe_deployed:
+        description: 'Probe deployed V3 staging (read-only; requires current deployment)'
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v3-isolated-acceptance-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regression:
+    if: github.ref == 'refs/heads/moneybot-v3-research'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run exact V3 staging build and regression contract
+        run: bash Moneybot_V3/render-build.sh
+
+  deployed-read-only:
+    if: github.event_name == 'workflow_dispatch' && inputs.probe_deployed
+    needs: regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify deployed browser and fail-closed trading readiness
+        run: python Moneybot_V3/verify_deployed_dashboard.py https://moneybot-v3-staging.onrender.com
