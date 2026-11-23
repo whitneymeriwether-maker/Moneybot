@@ -81,6 +81,7 @@ jobs:
           function element() {
             return {
               textContent: '', children: [],
+              addEventListener(event, handler) { if (event !== 'click' || typeof handler !== 'function') throw Error('unexpected event registration'); this.clickHandler = handler; },
               replaceChildren() { this.children = []; },
               appendChild(child) { this.children.push(child); }
             };
