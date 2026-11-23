@@ -7,7 +7,7 @@ cd "$(dirname "$0")/.."
 python -m pip install --disable-pip-version-check -r Moneybot_V3/requirements.txt
 python -m pip install --disable-pip-version-check pytest==8.4.2
 python -m compileall -q Moneybot_V3
-PYTHONPATH=Moneybot_V3 python -m pytest -q Moneybot_V3/test_staging_http_smoke.py Moneybot_V3/test_staging_provenance_http.py Moneybot_V3/tests/test_paper_status_server.py Moneybot_V3/tests/test_staging_http_contract.py Moneybot_V3/tests/test_staging_revision_contract.py
+PYTHONPATH=Moneybot_V3 python -m pytest -q Moneybot_V3/test_staging_http_smoke.py Moneybot_V3/test_staging_provenance_http.py Moneybot_V3/tests/test_paper_status_server.py Moneybot_V3/tests/test_staging_http_contract.py Moneybot_V3/tests/test_staging_revision_contract.py Moneybot_V3/tests/test_dashboard_hypothetical_fills.py Moneybot_V3/tests/test_dashboard_hypothetical_positions.py Moneybot_V3/tests/test_dashboard_refresh_contract.py Moneybot_V3/tests/test_dashboard_refresh_timestamp_contract.py Moneybot_V3/tests/test_offline_ledger_dashboard.py
 python - <<'PY'
 import psycopg
 assert psycopg.__version__.split(".")[0] == "3"
