@@ -21,15 +21,28 @@ jobs:
         run: |
           python - <<'PY'
           from playwright.sync_api import sync_playwright
-          import re
+          import time
           base = "https://moneybot-v3-staging.onrender.com"
           with sync_playwright() as p:
               browser = p.chromium.launch()
               page = browser.new_page()
               errors = []
               page.on("pageerror", lambda error: errors.append(str(error)))
-              response = page.goto(base, timeout=120000)
-              assert response and response.ok, "Dashboard HTTP failure"
+              response = None
+              for attempt in range(4):
+                  try:
+                      response = page.goto(base, timeout=45000)
+                      print(f"Dashboard attempt {attempt + 1}: HTTP {response.status if response else 'no response'}", flush=True)
+                      if response and response.ok:
+                          break
+                      if response:
+                          print(f"Response content type: {response.headers.get('content-type', 'unknown')}", flush=True)
+                  except Exception as exc:
+                      print(f"Navigation failed: {type(exc).__name__}: {exc}", flush=True)
+                  if attempt < 3:
+                      time.sleep(15)
+              assert response and response.ok, f"Dashboard HTTP failure: {response.status if response else 'no response'}"
+              errors.clear()
               page.get_by_text("NOT ACTIVATED", exact=False).first.wait_for(timeout=30000)
               body = page.locator("body").inner_text()
               for section in ("system health", "account", "risk", "performance"):
