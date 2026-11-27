@@ -6,7 +6,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 # Build checks use isolated fixtures even when Render supplies runtime settings.
 unset V3_PAPER_TRADING_ENABLED V3_PAPER_CYCLE_TOKEN MONEYBOT_V3_DATABASE_URL
-unset MONEYBOT_V3_PAPER_JOURNAL_PATH MONEYBOT_V3_PAPER_LEDGER_PATH
+unset MONEYBOT_V3_PAPER_JOURNAL_PATH MONEYBOT_V3_OFFLINE_LEDGER_PATH
 python -m pip install --disable-pip-version-check -r Moneybot_V3/requirements.txt
 python -m pip install --disable-pip-version-check pytest==8.4.2
 python -m compileall -q Moneybot_V3
