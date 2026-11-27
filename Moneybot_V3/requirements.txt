@@ -1,2 +1,5 @@
 # Isolated staging PostgreSQL reader runtime
 psycopg[binary]==3.2.13
+
+# NYSE sessions, early closures, and holidays for automated paper trading
+exchange-calendars==4.13.3

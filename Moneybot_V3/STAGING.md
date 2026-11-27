@@ -1,65 +1,32 @@
-# V3 isolated staging service (not automatic paper trading)
+# Moneybot V3 paper staging
 
-`paper_status_server.py` is a **deliberately non-trading** standard-library
-HTTP status endpoint. It exists only to validate that a separate free Render
-service can deploy from `moneybot-v3-research` without touching the V2 service
-on `main`.
+The free Render service deploys from `moneybot-v3-research` using
+`bash Moneybot_V3/render-build.sh` and
+`python Moneybot_V3/paper_status_server.py`. Its paper database is the
+isolated Neon `moneybot_v3_paper` database. Apply
+`Moneybot_V3/postgres_paper_schema.sql` there before deployment.
 
-It has no broker import, order submission path, background worker, market-data
-feed, or database connection. It remains **NOT ACTIVATED** regardless of
-environment variables. Its homepage must never be represented as paper
-trading or as evidence of strategy profitability.
+| Environment variable | Purpose |
+| --- | --- |
+| `MONEYBOT_V3_DATABASE_URL` | Isolated V3 Neon connection with read and write access to the paper tables |
+| `APCA_API_KEY_ID`, `APCA_API_SECRET_KEY` | Free Alpaca credentials used for IEX market data |
+| `V3_PAPER_TRADING_ENABLED` | Set to `0` to display the paper ledger or `1` to accept authenticated cycle requests |
+| `V3_PAPER_CYCLE_TOKEN` | Random secret shared only with the HTTPS scheduler |
 
-## Render configuration
+Configure the scheduler to send a bodyless HTTPS `POST /api/paper-cycle`
+with `Authorization: Bearer <token>` every five minutes on weekdays during
+the U.S. equity session. The NYSE calendar checks daylight saving time,
+holidays and early closes. The free Render web service can sleep outside
+the scheduling window, so the scheduler must allow for cold starts.
 
-- Repository: `whitneymeriwether-maker/Moneybot`
-- Branch: `moneybot-v3-research` (never `main`)
-- Plan: `free` only; do not authorize paid upgrades
-- Auto-deploy: `no` until release controls and end-to-end tests exist
-- Build: `python -m compileall -q Moneybot_V3/paper_status_server.py`
-- Start: `python Moneybot_V3/paper_status_server.py`
-- Port: `PORT` supplied by Render (defaults to 10000 locally)
-- No broker credentials or database URL are needed for this staging endpoint
+The first valid observation establishes the strategy baseline and records
+the opening paper balance if the cash journal is empty. The strategy buys
+SPY on a 0.1% rise from the previous observation using up to 80% of available
+cash, and sells the position on a 0.1% decline. Fills are modeled at the IEX
+quote midpoint rounded to cents. The broker order API is unused.
 
-## Smoke tests
-
-1. `GET /` explicitly displays **NOT ACTIVATED**.
-2. `GET /healthz` returns HTTP 200, meaning only that the web process is alive.
-3. `GET /status` returns `automatic_paper_trading: false` and
-   `real_money_trading: false`; data and persistence are not connected.
-4. `GET /readyz` returns HTTP **503** until independently validated automatic
-   paper trading exists. A live web process is not trading readiness.
-5. `POST /orders` returns HTTP 405; unknown routes return HTTP 404.
-
-`python -m pytest -q tests/test_paper_status_server.py` checks these
-properties locally. The main V3 CI suite also runs these tests.
-
-## Independent read-only deployment verification
-
-After each manually approved staging deployment, run:
-
-```sh
-python Moneybot_V3/staging_smoke_check.py
-```
-
-The checker contacts only `https://moneybot-v3-staging.onrender.com`,
-using **GET and HEAD only**. It rejects redirects and unexpected hosts,
-confirms the health endpoint responds, and **requires** the readiness endpoint
-to return HTTP 503 with paper trading disabled. An exit status of zero means
-only that the staging service is reachable and still fail-closed; it is not
-proof of strategy performance or execution readiness. The checker does not
-submit orders, create simulated fills, or access V2. Its local-server regression
-tests run in the V3 CI suite.
-
-## Conditions before automatic paper-trading activation
-
-Use a separate, durable paper-only database and an authenticated,
-independently timestamped market-data source. Recheck risk limits atomically
-with simulated fills, make fills idempotent, preserve complete execution and
-valuation history, validate restart recovery and duplicate schedules, verify
-free-tier resource limits, and complete controlled shadow trials. Never
-connect live brokerage order endpoints. The free Render web tier can sleep
-when idle and cannot by itself guarantee uninterrupted scheduled trading.
-
-No activation switch is implemented in this staging service. A future
-trading engine must be reviewed and tested separately before any activation.
+Check `/version` for the deployed commit and `/readyz` for a persisted
+cycle. After the scheduler reports `completed`, match its cycle key in
+`/automated-paper` and confirm the same row in Neon. `/healthz` checks web
+process liveness. `/status` distinguishes an enabled trigger from a
+verified cycle. Set the activation flag to `0` and redeploy to pause trading.

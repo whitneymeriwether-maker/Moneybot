@@ -1,11 +1,8 @@
-"""Moneybot V3 staging status endpoint; deliberately incapable of trading.
+"""Moneybot V3 staging dashboard and authenticated paper-cycle trigger."""
 
-This service is a deployment smoke-test, not a paper trading engine. It
-has no broker, market-data, persistence, background worker, or order path.
-It stays disabled even if an activation-looking environment variable is set.
-"""
-
+import hmac
 import json
+import logging
 import os
 import sqlite3
 from decimal import Decimal
@@ -26,6 +23,38 @@ _STATUS = {
     "execution_time_risk_gate": "NOT_CONNECTED",
     "note": "Deployment smoke-test only. No trades, signals, or performance data.",
 }
+
+_LOG = logging.getLogger(__name__)
+
+
+def _paper_state():
+    from automated_paper_trader import read_trading_state
+
+    return read_trading_state(os.environ["MONEYBOT_V3_DATABASE_URL"])
+
+
+def _paper_dashboard_enabled():
+    return os.environ.get("V3_PAPER_TRADING_ENABLED") in {"0", "1"}
+
+
+def _paper_cycle_token():
+    if (os.environ.get("V3_PAPER_TRADING_ENABLED") == "1"
+            and os.environ.get("MONEYBOT_V3_DATABASE_URL")):
+        return os.environ.get("V3_PAPER_CYCLE_TOKEN")
+    return None
+
+
+def _trading_state():
+    return "PAPER_ENABLED" if _paper_cycle_token() else "NOT_ACTIVATED"
+
+
+def _verified_paper_cycle():
+    try:
+        return bool(_paper_state().get("latest_cycle"))
+    except Exception as error:
+        _LOG.warning("Paper cycle verification failed (%s)", type(error).__name__)
+        return False
+
 
 _HTML = r"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -370,7 +399,7 @@ def _read_cash_journal():
 
 
 class StatusHandler(BaseHTTPRequestHandler):
-    """Read-only HTTP handler with a permanently closed trading gate."""
+    """Read-only dashboard with a separately authenticated scheduler route."""
 
     def _send(self, status, body, content_type):
         payload = body.encode("utf-8")
@@ -387,8 +416,7 @@ class StatusHandler(BaseHTTPRequestHandler):
         """Expose the same status as GET without a response body.
 
         Render and other uptime probes may issue HEAD before GET. A HEAD
-        request must not make the staging service appear unhealthy, and
-        /readyz must remain 503 even when probed with HEAD.
+        request must not make the staging service appear unhealthy.
         """
         self._head_only = True
         try:
@@ -400,18 +428,48 @@ class StatusHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = self.path.split("?", 1)[0]
         if path == "/":
-            self._send(200, _HTML, "text/html; charset=utf-8")
+            if _paper_dashboard_enabled():
+                from automated_paper_dashboard import HTML
+                self._send(200, HTML, "text/html; charset=utf-8")
+            else:
+                self._send(200, _HTML, "text/html; charset=utf-8")
         elif path == "/healthz":
             self._send(
                 200,
-                json.dumps({"service": "up", "trading_state": "NOT_ACTIVATED"}),
+                json.dumps({"service": "up", "trading_state": _trading_state()}),
                 "application/json; charset=utf-8",
             )
         elif path == "/version":
             revision = os.environ.get("RENDER_GIT_COMMIT", "")
             self._send(200, json.dumps({"git_commit": revision if len(revision) == 40 and all(ch in "0123456789abcdef" for ch in revision) else None}), "application/json; charset=utf-8")
         elif path == "/status":
-            self._send(200, json.dumps(_STATUS), "application/json; charset=utf-8")
+            status = _STATUS
+            if _paper_dashboard_enabled():
+                enabled = bool(_paper_cycle_token())
+                verified = _verified_paper_cycle()
+                status = {
+                    **_STATUS,
+                    "trading_state": _trading_state(),
+                    "automatic_paper_trading": enabled,
+                    "verified_paper_cycle": verified,
+                    "market_data": "VERIFIED_ON_LAST_CYCLE" if verified else "UNVERIFIED",
+                    "persistent_paper_ledger": "CYCLE_PERSISTED" if verified else "UNVERIFIED",
+                    "execution_time_risk_gate": "PAPER_SIMULATION_ONLY",
+                    "note": "Use /automated-paper for persisted account and cycle results.",
+                }
+            self._send(200, json.dumps(status), "application/json; charset=utf-8")
+        elif path == "/automated-paper":
+            try:
+                payload = json.dumps({
+                    **_paper_state(),
+                    "automatic_paper_trading": bool(_paper_cycle_token()),
+                    "real_money_trading": False,
+                })
+            except Exception as error:
+                _LOG.warning("Automated paper account unavailable (%s)", type(error).__name__)
+                self._send(503, '{"reason":"paper account unavailable"}', "application/json; charset=utf-8")
+                return
+            self._send(200, payload, "application/json; charset=utf-8")
         elif path == "/paper-account":
             if not any(k in os.environ for k in ("MONEYBOT_V3_DATABASE_URL", "MONEYBOT_V3_PAPER_JOURNAL_PATH")):
                 self._send(503, json.dumps({"available": False, "reason": "journal not configured"}), "application/json; charset=utf-8")
@@ -538,6 +596,13 @@ class StatusHandler(BaseHTTPRequestHandler):
                 "fills": events,
             }), "application/json; charset=utf-8")
         elif path == "/readyz":
+            if _paper_cycle_token():
+                ready = _verified_paper_cycle()
+                self._send(200 if ready else 503, json.dumps({
+                    "ready_for_automatic_paper_trading": ready,
+                    "reason": "A paper cycle is persisted" if ready else "No verified paper cycle",
+                }), "application/json; charset=utf-8")
+                return
             self._send(
                 503,
                 json.dumps({
@@ -550,17 +615,39 @@ class StatusHandler(BaseHTTPRequestHandler):
             self._send(404, '{"error":"not found"}', "application/json; charset=utf-8")
 
     def do_POST(self):
+        if self.path == "/api/paper-cycle":
+            token = _paper_cycle_token()
+            if token:
+                received = self.headers.get_all("Authorization", [])
+                expected = f"Bearer {token}".encode("utf-8")
+                if len(received) != 1 or not hmac.compare_digest(received[0].encode("utf-8"), expected):
+                    self._send(401, '{"error":"unauthorized"}', "application/json; charset=utf-8")
+                    return
+                try:
+                    from automated_paper_schedule import run_scheduled_cycle
+                    result = run_scheduled_cycle()
+                    payload = json.dumps(result)
+                    _LOG.info("Scheduled paper cycle result: %s", result["status"])
+                except Exception as error:
+                    _LOG.warning("Scheduled paper cycle failed (%s)", type(error).__name__)
+                    self._send(503, '{"error":"paper cycle failed"}', "application/json; charset=utf-8")
+                    return
+                self._send(200, payload, "application/json; charset=utf-8")
+                return
         self._send(405, '{"error":"read-only service"}', "application/json; charset=utf-8")
 
     # Explicitly reject every state-changing HTTP method with the same
     # fail-closed response, including on order-like paths.
-    do_PUT = do_POST
-    do_PATCH = do_POST
-    do_DELETE = do_POST
+    def _reject_method(self):
+        self._send(405, '{"error":"read-only service"}', "application/json; charset=utf-8")
+
+    do_PUT = _reject_method
+    do_PATCH = _reject_method
+    do_DELETE = _reject_method
     # Do not advertise alternate methods or expose request reflection.
-    do_OPTIONS = do_POST
-    do_TRACE = do_POST
-    do_CONNECT = do_POST
+    do_OPTIONS = _reject_method
+    do_TRACE = _reject_method
+    do_CONNECT = _reject_method
 
 
 def main():
@@ -571,7 +658,19 @@ def main():
     if not 1 <= port <= 65535:
         raise ValueError("Invalid PORT")
     server = ThreadingHTTPServer(("0.0.0.0", port), StatusHandler)
-    print("Moneybot V3 staging status service; trading NOT ACTIVATED", flush=True)
+    logging.basicConfig(level=logging.INFO)
+    print(f"Moneybot V3 staging status service; trading {_trading_state()}", flush=True)
+    if _paper_dashboard_enabled():
+        try:
+            _paper_state()
+        except Exception as error:
+            _LOG.warning("V3 paper ledger unavailable (%s)", type(error).__name__)
+        else:
+            _LOG.info("V3 paper ledger readable")
+        keys_present = all(os.environ.get(key, "").strip() for key in (
+            "APCA_API_KEY_ID", "APCA_API_SECRET_KEY",
+        ))
+        _LOG.info("Alpaca IEX credentials %s", "configured" if keys_present else "missing")
     server.serve_forever()
 
 

@@ -61,6 +61,9 @@ class SmokeStagingTests(unittest.TestCase):
             (200, {}, ('{"git_commit":"' + sha + '"}').encode()),
             (503, {}, b'{"available":false}'),
             (503, {}, b'{"available":false}'),
+            (503, {}, b'{"available":false}'),
+            (503, {}, b'{"available":false}'),
+            (503, {}, b'{"available":false}'),
             (200, {}, b'{"accepted":true}'),
         ]
         calls = []
@@ -85,6 +88,9 @@ class SmokeStagingTests(unittest.TestCase):
             (200, {}, ('{"git_commit":"' + sha + '"}').encode()),
             (503, {}, b'{"available":false}'),
             (503, {}, b'{"available":false}'),
+            (503, {}, b'{"available":false}'),
+            (503, {}, b'{"available":false}'),
+            (503, {}, b'{"available":false}'),
         ] + [(405, {}, b'{"error":"read-only service"}')] * 12
         calls = []
         def fake_fetch(base, endpoint, method="GET"):
@@ -92,7 +98,7 @@ class SmokeStagingTests(unittest.TestCase):
             return responses.pop(0)
         with patch.object(smoke, "fetch", side_effect=fake_fetch):
             self.assertEqual(smoke.check("https://example.com", sha), sha)
-        self.assertEqual(len(calls), 20)
+        self.assertEqual(len(calls), 23)
         self.assertFalse(responses)
         self.assertEqual(sum(method != "GET" for _, method in calls), 13)
 

@@ -12,7 +12,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 try:
     from .verified_market_quote import verified_quote
@@ -25,11 +25,17 @@ _DATA_ORIGIN = "https://data.alpaca.markets"
 _SYMBOL = re.compile(r"[A-Z][A-Z0-9.-]{0,9}")
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
 def latest_alpaca_quote(symbol, *, key_id=None, secret_key=None, now=None,
-                        timeout=8, opener=None):
+                        timeout=8, opener=None, round_for_paper=False):
     """Fetch a validated midpoint observation; never place an order.
 
-    Bid/ask must be positive, non-crossed, cent-precise, and timestamped.
+    Bid/ask must be positive, non-crossed, and timestamped. By default
+    require cent precision. Paper simulation may round the midpoint to cents.
     Feed is explicitly IEX; exchange coverage is not consolidated NBBO.
     """
     if type(symbol) is not str or not _SYMBOL.fullmatch(symbol):
@@ -46,7 +52,7 @@ def latest_alpaca_quote(symbol, *, key_id=None, secret_key=None, now=None,
         "APCA-API-SECRET-KEY": secret_key,
         "Accept": "application/json",
     })
-    transport = opener if opener is not None else urllib.request.urlopen
+    transport = opener if opener is not None else urllib.request.build_opener(_NoRedirect()).open
     try:
         with transport(request, timeout=timeout) as response:
             if response.status != 200:
@@ -66,7 +72,7 @@ def latest_alpaca_quote(symbol, *, key_id=None, secret_key=None, now=None,
                     raise ValueError("Duplicate market-data JSON field")
                 obj[key] = value
             return obj
-        result = json.loads(raw, object_pairs_hook=unique_object)
+        result = json.loads(raw, object_pairs_hook=unique_object, parse_float=str)
         if type(result) is not dict or type(result.get("quote")) is not dict:
             raise ValueError("Missing market quote")
         quote = result["quote"]
@@ -81,15 +87,17 @@ def latest_alpaca_quote(symbol, *, key_id=None, secret_key=None, now=None,
             prefix, suffix = normalized.split(".", 1)
             normalized = prefix + "." + suffix.split("+")[0][:6].ljust(6, "0") + "+00:00"
         observed = datetime.fromisoformat(normalized)
+        fractions = r"[0-9]{1,4}" if round_for_paper else r"[0-9]{1,2}"
+
         def decimal_price(value):
             if type(value) not in (str, int, Decimal, float):
                 raise ValueError("Invalid bid or ask")
             literal = str(value)
             # Reject oversized and noncanonical provider numbers before parsing.
-            if len(literal) > 32 or not re.fullmatch(r"(?:0|[1-9][0-9]{0,6})(?:\.[0-9]{1,2})?", literal):
+            if len(literal) > 32 or not re.fullmatch(rf"(?:0|[1-9][0-9]{{0,6}})(?:\.{fractions})?", literal):
                 raise ValueError("Invalid bid or ask")
             number = Decimal(literal)
-            if not number.is_finite() or number <= 0 or number != number.quantize(Decimal("0.01")):
+            if not number.is_finite() or not Decimal("0.01") <= number <= Decimal("1000000"):
                 raise ValueError("Invalid bid or ask")
             return number
         bid = decimal_price(quote["bp"])
@@ -97,8 +105,9 @@ def latest_alpaca_quote(symbol, *, key_id=None, secret_key=None, now=None,
         if ask < bid:
             raise ValueError("Crossed quote")
         midpoint = (bid + ask) / 2
-        # Require a cent-precise midpoint rather than silently rounding.
-        if midpoint != midpoint.quantize(Decimal("0.01")):
+        if round_for_paper:
+            midpoint = midpoint.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        elif midpoint != midpoint.quantize(Decimal("0.01")):
             raise ValueError("Subcent midpoint cannot be represented in paper ledger")
         validated = verified_quote(
             {"symbol": symbol, "timestamp": observed, "price": midpoint},

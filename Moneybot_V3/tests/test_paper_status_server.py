@@ -1,4 +1,4 @@
-"""Staging status server must never imply trading readiness or accept orders."""
+"""Staging HTTP status and paper scheduler contracts."""
 
 import json
 import threading
@@ -23,8 +23,8 @@ def staging_server():
         thread.join(timeout=3)
 
 
-def get_response(url, method="GET"):
-    request = Request(url, method=method)
+def get_response(url, method="GET", headers=None):
+    request = Request(url, method=method, headers=headers or {})
     try:
         with urlopen(request, timeout=3) as response:
             return response.status, response.headers, response.read().decode("utf-8")
@@ -86,6 +86,54 @@ def test_all_mutating_methods_fail_closed_on_order_path():
             assert headers["Cache-Control"] == "no-store"
             assert headers["X-Content-Type-Options"] == "nosniff"
             assert json.loads(body) == {"error": "read-only service"}
+
+
+def test_paper_cycle_requires_enablement_authentication_and_post(monkeypatch):
+    import automated_paper_schedule
+
+    cycles = []
+
+    def complete():
+        cycles.append("completed")
+        return {"status": "completed"}
+
+    monkeypatch.setattr(automated_paper_schedule, "run_scheduled_cycle", complete)
+    monkeypatch.setenv("MONEYBOT_V3_DATABASE_URL", "test-dsn")
+    monkeypatch.setenv("V3_PAPER_CYCLE_TOKEN", "test-token")
+    monkeypatch.setenv("V3_PAPER_TRADING_ENABLED", "0")
+    authorization = {"Authorization": "Bearer test-token"}
+    with staging_server() as url:
+        path = url + "/api/paper-cycle"
+        assert get_response(path, "POST", authorization)[0] == 405
+        monkeypatch.setenv("V3_PAPER_TRADING_ENABLED", "1")
+        assert get_response(path, "POST")[0] == 401
+        assert get_response(path, "POST", {"Authorization": "Bearer wrong"})[0] == 401
+        assert get_response(path, "PUT", authorization)[0] == 405
+        assert get_response(path, "GET", authorization)[0] == 404
+        status, _, body = get_response(path, "POST", authorization)
+    assert status == 200
+    assert json.loads(body) == {"status": "completed"}
+    assert cycles == ["completed"]
+
+
+def test_paper_readiness_requires_persisted_cycle(monkeypatch):
+    state = {"latest_cycle": None}
+    monkeypatch.setattr("paper_status_server._paper_state", lambda: state)
+    monkeypatch.setenv("MONEYBOT_V3_DATABASE_URL", "test-dsn")
+    monkeypatch.setenv("V3_PAPER_CYCLE_TOKEN", "test-token")
+    monkeypatch.setenv("V3_PAPER_TRADING_ENABLED", "1")
+    with staging_server() as url:
+        assert get_response(url + "/readyz")[0] == 503
+        pending = json.loads(get_response(url + "/status")[2])
+        assert pending["automatic_paper_trading"] is True
+        assert pending["verified_paper_cycle"] is False
+        assert pending["market_data"] == "UNVERIFIED"
+        state["latest_cycle"] = {"cycle_key": "test-cycle"}
+        assert get_response(url + "/readyz")[0] == 200
+        confirmed = json.loads(get_response(url + "/status")[2])
+        assert confirmed["verified_paper_cycle"] is True
+        assert confirmed["market_data"] == "VERIFIED_ON_LAST_CYCLE"
+        assert confirmed["real_money_trading"] is False
 
 
 def test_unknown_route_is_not_a_trading_endpoint():
